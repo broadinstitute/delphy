@@ -1,0 +1,1 @@
+For obscure reasons, the Emscripten compiler we're using to compile to WASM as of this writing (13 Jul 2023) cannot handle the real [cppcoro](https://github.com/lewissbaker/cppcoro) library.  So here, we've just brought in the bare minimum subset that is used in Delphy.

@@ -1,0 +1,19 @@
+#include "version.h"
+
+namespace delphy {
+
+static const auto k_git_hash = std::string{"@GIT_HASH@"};
+static const auto k_prev_git_hash = std::string{"@PREV_GIT_HASH@"};
+static const auto k_has_uncomitted_changes = bool{@GIT_UNCOMMITED_CHANGES@};
+static const auto k_version = std::string{"@CMAKE_PROJECT_VERSION@"};
+static const auto k_build_number = int{@BUILD_NUMBER@};
+static const auto k_build_prev_git_hash = std::string{"@BUILD_PREV_GIT_HASH@"};
+
+static const auto k_is_release_build = (k_prev_git_hash == k_build_prev_git_hash) && not k_has_uncomitted_changes;
+
+const std::string k_delphy_version_string{k_version + (k_is_release_build ? "" : "+<unreleased changes>")};
+// Use negative build numbers to signal "work-in-progress future build"
+const int k_delphy_build_number = k_is_release_build ? k_build_number : -(k_build_number + 1);
+const std::string k_delphy_commit_string{k_git_hash + (k_has_uncomitted_changes ? "+<uncommitted changes>" : "")};
+
+}  // namespace delphy

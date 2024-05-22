@@ -1,0 +1,13 @@
+[submodule "third-party/flatbuffers"]
+	path = third-party/flatbuffers
+	url = https://github.com/google/flatbuffers.git
+	branch = master
+[submodule "third-party/abseil-cpp"]
+	path = third-party/abseil-cpp
+	url = https://github.com/abseil/abseil-cpp.git
+[submodule "third-party/ctpl"]
+	path = third-party/ctpl
+	url = https://github.com/vit-vit/ctpl.git
+[submodule "third-party/cxxopts"]
+	path = third-party/cxxopts
+	url = https://github.com/jarro2783/cxxopts

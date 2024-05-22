@@ -1,0 +1,94 @@
+// IDL file for data passed across API boundaries.
+// When changed, regenerate the corresponding header as follows (assuming you've built third-party/flatbuffers):
+// ```
+// cd core
+// ../third-party/flatbuffers/build/flatc --cpp api.fbs
+// ```
+
+namespace delphy.api;
+
+// For unambiguous states
+enum RealSeqLetter : uint8 { A, C, G, T }
+
+struct Node {
+  parent: int32;           // Range: [0, N-1), or -1 for the root node
+  left_child: int32;       // Range: [0, 2N-1), or -1 for a tip.
+  right_child: int32;      //   Note: A node has 0 or 2 children
+  t: float32;              // Time: measured in fractional days since 2020-01-01
+}
+
+// NOTE: Branches below are identified by the end node, so branch `i` connects node `parent(i)` to node `i`.
+
+// A mutation at time t, on branch `branch`, that changes the state at site `site` from `from` to `to`
+struct Mutation {
+  branch: int32;           // Branch on which this mutation lies
+  site: int32;             // 0-based site: [0, L)
+  from: RealSeqLetter;
+  to: RealSeqLetter;
+  t: float32;              // Time: measured in fractional days since 2020-01-01
+}
+
+// "Missation" = like a mutation, but denoting a (permanent) transition to ambiguity.
+// In other words, a marker at the beginning of branch `branch`, specifying that at all
+// points strictly below the start of the branch, the state of the given site is unknown ("missing").
+// Since missations usually come in long contiguous gaps, we store them as a list of [start, end) intervals.
+//
+struct MissationInterval {
+  branch: int32;           // Branch containing the missation interval
+  start_site: int32;       // 0-based site: [0, L).  Inclusive.
+  end_site: int32;         // 0-based site: [0, L).  Exclusive.
+}
+
+table Tree {
+  nodes: [Node];              // Vector of 2N - 1 nodes, of which N-1 are inner nodes and N are tips
+  mutations: [Mutation];      // Vector of M mutations, sorted ascending by branch, then site
+  missation_intervals: [MissationInterval]; // Vector of missation intervals, sorted asc. by branch, then start_site
+  ref_seq: [RealSeqLetter];   // Vector of states of L sites in reference sequence
+  root_node: int32;
+}
+
+table NodeInfo {
+  name: string;               // From input data, e.g., FASTA IDs
+}
+
+table TreeInfo {
+  node_infos: [NodeInfo];     // Vector of 2N - 1 node infos, corresponding 1-1 with the nodes in the tree
+}
+
+table Params {
+  // Next free id: 27
+  
+  step: int64   (id:  0);      // MCMC steps taken so far [unitless, >= 0]
+  num_local_moves_per_global_move: int64 = -1 (id: 1);  // [unitless, >= 1].  -1 => use reasonable default
+  num_parts: int32   (id:  2); // Parallelism [unitless, >= 1]
+  mu: float64        (id:  3); // Mutation rate [muts / site / day, > 0]
+  alpha: float64     (id:  4); // Site rate heterogeneity parameter [unitless, > 0, never *too* far from 1.0, say 0.01 - 10.0]
+  nu: [float64]      (id:  5); // Pointer to an array of L site relative rates [unitless, > 0, avg to 1.0]
+  hky_kappa: float64 (id:  6); // Ratio of transition vs transversion exchangeabilities [unitless, > 0, typically 2 - 20]
+  hky_pi_A: float64  (id:  7); // Stationary state frequency of A (should roughly match proportion of A's in root sequence)
+  hky_pi_C: float64  (id:  8); // Stationary state frequency of C (should roughly match proportion of C's in root sequence)
+  hky_pi_G: float64  (id:  9); // Stationary state frequency of G (should roughly match proportion of G's in root sequence)
+  hky_pi_T: float64  (id: 10); // Stationary state frequency of T (should roughly match proportion of T's in root sequence)
+  pop_t0: float64    (id: 26); // Reference time t0 for population model [units: days since 2020-01-01]
+  pop_n0: float64    (id: 11); // Population model effective pop size at t = t0 [units of 1/day (it's obscure...), > 0]
+  pop_g: float64     (id: 12); // Population model growth rate [units of 1 / day, > 0]
+
+  // Knobs
+  only_displacing_inner_nodes: bool (id: 13);
+  topology_moves_enabled: bool (id: 14);
+  repartitioning_enabled: bool (id: 15);
+  alpha_move_enabled: bool (id: 16);
+  mu_move_enabled: bool = true (id: 25);
+
+  // Read-only (setting these has no effect)
+  log_posterior: float64 (id: 17);
+  log_other_priors: float64 (id: 18);
+  log_coalescent_prior: float64 (id: 19);  // log_prior = log_G + log_coalescent_prior + log_other_priors
+  log_G: float64 (id: 20);
+  total_branch_length: float64 (id: 21);  // This can be derived easily from the tree itself: should we remove it from here?
+
+  // Mystery reserved flags
+  reserved_0: bool = false (id: 22);
+  reserved_1: float64 = 0.0 (id: 23);
+  reserved_2: float64 = 0.0 (id: 24);
+}

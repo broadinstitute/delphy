@@ -1,0 +1,11 @@
+[requires]
+boost/1.81.0
+eigen/3.4.0
+ms-gsl/4.0.0
+
+[options]
+boost:header_only=True
+
+[generators]
+cmake_find_package
+cmake_paths
