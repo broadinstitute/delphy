@@ -24,6 +24,9 @@ _TO COME_: Preprint with full details and benchmarking (expected: late June 2024
 Credits and Acknowledgements
 ----------------------------
 
+Delphy is developed in the [Sabeti Lab](https://www.sabetilab.org/) at the [Broad
+Institute](https://www.broadinstitute.org/).
+
 Delphy draws a lot of inspiration from:
 
 - [UShER and matOptimize](https://github.com/yatisht/usher)
