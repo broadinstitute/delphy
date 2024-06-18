@@ -785,6 +785,42 @@ auto delphy_run_get_total_branch_length(Delphy_context& /*ctx*/, const Run& run)
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
+auto delphy_run_is_mpox_hack_enabled(Delphy_context& /*ctx*/, const Run& run) -> bool {
+  return run.mpox_hack_enabled();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_mpox_hack_enabled(Delphy_context& /*ctx*/, Run& run, bool mpox_hack_enabled) -> void {
+  run.set_mpox_hack_enabled(mpox_hack_enabled);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_mpox_mu(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.mpox_mu();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_mpox_mu(Delphy_context& /*ctx*/, Run& run, double mpox_mu) -> void {
+  run.set_mpox_mu(mpox_mu);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_mpox_mu_star(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.mpox_mu_star();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_mpox_mu_star(Delphy_context& /*ctx*/, Run& run, double mpox_mu_star) -> void {
+  run.set_mpox_mu_star(mpox_mu_star);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
 auto delphy_run_is_only_displacing_inner_nodes(Delphy_context& /*ctx*/, const Run& run) -> bool {
   return run.only_displacing_inner_nodes();
 }

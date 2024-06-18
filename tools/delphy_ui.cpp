@@ -420,15 +420,35 @@ static auto print_stats_line() -> void {
             << absl::StreamFormat("log_coal = %.3g, ", ui_run->log_coalescent_prior())
             << absl::StreamFormat("log_other_priors = %.3g, ", ui_run->log_other_priors())
             << absl::StreamFormat("n0 = %.4g, ", ui_run->pop_model().pop_at_t0())
-            << absl::StreamFormat("g = %.4g, ", ui_run->pop_model().growth_rate())
-            << absl::StreamFormat("mu = %.2g * 10^-3 subst / site / year, ", ui_run->mu() * 365 * 1000)
-            << absl::StreamFormat("M_ts = %d, M_tv = %d, ", M_ts, ui_run->num_muts() - M_ts)
-            << absl::StreamFormat("kappa = %.3g, ", ui_run->hky_kappa())
-            << absl::StreamFormat("pi = [%.2g, %.2g, %.2g, %.2g], ",
-                                  ui_run->hky_pi()[A],
-                                  ui_run->hky_pi()[C],
-                                  ui_run->hky_pi()[G],
-                                  ui_run->hky_pi()[T]);
+            << absl::StreamFormat("g = %.4g, ", ui_run->pop_model().growth_rate());
+  if (not ui_run->mpox_hack_enabled()) {
+    std::cerr << absl::StreamFormat("mu = %.2g * 10^-3 subst / site / year, ", ui_run->mu() * 365 * 1000)
+              << absl::StreamFormat("M_ts = %d, M_tv = %d, ", M_ts, ui_run->num_muts() - M_ts)
+              << absl::StreamFormat("kappa = %.3g, ", ui_run->hky_kappa())
+              << absl::StreamFormat("pi = [%.2g, %.2g, %.2g, %.2g], ",
+                                    ui_run->hky_pi()[A],
+                                    ui_run->hky_pi()[C],
+                                    ui_run->hky_pi()[G],
+                                    ui_run->hky_pi()[T]);
+  } else {
+    std::cerr << absl::StreamFormat("mpox_mu = %.2g * 10^-6 subst / site / year, ", ui_run->mpox_mu()*365*1e6)
+              << absl::StreamFormat("mpox_mu* = %.2g * 10^-4 subst / site / year, ", ui_run->mpox_mu_star()*365*1e4);
+
+    auto M_apobec = 0;
+    for (const auto& node : index_order_traversal(tree)) {
+      if (node == tree.root) { continue; }
+      for (const auto& m : tree.at(node).mutations) {
+        if (ui_run->evo().partition_for_site[m.site] == 1) {
+          if ((m.from == Real_seq_letter::C && m.to == Real_seq_letter::T) ||
+              (m.from == Real_seq_letter::G && m.to == Real_seq_letter::A)) {
+            ++M_apobec;
+          }
+        }
+      }
+    }
+
+    std::cerr << absl::StreamFormat("M_apobec = %d of %d, ", M_apobec, ui_run->num_muts());
+  }
   
   std::cerr << (ui_run->alpha_move_enabled()
                 ? absl::StreamFormat("alpha = %.3g, ", ui_run->alpha())
@@ -764,6 +784,16 @@ auto keyboard_func(unsigned char key, int, int) -> void {
         stop_log_output();
         stop_trees_output();
         std::cerr << "*** BEAST-COMPATIBLE OUTPUT DISABLED ***" << std::endl;
+      }
+      break;
+    }
+    case 'x':
+    case 'X': {
+      ui_run->set_mpox_hack_enabled(not ui_run->mpox_hack_enabled());
+      if (ui_run->mpox_hack_enabled()) {
+        std::cerr << "*** MPOX HACK ENABLED ***" << std::endl;
+      } else {
+        std::cerr << "*** MPOX HACK DISABLED ***" << std::endl;
       }
       break;
     }

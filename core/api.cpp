@@ -202,6 +202,12 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   params_builder.add_log_G(run.log_G());
   params_builder.add_total_branch_length(calc_T(run.tree()));
 
+  if (run.mpox_hack_enabled()) {
+    params_builder.add_mpox_hack_enabled(run.mpox_hack_enabled());
+    params_builder.add_mpox_mu(run.mpox_mu());
+    params_builder.add_mpox_mu_star(run.mpox_mu_star());
+  }
+
   auto api_params = params_builder.Finish();
 
   fbb.FinishSizePrefixed(api_params);
@@ -236,6 +242,13 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
   run.set_repartitioning_enabled(api_params->repartitioning_enabled());
   run.set_alpha_move_enabled(api_params->alpha_move_enabled());
   run.set_mu_move_enabled(api_params->mu_move_enabled());
+
+  // Mpox hack
+  run.set_mpox_hack_enabled(api_params->mpox_hack_enabled());
+  if (api_params->mpox_hack_enabled()) {
+    run.set_mpox_mu(api_params->mpox_mu());
+    run.set_mpox_mu_star(api_params->mpox_mu_star());
+  }
 
   // Derived quantities not settable
 }

@@ -4,6 +4,8 @@
 #include "tree_partitioning.h"
 #include "phylo_tree_calc.h"
 
+#include <boost/math/special_functions/gamma.hpp>
+
 namespace delphy {
 
 Run::Run(ctpl::thread_pool& thread_pool, absl::BitGenRef bitgen, Phylo_tree tree)
@@ -297,9 +299,81 @@ auto Run::check_global_and_local_totals_match() const -> void {
   }
 }
 
+auto Run::set_mpox_hack_enabled(bool mpox_hack_enabled) -> void {
+  if (mpox_hack_enabled == mpox_hack_enabled_) { return; }
+
+  mpox_hack_enabled_ = mpox_hack_enabled;
+  if (mpox_hack_enabled) {
+    // Set up two partitions as described in run.h
+    auto first_tip = 0;
+    CHECK(tree_.at(first_tip).is_tip());
+    auto seq = view_of_sequence_at(tree_, first_tip);
+
+    auto count_apobec_context = 0;
+    for (auto l = Site_index{0}; l != tree_.num_sites(); ++l) {
+      auto apobec_context =
+          ((l != 0) &&
+           (seq[l-1] == Real_seq_letter::T) &&
+           ((seq[l] == Real_seq_letter::C) ||      // not yet mutated
+            (seq[l] == Real_seq_letter::T))) ||    // already mutated
+          ((l+1 != tree_.num_sites()) &&
+           (seq[l+1] == Real_seq_letter::A) &&
+           ((seq[l] == Real_seq_letter::G) ||      // not yet mutated
+            (seq[l] == Real_seq_letter::A)));      // already mutated
+      if (apobec_context) { ++count_apobec_context; }
+      evo_.partition_for_site[l] = apobec_context ? 1 : 0;
+    }
+    std::cerr << count_apobec_context << " of " << tree_.num_sites() << " sites have APOBEC context\n";
+    
+    evo_.partition_evo_model = Partition_vector<Site_evo_model>(2, Site_evo_model{});
+
+    mpox_mu_ = hky_model_.mu;
+    mpox_mu_star_ = 0.0;
+  } else {
+    // Set up single partition
+    for (auto l = Site_index{0}; l != tree_.num_sites(); ++l) {
+      evo_.partition_for_site[l] = 0;
+    }
+    evo_.partition_evo_model = Partition_vector<Site_evo_model>(1, Site_evo_model{});
+    hky_model_.mu = mpox_mu_;
+  }
+  invalidate_derived_quantities();
+}
+
 auto Run::derive_evo() const -> void {
-  CHECK_EQ(evo_.num_partitions(), 1);
-  evo_.partition_evo_model[0] = hky_model_.derive_site_evo_model();
+  if (not mpox_hack_enabled_) {
+    CHECK_EQ(evo_.num_partitions(), 1);
+    evo_.partition_evo_model[0] = hky_model_.derive_site_evo_model();
+  } else {
+    CHECK_EQ(evo_.num_partitions(), 2);
+
+    // Partition 0 = Sites without APOBEC context
+    auto& site_evo_0 = evo_.partition_evo_model[0];
+    site_evo_0.mu = mpox_mu_;
+    site_evo_0.pi_a = {0.25, 0.25, 0.25, 0.25};
+    for (auto a : k_all_real_seq_letters) {
+      for (auto b : k_all_real_seq_letters) {
+        // Only polymerase-driven errors, following a simple Jukes-Cantor model
+        site_evo_0.q_ab[a][b] = ((a == b) ? -1.0 : 1./3.);
+      }
+    }
+
+    // Partition 1 = Sites with APOBEC context
+    auto& site_evo_1 = evo_.partition_evo_model[1];
+
+    // Polymerase-driven mutations are still there
+    site_evo_1 = site_evo_0;
+    site_evo_1.mu = mpox_mu_;
+    auto rho = mpox_mu_star_ / mpox_mu_;
+    
+    // APOBEC-driven TC -> TT mutation
+    site_evo_1.q_ab[Real_seq_letter::C][Real_seq_letter::T] += 2*rho;
+    site_evo_1.q_ab[Real_seq_letter::C][Real_seq_letter::C] -= 2*rho;
+    
+    // APOBEC-driven GA -> AA mutation (== TC -> TT on the complementary strand)
+    site_evo_1.q_ab[Real_seq_letter::G][Real_seq_letter::A] += 2*rho;
+    site_evo_1.q_ab[Real_seq_letter::G][Real_seq_letter::G] -= 2*rho;
+  }
   evo_.nu_l = nu_;
 }
 
@@ -349,7 +423,11 @@ auto Run::calc_cur_state_frequencies_of_ref_sequence() const -> Seq_vector<int> 
 auto Run::calc_cur_log_other_priors() const -> double {
   auto log_prior = 0.0;
 
-  // Mu - Uniform prior
+  if (not mpox_hack_enabled_) {
+    // Mu - Uniform prior
+  } else {
+    // Mu & Mu* - Uniform priors
+  }
 
   // Alpha - Exponential prior with mean 1.0
   const auto mean_alpha = 1.0;
@@ -367,14 +445,16 @@ auto Run::calc_cur_log_other_priors() const -> double {
   }
   log_prior += (alpha_ - 1) * sum_log_nu - alpha_ * sum_nu;
 
-  // HKY Freqs - Uniform prior
-    
-  // HKY Kappa - log-normal prior, so log(kappa) has mean 1 and stddev 1.25
-  //  pi(kappa) = exp(-(log(kappa) - mean_log_kappa)^2 / (2 sigma_log_kappa^2)) / (kappa * sqrt(2 pi sigma_log_kappa^2))
-  const auto mean_log_kappa = 1.0;
-  const auto sigma_log_kappa = 1.25;
-  log_prior += -std::pow(std::log(hky_kappa()) - mean_log_kappa, 2) / (2 * sigma_log_kappa * sigma_log_kappa)
-      - 0.5 * std::log(2 * M_PI * sigma_log_kappa * sigma_log_kappa) - std::log(hky_kappa());
+  if (not mpox_hack_enabled_) {
+    // HKY Freqs - Uniform prior
+      
+    // HKY Kappa - log-normal prior, so log(kappa) has mean 1 and stddev 1.25
+    //  pi(kappa) = exp(-(log(kappa) - mean_log_kappa)^2 / (2 sigma_log_kappa^2)) / (kappa * sqrt(2 pi sigma_log_kappa^2))
+    const auto mean_log_kappa = 1.0;
+    const auto sigma_log_kappa = 1.25;
+    log_prior += -std::pow(std::log(hky_kappa()) - mean_log_kappa, 2) / (2 * sigma_log_kappa * sigma_log_kappa)
+        - 0.5 * std::log(2 * M_PI * sigma_log_kappa * sigma_log_kappa) - std::log(hky_kappa());
+  }
 
   // pop_n0 - 1/x prior
   log_prior -= std::log(pop_model().pop_at_t0());
@@ -479,20 +559,26 @@ auto Run::run_global_moves() -> void {
   // Each group of global moves below is fully independent of the others and is practically a Gibbs sampling
   // of one of the global parameters, so there's no point in doing lots of these moves
 
-  // 1. Gibbs sampling of mu
-  // Depends on Ttwiddle_a, {q_a} and num_muts
-  if (mu_move_enabled_) {
-    mu_move();
-    check_derived_quantities();
-  }
+  if (not mpox_hack_enabled_) {
+    // 1. Gibbs sampling of mu
+    // Depends on Ttwiddle_a, {q_a} and num_muts
+    if (mu_move_enabled_) {
+      mu_move();
+      check_derived_quantities();
+    }
     
-  // 2. Pseudo-Gibbs sampling of evo model parameters
-  // Depends only on num_muts_ab and counts of state in root sequence; after enough MCMC moves, the
-  // resulting kappa & pi_a's are practically Gibbs sampled
-  for (auto i = 0; i != 10; ++i) {
-    hky_frequencies_move();
-    check_derived_quantities();
-    hky_kappa_move();
+    // 2. Pseudo-Gibbs sampling of evo model parameters
+    // Depends only on num_muts_ab and counts of state in root sequence; after enough MCMC moves, the
+    // resulting kappa & pi_a's are practically Gibbs sampled
+    for (auto i = 0; i != 10; ++i) {
+      hky_frequencies_move();
+      check_derived_quantities();
+      hky_kappa_move();
+      check_derived_quantities();
+    }
+  } else {
+    // 1 & 2. Gibbs sampling of mu & mu_star
+    mpox_hack_moves();
     check_derived_quantities();
   }
 
@@ -572,6 +658,132 @@ auto Run::mu_move() -> void {
   }
   log_G_ += -(new_mu - old_mu) * Ttwiddle + num_muts_ * std::log(new_mu / old_mu);
   log_other_priors_ += 0.0;
+}
+
+auto Run::mpox_hack_moves() -> void {
+  // We use a uniform prior for mu and mu*.  The dependence of the posterior on mu and mu*
+  // conditional on everything else being fixed is thus:
+  //
+  // P ~ exp{-mu Ttwiddle + 2 mu* TTwiddle*} * (mu / 3)^(M-M*) * (mu / 3 + 2 mu*)^M*,
+  //
+  // where
+  // - M^beta_ab = num_muts_beta_ab(),  // Number of a->b mutations in partition beta
+  // - M = sum_{beta,a,b} M^beta_ab     // Total number of mutations
+  // - M* = M^1_CT + M^1_GA             // APOBEC-like mutations in sites with APOBEC context
+  // - Ttwiddle^beta_a = sum_{l in beta} nu^(l) T^(l)_a
+  //                                    // Site-rate adjusted time spent by sites in partition beta in state a
+  // - Ttwiddle = sum_{beta,a} Ttwiddle^beta_a  // Site-rate adjusted total branch length over all (N-pruned) site trees
+  // - TTwiddle* = TTwiddle^1_C + Ttwiddle^1_G  // Site-rate adjusted time spent by APOBEC-context sites in C/G states
+  //
+  // Change variables to mu = mu and rho = mu* / mu.  The Jacobian |d(mu,rho)/d(mu,mu*)| is 1/mu, so
+  //
+  //  P(mu,rho) ~ e^{-mu (Ttwiddle + 2 rho TTwiddle*)} * (mu / 3)^{M-1} * (1 + 6 rho)^M*.  // M-1 from Jacobian
+  //
+  //  It follows that
+  //
+  //         mu|rho ~ Gamma[M, Ttwiddle + 2 rho Ttwiddle*], and
+  // (1 + 6 rho)|mu ~ Gamma[M* + 1, (mu / 3) * Ttwiddle*]  (subject to rho >= 0)
+  //
+  // Hence, we can Gibbs sample both mu and rho.
+
+  // TODO: Always calculate this instead of M_ab
+  auto M_beta_ab = calc_num_muts_beta_ab(tree_, evo_);
+  auto M_ab = Seq_matrix<int>{0};
+  for (auto beta = Partition_index{0}; beta != evo_.num_partitions(); ++beta) {
+    for (auto a : k_all_real_seq_letters) {
+      for (auto b : k_all_real_seq_letters) {
+        M_ab[a][b] += M_beta_ab[beta][a][b];
+      }
+    }
+  }
+  auto M = num_muts_;  // == sum_{a,b} M_ab
+  auto M_star =
+      M_beta_ab[1][Real_seq_letter::C][Real_seq_letter::T] +
+      M_beta_ab[1][Real_seq_letter::G][Real_seq_letter::A];
+
+  static auto next_step_output = int64_t{-1};
+  if (step_ >= next_step_output) {
+    next_step_output = step_ + 1'000'000;
+    
+    std::cerr << "Mutations by type: \n";
+    std::cerr << absl::StreamFormat(
+        "- C>T = %d (of which %d = %g%% in APOBEC context)\n",
+        M_ab[Real_seq_letter::C][Real_seq_letter::T],
+        M_beta_ab[1][Real_seq_letter::C][Real_seq_letter::T],
+        M_beta_ab[1][Real_seq_letter::C][Real_seq_letter::T] /
+        double(M_ab[Real_seq_letter::C][Real_seq_letter::T]) * 100.0);
+    std::cerr << absl::StreamFormat(
+        "- G>A = %d (of which %d = %g%% in APOBEC context)\n",
+        M_ab[Real_seq_letter::G][Real_seq_letter::A],
+        M_beta_ab[1][Real_seq_letter::G][Real_seq_letter::A],
+        M_beta_ab[1][Real_seq_letter::G][Real_seq_letter::A] /
+        double(M_ab[Real_seq_letter::G][Real_seq_letter::A]) * 100.0);
+    std::cerr << absl::StreamFormat("- A>C = %d\n", M_ab[Real_seq_letter::A][Real_seq_letter::C]);
+    std::cerr << absl::StreamFormat("- A>G = %d\n", M_ab[Real_seq_letter::A][Real_seq_letter::G]);
+    std::cerr << absl::StreamFormat("- A>T = %d\n", M_ab[Real_seq_letter::A][Real_seq_letter::T]);
+    std::cerr << absl::StreamFormat("- C>A = %d\n", M_ab[Real_seq_letter::C][Real_seq_letter::A]);
+    std::cerr << absl::StreamFormat("- C>G = %d\n", M_ab[Real_seq_letter::C][Real_seq_letter::G]);
+    std::cerr << absl::StreamFormat("- G>C = %d\n", M_ab[Real_seq_letter::G][Real_seq_letter::C]);
+    std::cerr << absl::StreamFormat("- G>T = %d\n", M_ab[Real_seq_letter::G][Real_seq_letter::T]);
+    std::cerr << absl::StreamFormat("- T>A = %d\n", M_ab[Real_seq_letter::T][Real_seq_letter::A]);
+    std::cerr << absl::StreamFormat("- T>C = %d\n", M_ab[Real_seq_letter::T][Real_seq_letter::C]);
+    std::cerr << absl::StreamFormat("- T>G = %d\n", M_ab[Real_seq_letter::T][Real_seq_letter::G]);
+  }
+  
+  auto Ttwiddle = 0.0;
+  for (auto beta = Partition_index{0}; beta != evo_.num_partitions(); ++beta) {
+    for (auto a : k_all_real_seq_letters) {
+      Ttwiddle += Ttwiddle_beta_a_[beta][a];
+    }
+  }
+  auto Ttwiddle_star =
+      Ttwiddle_beta_a_[1][Real_seq_letter::C] +
+      Ttwiddle_beta_a_[1][Real_seq_letter::G];
+
+  // Do the above for 10 rounds to pseudo-Gibbs sample the tuple (mu, rho)
+  for (auto i = 0; i != 10; ++i) {
+    // WARNING: C++ calls "beta" the *scale* of the distribution, i.e., the reciprocal of the rate
+    
+    auto rho = mpox_mu_star_ / mpox_mu_;
+    auto Ttwiddle_eff = Ttwiddle + 2 * rho * Ttwiddle_star;
+
+    // mu
+    if (mu_move_enabled_) {
+      auto mu_dist = std::gamma_distribution<double>{(double)M, 1.0 / Ttwiddle_eff};
+
+      auto old_mu = mpox_mu_;
+      auto new_mu = mu_dist(bitgen_);
+      mpox_mu_ = new_mu;
+      
+      log_G_ += -(new_mu - old_mu) * Ttwiddle_eff + num_muts_ * std::log(new_mu / old_mu);
+      log_other_priors_ += 0.0;
+    }
+      
+    // rho
+    if (Ttwiddle_star > 0.0) {
+      // Use inverse transform sampling on k := 1 + 6 rho:
+      //
+      // p(k) ~ e^{-(mu Ttwiddle*/3) k} * k^M*, k >= 1
+      auto min_Q = 0.0;
+      auto a = M_star + 1.0;
+      auto z = mpox_mu_*Ttwiddle_star/3;
+      auto max_Q = (z < 0.1*a ? 1.0 : boost::math::gamma_q(a, z));   // Wierd edge case in WebAssembly
+      auto rand_Q = absl::Uniform(absl::IntervalOpenOpen, bitgen_, min_Q, max_Q);
+      auto k = boost::math::gamma_q_inv(M_star + 1, rand_Q) / (mpox_mu_*Ttwiddle_star/3);
+      k = std::max(1.0, k);  // Avoid edge cases with round-off errors
+      
+      auto old_rho = rho;
+      auto new_rho = (k - 1) / 6.0;
+      mpox_mu_star_ = mpox_mu_ * new_rho;
+      
+      log_G_ += -2 * mpox_mu_ * (new_rho - old_rho) * Ttwiddle_star
+          + M_star * std::log((1 + 6*new_rho) / (1 + 6*old_rho));
+      log_other_priors_ += 0.0;
+    }
+  }
+
+  // Update transition rate matrices
+  derive_evo();
 }
 
 auto Run::hky_frequencies_move() -> void {

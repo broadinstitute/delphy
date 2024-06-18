@@ -87,8 +87,8 @@ table Params {
   log_G: float64 (id: 20);
   total_branch_length: float64 (id: 21);  // This can be derived easily from the tree itself: should we remove it from here?
 
-  // Mystery reserved flags
-  reserved_0: bool = false (id: 22);
-  reserved_1: float64 = 0.0 (id: 23);
-  reserved_2: float64 = 0.0 (id: 24);
+  // Mpox hack
+  mpox_hack_enabled: bool = false (id: 22);  // If true, use Andrew Rambaut's approximate APOBEC-aware model (see run.h)
+  mpox_mu: float64 = 0.0 (id: 23);           // Rate of polymerase-induced mutations [muts/site/day, >0]
+  mpox_mu_star: float64 = 0.0 (id: 24);      // Rate of APOBEC-induced TC->TT and GA->AA mutations [muts/site/day, >0]
 }

@@ -413,9 +413,9 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_LOG_COALESCENT_PRIOR = 42,
     VT_LOG_G = 44,
     VT_TOTAL_BRANCH_LENGTH = 46,
-    VT_RESERVED_0 = 48,
-    VT_RESERVED_1 = 50,
-    VT_RESERVED_2 = 52,
+    VT_MPOX_HACK_ENABLED = 48,
+    VT_MPOX_MU = 50,
+    VT_MPOX_MU_STAR = 52,
     VT_MU_MOVE_ENABLED = 54,
     VT_POP_T0 = 56
   };
@@ -485,14 +485,14 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   double total_branch_length() const {
     return GetField<double>(VT_TOTAL_BRANCH_LENGTH, 0.0);
   }
-  bool reserved_0() const {
-    return GetField<uint8_t>(VT_RESERVED_0, 0) != 0;
+  bool mpox_hack_enabled() const {
+    return GetField<uint8_t>(VT_MPOX_HACK_ENABLED, 0) != 0;
   }
-  double reserved_1() const {
-    return GetField<double>(VT_RESERVED_1, 0.0);
+  double mpox_mu() const {
+    return GetField<double>(VT_MPOX_MU, 0.0);
   }
-  double reserved_2() const {
-    return GetField<double>(VT_RESERVED_2, 0.0);
+  double mpox_mu_star() const {
+    return GetField<double>(VT_MPOX_MU_STAR, 0.0);
   }
   bool mu_move_enabled() const {
     return GetField<uint8_t>(VT_MU_MOVE_ENABLED, 1) != 0;
@@ -525,9 +525,9 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyField<double>(verifier, VT_LOG_COALESCENT_PRIOR, 8) &&
            VerifyField<double>(verifier, VT_LOG_G, 8) &&
            VerifyField<double>(verifier, VT_TOTAL_BRANCH_LENGTH, 8) &&
-           VerifyField<uint8_t>(verifier, VT_RESERVED_0, 1) &&
-           VerifyField<double>(verifier, VT_RESERVED_1, 8) &&
-           VerifyField<double>(verifier, VT_RESERVED_2, 8) &&
+           VerifyField<uint8_t>(verifier, VT_MPOX_HACK_ENABLED, 1) &&
+           VerifyField<double>(verifier, VT_MPOX_MU, 8) &&
+           VerifyField<double>(verifier, VT_MPOX_MU_STAR, 8) &&
            VerifyField<uint8_t>(verifier, VT_MU_MOVE_ENABLED, 1) &&
            VerifyField<double>(verifier, VT_POP_T0, 8) &&
            verifier.EndTable();
@@ -604,14 +604,14 @@ struct ParamsBuilder {
   void add_total_branch_length(double total_branch_length) {
     fbb_.AddElement<double>(Params::VT_TOTAL_BRANCH_LENGTH, total_branch_length, 0.0);
   }
-  void add_reserved_0(bool reserved_0) {
-    fbb_.AddElement<uint8_t>(Params::VT_RESERVED_0, static_cast<uint8_t>(reserved_0), 0);
+  void add_mpox_hack_enabled(bool mpox_hack_enabled) {
+    fbb_.AddElement<uint8_t>(Params::VT_MPOX_HACK_ENABLED, static_cast<uint8_t>(mpox_hack_enabled), 0);
   }
-  void add_reserved_1(double reserved_1) {
-    fbb_.AddElement<double>(Params::VT_RESERVED_1, reserved_1, 0.0);
+  void add_mpox_mu(double mpox_mu) {
+    fbb_.AddElement<double>(Params::VT_MPOX_MU, mpox_mu, 0.0);
   }
-  void add_reserved_2(double reserved_2) {
-    fbb_.AddElement<double>(Params::VT_RESERVED_2, reserved_2, 0.0);
+  void add_mpox_mu_star(double mpox_mu_star) {
+    fbb_.AddElement<double>(Params::VT_MPOX_MU_STAR, mpox_mu_star, 0.0);
   }
   void add_mu_move_enabled(bool mu_move_enabled) {
     fbb_.AddElement<uint8_t>(Params::VT_MU_MOVE_ENABLED, static_cast<uint8_t>(mu_move_enabled), 1);
@@ -654,15 +654,15 @@ inline ::flatbuffers::Offset<Params> CreateParams(
     double log_coalescent_prior = 0.0,
     double log_G = 0.0,
     double total_branch_length = 0.0,
-    bool reserved_0 = false,
-    double reserved_1 = 0.0,
-    double reserved_2 = 0.0,
+    bool mpox_hack_enabled = false,
+    double mpox_mu = 0.0,
+    double mpox_mu_star = 0.0,
     bool mu_move_enabled = true,
     double pop_t0 = 0.0) {
   ParamsBuilder builder_(_fbb);
   builder_.add_pop_t0(pop_t0);
-  builder_.add_reserved_2(reserved_2);
-  builder_.add_reserved_1(reserved_1);
+  builder_.add_mpox_mu_star(mpox_mu_star);
+  builder_.add_mpox_mu(mpox_mu);
   builder_.add_total_branch_length(total_branch_length);
   builder_.add_log_G(log_G);
   builder_.add_log_coalescent_prior(log_coalescent_prior);
@@ -682,7 +682,7 @@ inline ::flatbuffers::Offset<Params> CreateParams(
   builder_.add_nu(nu);
   builder_.add_num_parts(num_parts);
   builder_.add_mu_move_enabled(mu_move_enabled);
-  builder_.add_reserved_0(reserved_0);
+  builder_.add_mpox_hack_enabled(mpox_hack_enabled);
   builder_.add_alpha_move_enabled(alpha_move_enabled);
   builder_.add_repartitioning_enabled(repartitioning_enabled);
   builder_.add_topology_moves_enabled(topology_moves_enabled);
@@ -714,9 +714,9 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
     double log_coalescent_prior = 0.0,
     double log_G = 0.0,
     double total_branch_length = 0.0,
-    bool reserved_0 = false,
-    double reserved_1 = 0.0,
-    double reserved_2 = 0.0,
+    bool mpox_hack_enabled = false,
+    double mpox_mu = 0.0,
+    double mpox_mu_star = 0.0,
     bool mu_move_enabled = true,
     double pop_t0 = 0.0) {
   auto nu__ = nu ? _fbb.CreateVector<double>(*nu) : 0;
@@ -744,9 +744,9 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
       log_coalescent_prior,
       log_G,
       total_branch_length,
-      reserved_0,
-      reserved_1,
-      reserved_2,
+      mpox_hack_enabled,
+      mpox_mu,
+      mpox_mu_star,
       mu_move_enabled,
       pop_t0);
 }

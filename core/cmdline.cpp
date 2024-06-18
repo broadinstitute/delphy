@@ -135,6 +135,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<double>()->default_value("1e-3"))
       ("v0-out-beast-xml", "Filename for XML input file suitable for BEAST 2.6.2",
        cxxopts::value<std::string>())
+      ("v0-mpox-hack", "Enable mpox hack (very crude treatment of APOBEC3 mechanism)",
+       cxxopts::value<bool>()->default_value("false"))
       ;
 
   try {
@@ -241,8 +243,11 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     }
     init_mu /= 365.0;  // convert to subst / site / day
 
+    auto mpox_hack_enabled = opts["v0-mpox-hack"].as<bool>();
+    
     // Create and configure initial run
     auto run = std::make_shared<Run>(*thread_pool, *prng, std::move(tree));
+    run->set_mpox_hack_enabled(mpox_hack_enabled);
     run->set_alpha_move_enabled(alpha_move_enabled);
     run->set_mu_move_enabled(not fix_mutation_rate);
     run->set_mu(init_mu);
@@ -276,7 +281,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       .tree_every = tree_every,
       .alpha_move_enabled = alpha_move_enabled,
       .mu_move_enabled = not fix_mutation_rate,
-      .init_mu = init_mu
+      .init_mu = init_mu,
+      .mpox_hack_enabled = mpox_hack_enabled
     };
     
   } catch (cxxopts::exceptions::exception& x) {

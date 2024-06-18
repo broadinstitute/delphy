@@ -28,13 +28,13 @@ class Pop_model {
 
   // Debug printing
   friend auto operator<<(std::ostream& os, const Pop_model& pop_model) -> std::ostream& {
-    pop_model.PrintTo(os);
+    pop_model.print_to(os);
     return os;
   }
 
  private:
   // Debug printing details
-  virtual auto PrintTo(std::ostream& os) const -> void = 0;
+  virtual auto print_to(std::ostream& os) const -> void = 0;
 };
 
 class Const_pop_model : public Pop_model {
@@ -51,7 +51,7 @@ class Const_pop_model : public Pop_model {
  private:
   double pop_;
   
-  auto PrintTo(std::ostream& os) const -> void override { os << absl::StreamFormat("Const_pop_model{pop=%g}", pop()); }
+  auto print_to(std::ostream& os) const -> void override { os << absl::StreamFormat("Const_pop_model{pop=%g}", pop()); }
 };
 
 class Exp_pop_model : public Pop_model {
@@ -72,7 +72,7 @@ class Exp_pop_model : public Pop_model {
   double pop_at_t0_;
   double growth_rate_;
   
-  auto PrintTo(std::ostream& os) const -> void override {
+  auto print_to(std::ostream& os) const -> void override {
     os << absl::StreamFormat("Exp_pop_model{t0=%g, n0=%g, g=%g}",
                              t0(), pop_at_t0(), growth_rate());
   }

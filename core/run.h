@@ -37,7 +37,7 @@ class Run {
   auto coalescent_prior_t_step() const -> double { return coalescent_prior_.t_step(); }
   auto set_coalescent_prior_t_step(double t_step) -> void;
   auto mu() const -> double { return hky_model_.mu; }
-  auto set_mu(double mu) -> void { hky_model_.mu = mu, invalidate_derived_quantities(); }
+  auto set_mu(double mu) -> void { hky_model_.mu = mpox_mu_ = mu, invalidate_derived_quantities(); }
   auto alpha() const -> double { return alpha_; }
   auto set_alpha(double alpha) -> void { alpha_ = alpha, invalidate_derived_quantities(); }
   auto nu() const -> const std::vector<double>& { return nu_; }
@@ -81,6 +81,52 @@ class Run {
   auto calc_cur_state_frequencies_of_ref_sequence() const -> Seq_vector<int>;
   auto calc_cur_log_other_priors() const -> double;
 
+  // Mpox hack.  TODO: We really need something much more generic for supporting different
+  // forms of posteriors with different sets of parameters.
+  //
+  // When we turn on "mpox_hack", the evolution model `evo_` switches to 2 site partitions
+  // with the following transition rate matrices:
+  //
+  //               A    C    G    T                           A    C    G    T
+  //
+  //           /  -1   1/3  1/3  1/3  \                   /   0    0    0    0  \  .
+  //           |                      |                   |                     |  .
+  //           |  1/3  -1   1/3  1/3  |                   |   0   -2    0    2  |  .
+  //  Q_0 = mu |                      |,  Q_1 = Q_0 + mu* |                     |  .
+  //           |  1/3  1/3  -1   1/3  |                   |   2    0   -2    0  |  .
+  //           |                      |                   |                     |  .
+  //           \  1/3  1/3  1/3  -1   /                   \   0    0    0    0  /  .
+  //
+  // The sites in partition 1 are those with "APOBEC context", i.e., C or T preceded by
+  // a T and G or A followed by an A in the sequence of the first tip.  All other sites
+  // are in partition 0.  The idea is to use a simple JC model (given how few mutations
+  // we see, no point in trying something more sophisticated), and to approximate
+  // the much faster (mu*) APOBEC-mediated mutation of 5'-TC-3' and 5'-GA-3' dimers to TT and AA.
+  // To model this without introducing couplings between evolution at different sites,
+  // we're assuming that mutations are so rare that we'll never see two mutations
+  // in adjacent sites, so it's unlikely for a site to change between having or lacking
+  // "APOBEC context".  Merging TC and GA into a single partition
+  // keeps things simpler still; you could instead imagine 4 different partitions
+  // according to whether a site is (1) preceded or not by a T and/or (2) followed or
+  // not by an A.
+  //
+  // This idea is a slight adaptation of what Andrew Rambaut discussed on a Zoom call with us
+  // on 23 May 2023, and which they have implemented in BEAST for their mpox analyses
+  // (O'Toole et al, Science, Nov 2023).  We're targetting trees with tips only from after the
+  // spillover into humans, so there's no attempt to identify a breakpoint along the tree
+  // above which only Q_0 applies.
+  //
+  // The factors of 2 in Q_1 are chosen to match the convention used by O'Toole et al in
+  // reporting APOBEC mutation rates (the effective rate at which APOBEC changes would
+  // be observed if 50% of sites with APOBEC context were unmutated and 50% were mutated)
+  //
+  auto mpox_hack_enabled() const -> bool { return mpox_hack_enabled_; }
+  auto set_mpox_hack_enabled(bool mpox_hack_enabled) -> void;
+  auto mpox_mu() const -> double { return mpox_mu_; }
+  auto set_mpox_mu(double mpox_mu) -> void { mpox_mu_ = mpox_mu, invalidate_derived_quantities(); }
+  auto mpox_mu_star() const -> double { return mpox_mu_star_; }
+  auto set_mpox_mu_star(double mpox_mu_star) -> void { mpox_mu_star_ = mpox_mu_star, invalidate_derived_quantities(); }
+  
   auto invalidate_derived_quantities() -> void { derived_quantities_valid_ = false; }
   auto validate_derived_quantities() const -> void {
     if (not derived_quantities_valid_) {
@@ -141,6 +187,10 @@ class Run {
   Site_vector<double> nu_;
   Hky_model hky_model_;
 
+  bool mpox_hack_enabled_ = false;
+  double mpox_mu_ = 0.0;
+  double mpox_mu_star_ = 0.0;
+
   // Derived quantities
   mutable bool derived_quantities_valid_ = false;
   mutable int64_t last_revalidation_step_ = 0;
@@ -171,6 +221,7 @@ class Run {
   auto run_global_moves() -> void;
   
   auto mu_move() -> void;
+  auto mpox_hack_moves() -> void;
   auto hky_frequencies_move() -> void;
   auto hky_kappa_move() -> void;
   auto gibbs_sample_all_nus() -> void;

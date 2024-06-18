@@ -72,16 +72,22 @@ static auto print_stats_line(const Run& run) -> void {
             << absl::StreamFormat("T = %.2f, ", calc_T(tree))
             << absl::StreamFormat("t_MRCA = %s, ", to_iso_date(tree.at_root().t))
             << absl::StreamFormat("n0 = %.1f, ", run.pop_model().pop_at_t0())
-            << absl::StreamFormat("g = %.4f, ", run.pop_model().growth_rate())
-            << absl::StreamFormat("mu = %.2f * 10^-3 subst / site / year, ", run.mu() * 365 * 1000)
-            << absl::StreamFormat("M_ts = %d, M_tv = %d, ", M_ts, run.num_muts() - M_ts)
-            << absl::StreamFormat("kappa = %.2f, ", run.hky_kappa())
-            << absl::StreamFormat("pi = [%.2f, %.2f, %.2f, %.2f], ",
-                                  run.hky_pi()[A],
-                                  run.hky_pi()[C],
-                                  run.hky_pi()[G],
-                                  run.hky_pi()[T])
-            << (run.alpha_move_enabled()
+            << absl::StreamFormat("g = %.4f, ", run.pop_model().growth_rate());
+  if (not run.mpox_hack_enabled()) {
+    std::cerr << absl::StreamFormat("mu = %.2g * 10^-3 subst / site / year, ", run.mu() * 365 * 1000)
+              << absl::StreamFormat("M_ts = %d, M_tv = %d, ", M_ts, run.num_muts() - M_ts)
+              << absl::StreamFormat("kappa = %.3g, ", run.hky_kappa())
+              << absl::StreamFormat("pi = [%.2g, %.2g, %.2g, %.2g], ",
+                                    run.hky_pi()[A],
+                                    run.hky_pi()[C],
+                                    run.hky_pi()[G],
+                                    run.hky_pi()[T]);
+  } else {
+    std::cerr << absl::StreamFormat("mpox_mu = %.2g * 10^-6 subst / site / year, ", run.mpox_mu()*365*1e6)
+              << absl::StreamFormat("mpox_mu* = %.2g * 10^-4 subst / site / year, ", run.mpox_mu_star()*365*1e4);
+  }
+
+  std::cerr << (run.alpha_move_enabled()
                 ? absl::StreamFormat("alpha = %.2f, ", run.alpha())
                 : absl::StreamFormat("alpha OFF, "))
             << (run.alpha_move_enabled()

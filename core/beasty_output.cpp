@@ -17,29 +17,47 @@ Beasty_log_output::~Beasty_log_output() {
 }
 
 auto Beasty_log_output::output_headers(const Run& run) -> void {
-  // WARNING: Ensure this matches the logger output from export_beast_input (beasty_input.cpp)
-  *os_ << stamp_version_into_log_file{};
-  *os_ << "Sample\t"
-       << "posterior_for_Delphy\t"
-       << "likelihood_really_logG\t"
-       << "prior\t"
-       << "treeLikelihood_really_logG\t"
-       << "TreeHeight\t";
-  if (run.mu_move_enabled()) {
-    *os_ << "clockRate\t";
+  if (not run.mpox_hack_enabled()) {
+    // WARNING: Ensure this matches the logger output from export_beast_input (beasty_input.cpp)
+    *os_ << stamp_version_into_log_file{};
+    *os_ << "Sample\t"
+         << "numMuts\t"
+         << "posterior_for_Delphy\t"
+         << "likelihood_really_logG\t"
+         << "prior\t"
+         << "treeLikelihood_really_logG\t"
+         << "TreeHeight\t";
+    if (run.mu_move_enabled()) {
+      *os_ << "clockRate\t";
+    }
+    if (run.alpha_move_enabled()) {
+      *os_ << "gammaShape\t";
+    }
+    *os_ << "kappa\t";
+    *os_ << "CoalescentExponential\t"
+         << "ePopSize\t"
+         << "growthRate\t";
+    *os_ << "freqParameter.1\t"
+         << "freqParameter.2\t"
+         << "freqParameter.3\t"
+         << "freqParameter.4\t";
+    *os_ << "\n";
+  } else {
+    *os_ << "state\t"
+         << "numMuts\t"
+         << "posterior_for_Delphy\t"
+         << "prior\t"
+         << "likelihood_really_logG\t"
+         << "treeModel.rootHeight\t"
+         << "age(root)\t"
+         << "treeLength\t"
+         << "exponential.popSize\t"
+         << "exponential.growthRate\t"
+         << "apobec3.clock.rate\t"
+         << "non_apobec3.clock.rate\t"
+         << "coalescent.all\t"
+         << "\n";
   }
-  if (run.alpha_move_enabled()) {
-    *os_ << "gammaShape\t";
-  }
-  *os_ << "kappa\t"
-       << "CoalescentExponential\t"
-       << "ePopSize\t"
-       << "growthRate\t"
-       << "freqParameter.1\t"
-       << "freqParameter.2\t"
-       << "freqParameter.3\t"
-       << "freqParameter.4\t"
-       << "\n";
 }
 
 auto Beasty_log_output::output_log(const Run& run) -> void {
@@ -55,46 +73,85 @@ auto Beasty_log_output::output_log(const Run& run) -> void {
       beast_t0 = std::max(beast_t0, tree.at(node).t);
     }
   }
-
+    
+  auto num_inner_nodes = (std::ssize(tree) - 1) / 2;
+  
   // We don't incrementally update or cache the value of the priors other than log_coalescent_prior
   auto log_other_priors = run.calc_cur_log_other_priors();
   auto log_prior = run.calc_cur_log_coalescent_prior() + log_other_priors;
-
-  auto num_inner_nodes = Node_index{(tree.size() - 1) / 2};
-
-  *os_ << run.step() << "\t"
-       << log_prior + run.log_G() << "\t"
-       << run.log_G() << "\t"  // log(G) instead of log_likelihood (which we don't calculate!)
-       << log_prior << "\t"
-       << run.log_G() << "\t"  // log(G) instead of log_likelihood (which we don't calculate!)
-      
-      // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-       << (beast_t0 - tree.at_root().t) / 365 << "\t";
-  
-  if (run.mu_move_enabled()) {
+    
+  if (not run.mpox_hack_enabled()) {
+    // WARNING: Ensure this matches the logger output from export_beast_input (beasty_input.cpp)
+    
+    *os_ << run.step() << "\t"
+         << run.num_muts() << "\t"
+         << log_prior + run.log_G() << "\t"
+         << run.log_G() << "\t"  // log(G) instead of log_likelihood (which we don't calculate!)
+         << log_prior << "\t"
+         << run.log_G() << "\t"  // log(G) instead of log_likelihood (which we don't calculate!)
+        
+        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+         << (beast_t0 - tree.at_root().t) / 365 << "\t";
+    
+    if (run.mpox_hack_enabled()) {
+      if (run.mu_move_enabled()) {
+        *os_ << (run.mpox_mu() * 365.0) << "\t";
+      }
+      *os_ << (run.mpox_mu_star() * 365.0) << "\t";
+    } else {
+      if (run.mu_move_enabled()) {
+        *os_ << (run.mu() * 365.0) << "\t";
+      }
+    }
+    if (run.alpha_move_enabled()) {
+      *os_ << run.alpha() << "\t";
+    }
+    if (not run.mpox_hack_enabled()) {
+      *os_ << run.hky_kappa() << "\t";
+    }
+    
+    // Coalescent prior has units of (1/time)^(# coalescences)
     // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-    *os_ << (run.mu() * 365.0) << "\t";
+    *os_ << run.log_coalescent_prior() + num_inner_nodes * std::log(365.0) << "\t"
+        
+        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+         << run.pop_model().pop_at_time(beast_t0)/365 << "\t"
+        
+        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+         << run.pop_model().growth_rate()*365 << "\t";
+    
+    if (not run.mpox_hack_enabled()) {
+      *os_ << run.hky_pi()[Real_seq_letter::A] << "\t"
+           << run.hky_pi()[Real_seq_letter::C] << "\t"
+           << run.hky_pi()[Real_seq_letter::G] << "\t"
+           << run.hky_pi()[Real_seq_letter::T] << "\t";
+    }
+    
+    *os_ << "\n";
+  
+  } else {  // mpox_hack_enabled == true
+
+    auto to_beast_date = [](double delphy_t) { return 2020.0 + delphy_t / 365.0; };
+    
+    *os_ << run.step() << "\t"
+         << run.num_muts() << "\t"
+         << run.log_posterior() << "\t"
+         << log_prior << "\t"
+         << run.log_G() << "\t"  // log(G) instead of log_likelihood (which we don't calculate!)
+         << (beast_t0 - tree.at_root().t) / 365 << "\t"
+         << to_beast_date(tree.at_root().t) << "\t"
+         << calc_T(tree) / 365.0 << "\t"
+        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+         << run.pop_model().pop_at_time(beast_t0)/365 << "\t"
+        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+         << run.pop_model().growth_rate()*365 << "\t"
+         << run.mpox_mu_star() * 365 << "\t"
+         << run.mpox_mu() * 365 << "\t"
+        // Coalescent prior has units of (1/time)^(# coalescences)
+        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+         << run.log_coalescent_prior() + num_inner_nodes * std::log(365.0) << "\t";
+    *os_ << "\n";
   }
-  if (run.alpha_move_enabled()) {
-    *os_ << run.alpha() << "\t";
-  }
-  *os_ << run.hky_kappa() << "\t"
-      
-      // Coalescent prior has units of (1/time)^(# coalescences)
-      // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-       << run.log_coalescent_prior() + num_inner_nodes * std::log(365.0) << "\t"
-      
-      // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-       << run.pop_model().pop_at_time(beast_t0)/365 << "\t"
-      
-      // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-       << run.pop_model().growth_rate()*365 << "\t"
-      
-       << run.hky_pi()[Real_seq_letter::A] << "\t"
-       << run.hky_pi()[Real_seq_letter::C] << "\t"
-       << run.hky_pi()[Real_seq_letter::G] << "\t"
-       << run.hky_pi()[Real_seq_letter::T]
-       << "\n";
 }
 
 auto Beasty_log_output::output_footers(const Run& /*run*/) -> void {
