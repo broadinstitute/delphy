@@ -433,10 +433,10 @@ auto Spr_study::log_alpha_in_region(int region_idx, double t) const -> double {
     return log_p_region - std::log(region.t_max - region.t_min);
   } else {
     // p(s) ~ {exp[- lambda_X s] * s^m}^f = s^{fm} exp[-lambda_X f s]
-    // p(s | R) = s^{fm} exp[-lambda_X f s] / {(lambda_X f)^{-(fm + 1)} [1 - P(fm+1, lambda_X f s_min)]}
-    //          = (lambda_X f) (lambda_X f s)^{fm} exp[-lambda_X f s] / [1 - P(fm+1, lambda_X f s_min)]}
+    // p(s | R) = s^{fm} exp[-lambda_X f s] / {(lambda_X f)^{-(fm + 1)} Gamma(fm+1) Q(fm+1, lambda_X f s_min)}
+    //          = (lambda_X f) (lambda_X f s)^{fm} exp[-lambda_X f s] / {Gamma(fm+1) Q(fm+1, lambda_X f s_min)}
     // p(t | R) = 2 p(s | R)
-    //          = 2 (lambda_X f) (lambda_X f s)^{fm} exp[-lambda_X f s] / [1 - P(fm+1, lambda_X f s_min)]
+    //          = 2 (lambda_X f) (lambda_X f s)^{fm} exp[-lambda_X f s] / {Gamma(fm+1) Q(fm+1, lambda_X f s_min)}
     auto f = annealing_factor;
     auto m = region.min_muts;
     auto t_S = tree->at(region.branch).t;
@@ -448,6 +448,7 @@ auto Spr_study::log_alpha_in_region(int region_idx, double t) const -> double {
         std::log(lambda_X*f) +
         f*m * std::log(lambda_X*f*s) +
         -lambda_X*f*s +
+        -std::lgamma(f*m+1)
         -std::log(boost::math::gamma_q(f*m+1, lambda_X*f*s_min));
   }
 }

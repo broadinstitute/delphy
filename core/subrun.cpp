@@ -441,6 +441,7 @@ auto Subrun::spr1_move() -> void {
   spr.peel_graft(old_graft);
   if (pruning_changes_root) {
     CHECK(tree_.at(old_S).mutations.empty());  // This is part of what `peel_graft` does
+    CHECK(tree_.at(P).mutations.empty() || tree_.at(P).mutations.back().t == -std::numeric_limits<double>::max());
   }
   
   // 1. Perform an SPR study around P
@@ -484,6 +485,7 @@ auto Subrun::spr1_move() -> void {
   CHECK(includes_run_root_ || not grafting_changes_root);
   if (grafting_changes_root) {
     CHECK(tree_.at(new_S).mutations.empty());  // No mutations should have been added by spr.move()
+    CHECK(tree_.at(P).mutations.empty() || tree_.at(P).mutations.back().t == -std::numeric_limits<double>::max());
   }
 
   // 4. Perform an SPR study from the new position to calculate probability of reverse proposal
