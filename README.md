@@ -21,6 +21,12 @@ _TO COME_: Whitepaper with overview of key ideas and accuracy+speed benchmarks (
 
 _TO COME_: Preprint with full details and benchmarking (expected: late June 2024)
 
+System Requirements
+-------------------
+Delphy can be compiled either as a native, standalone command-line program (`delphy` and its graphical cousin, `delphy_ui`), or as a WebAssembly bundle that lies at the core of [`delphy-web`](https://github.com/fathominfo/delphy-web).  Build instructions for both can be found in [`INSTALL.md`](INSTALL.md).  Delphy does not require special hardware, such as a GPU.
+
+Delphy was developed and is primarily tested under Linux (Ubuntu 22.04.4 LTS, x86-64).  [Delphy-web](https://github.com/fathominfo/delphy-web), deployed at [https://delphy.fathom.info](https://delphy.fathom.info), should work in any modern web browser; see the [Delphy-web README.md](https://github.com/fathominfo/delphy-web) for specific browsers and operating systems on which it has been tested.
+
 Credits and Acknowledgements
 ----------------------------
 
