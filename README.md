@@ -17,9 +17,9 @@ collaboration with [Fathom Information Design](https://fathom.info), and its sep
 References
 ----------
 
-_TO COME_: Whitepaper with overview of key ideas and accuracy+speed benchmarks (expected: late May 2024)
+* [Whitepaper with overview of key ideas and accuracy+speed benchmarks](delphywp.pdf)
 
-_TO COME_: Preprint with full details and benchmarking (expected: late June 2024)
+* _TO COME_: Preprint with full details and benchmarking (expected: late July 2024)
 
 System Requirements
 -------------------
