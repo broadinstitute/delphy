@@ -115,8 +115,10 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       ("v0-seed", "Initial random number seed (default: random)",
        cxxopts::value<uint32_t>())
       ("v0-in-fasta", "input FASTA file", cxxopts::value<std::string>())
-      ("v0-init-heuristic", "Build initial tree with rough heuristics instead of randomly (not always great!)",
-       cxxopts::value<bool>()->default_value("false"))
+      ("v0-init-heuristic", "Build initial tree with rough heuristics instead of randomly (default)",
+       cxxopts::value<bool>())
+      ("v0-init-random", "Build initial tree with random",
+       cxxopts::value<bool>())
       ("v0-steps", "Total number of steps to run (default: ~100,000 per tip)",
        cxxopts::value<int64_t>())
       ("v0-out-log-file", "Filename for BEAST-like log file",
@@ -185,8 +187,15 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     std::cerr << "Reading fasta file " << in_fasta_filename << "\n";
     auto in_fasta = read_fasta(in_fasta_is);
     in_fasta_is.close();
-    
-    auto init_random = not opts["v0-init-heuristic"].as<bool>();
+
+    if (opts.count("v0-init-heuristic") > 0 && opts.count("v0-init-random") > 0) {
+      std::cerr << "ERROR: The options --v0-init-heuristic and --v0-init-random are mutually exclusive.  Pick one.\n";
+      std::exit(EXIT_FAILURE);
+    }
+    auto init_random =
+        opts.count("v0-init-heuristic") > 0 ? false :
+        opts.count("v0-init-random") > 0 ? true :
+        false;
     std::cerr << (init_random ? "Building random initial tree..." : "Building rough initial tree...") << "\n";
     auto tree = build_rough_initial_tree_from_fasta(in_fasta, init_random, *prng);
     
