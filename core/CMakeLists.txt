@@ -7,6 +7,7 @@ add_library(delphy_core
   cmdline.cpp
   coalescent.cpp
   dates.cpp
+  delphy_output.cpp
   evo_hky.cpp
   evo_model.cpp
   incremental_mcc_tree.cpp

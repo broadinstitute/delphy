@@ -129,6 +129,10 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<std::string>())
       ("v0-tree-every", "Steps between tree snapshots in tree log (default: steps / 100)",
        cxxopts::value<int64_t>())
+      ("v0-out-delphy-file", "Filename for .dphy run file",
+       cxxopts::value<std::string>())
+      ("v0-delphy-snapshot-every", "Steps between run snapshots in .dphy run file (default: steps / 100)",
+       cxxopts::value<int64_t>())
       ("v0-site-rate-heterogeneity", "Enable site rate heterogeneity",
        cxxopts::value<bool>()->default_value("false"))
       ("v0-fix-mutation-rate", "Fix mutation rate",
@@ -241,6 +245,20 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       std::exit(EXIT_FAILURE);
     }
 
+    auto delphy_output_filename = std::optional<std::string>{};
+    if (opts.count("v0-out-delphy-file")) {
+      delphy_output_filename = opts["v0-out-delphy-file"].as<std::string>();
+    }
+
+    auto delphy_snapshot_every = steps / 1000;
+    if (opts.count("v0-delphy-snapshot-every")) {
+      delphy_snapshot_every = opts["v0-delphy-snapshot-every"].as<int64_t>();
+    }
+    if (delphy_snapshot_every <= 0) {
+      std::cerr << "ERROR: Number of steps between .dphy run snapshots must be positive, got " << delphy_snapshot_every << "\n";
+      std::exit(EXIT_FAILURE);
+    }
+
     auto alpha_move_enabled = opts["v0-site-rate-heterogeneity"].as<bool>();
 
     auto fix_mutation_rate = opts["v0-fix-mutation-rate"].as<bool>();
@@ -288,6 +306,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       .log_every = log_every,
       .trees_filename = std::move(trees_filename),
       .tree_every = tree_every,
+      .delphy_output_filename = std::move(delphy_output_filename),
+      .delphy_snapshot_every = delphy_snapshot_every,
       .alpha_move_enabled = alpha_move_enabled,
       .mu_move_enabled = not fix_mutation_rate,
       .init_mu = init_mu,

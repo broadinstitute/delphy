@@ -1,9 +1,11 @@
 #include <numeric>
+#include <iostream>
 
 #include <boost/program_options.hpp>
 #include <absl/log/initialize.h>
 
 #include "beasty_output.h"
+#include "delphy_output.h"
 #include "dates.h"
 #include "cmdline.h"
 #include "run.h"
@@ -134,8 +136,15 @@ auto cli_main_loop(Processed_cmd_line& c) -> int {
     os_ptr.release();
     beasty_trees_output->output_headers(*c.run);
   }
+  auto delphy_output = std::unique_ptr<Delphy_output>{};
+  if (c.delphy_output_filename.has_value()) {
+    auto os_ptr = std::make_unique<std::ofstream>(c.delphy_output_filename.value(), std::ios::binary);
+    delphy_output = std::make_unique<Delphy_output>(os_ptr.get(), true);
+    os_ptr.release();
+    delphy_output->output_preamble(*c.run, c.delphy_snapshot_every);
+  }
 
-  auto step_granularity = std::gcd(std::gcd(c.steps, c.log_every), c.tree_every);
+  auto step_granularity = std::gcd(std::gcd(std::gcd(c.steps, c.log_every), c.tree_every), c.delphy_snapshot_every);
   while (true) {
     auto log_now = (c.run->step() % c.log_every) == 0;
     if (log_now) {
@@ -151,6 +160,14 @@ auto cli_main_loop(Processed_cmd_line& c) -> int {
       if (beasty_trees_output) {
         beasty_trees_output->output_tree(*c.run);
         beasty_trees_output->flush();
+      }
+    }
+
+    auto delphy_output_now = (c.run->step() % c.delphy_snapshot_every) == 0;
+    if (delphy_output_now) {
+      if (delphy_output) {
+        delphy_output->output_state(*c.run);
+        delphy_output->flush();
       }
     }
 
@@ -171,6 +188,9 @@ auto cli_main_loop(Processed_cmd_line& c) -> int {
   }
   if (beasty_trees_output) {
     beasty_trees_output->output_footers(*c.run);
+  }
+  if (delphy_output) {
+    delphy_output->output_epilog();
   }
 
   return 0;

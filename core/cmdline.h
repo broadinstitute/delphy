@@ -29,6 +29,8 @@ struct Processed_cmd_line {
   int64_t log_every;
   std::optional<std::string> trees_filename;
   int64_t tree_every;
+  std::optional<std::string> delphy_output_filename;
+  int64_t delphy_snapshot_every;
   bool alpha_move_enabled;
   bool mu_move_enabled;
   double init_mu;
