@@ -79,7 +79,7 @@ auto redate_trees(
     const std::string& pinned_ref)
     -> void {
 
-  auto maybe_date = extract_date_from_fasta_id(pinned_ref);
+  auto maybe_date = extract_date_from_sequence_id(pinned_ref);
   if (not maybe_date.has_value()) {
     std::cerr << absl::StreamFormat("ERROR: Could not determine date of pinned reference sequence '%s'\n", pinned_ref);
     std::exit(EXIT_FAILURE);

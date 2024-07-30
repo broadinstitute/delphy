@@ -144,6 +144,18 @@ inline auto operator<<(std::ostream& os, Real_seq_letter s) -> std::ostream& {
   }
 }
 
+inline auto char_to_real_seq_letter(char c) -> Real_seq_letter {
+  using enum Real_seq_letter;
+  switch (std::toupper(c)) {
+    case 'A': return A;
+    case 'C': return C;
+    case 'G': return G;
+    case 'T': return T;
+    default:
+      throw std::runtime_error(
+          absl::StrFormat("Cannot convert character '%c' to Real_seq_letter", c));
+  }
+}
 inline auto to_seq_letter(Real_seq_letter s) -> Seq_letter {
   switch (s) {
     case Real_seq_letter::A: return Seq_letters::A;

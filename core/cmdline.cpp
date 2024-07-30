@@ -19,37 +19,6 @@ namespace delphy {
 bool delphy_invoked_via_cli{false};
 std::vector<std::string> delphy_cli_args{};
 
-auto extract_date_from_fasta_id(const std::string_view id) -> std::optional<double> {
-  // We assume that FASTA IDs look like this (these are real examples):
-  //
-  //   hCoV-19/England/PLYM-3258B175/2022|EPI_ISL_15330011|2022-10-01
-  //   hRSV-A-England-160340212-2016-EPI_ISL_11428309-2016-01-19
-  //
-  // So we check that there's something date-like at the end of the string, and parse that.
-  // Bork badly if the date isn't there
-  if (id.length() < (1 + 4 + 1 + 2 + 1 + 2)) {
-    std::cerr << absl::StrFormat("FASTA ID `%s` not long enough to contain a date.  IGNORING IT.\n", id);
-    return {};
-  }
-  auto date_plus_bar = id.substr(id.length() - (1 + 4 + 1 + 2 + 1 + 2));
-  if (date_plus_bar[0] != '|' && date_plus_bar[0] != '-') {
-    std::cerr << absl::StrFormat("FASTA ID `%s` missing date separator '|' or '-' at end.  IGNORING IT.\n", id);
-    return {};
-  }
-  auto date_str = date_plus_bar.substr(1);
-  auto valid =
-      std::ranges::all_of(date_str.substr(0, 4), isdigit) &&
-          date_str[4] == '-' &&
-          std::ranges::all_of(date_str.substr(5, 2), isdigit) &&
-          date_str[7] == '-' &&
-          std::ranges::all_of(date_str.substr(8, 2), isdigit);
-  if (not valid) {
-    std::cerr << absl::StrFormat("FASTA ID `%s` has invalid date at end.  IGNORING IT.\n", id);
-    return {};
-  }
-  return parse_iso_date(date_str);
-}
-
 auto build_rough_initial_tree_from_fasta(
     const std::vector<Fasta_entry>& in_fasta,
     bool random,
@@ -75,7 +44,7 @@ auto build_rough_initial_tree_from_fasta(
   auto tip_descs = std::vector<Tip_desc>{};
   for (auto& fasta_entry : in_fasta) {
     // Ignore sequences that we can't date correctly
-    if (auto opt_t = extract_date_from_fasta_id(fasta_entry.id); not opt_t.has_value()) {
+    if (auto opt_t = extract_date_from_sequence_id(fasta_entry.id); not opt_t.has_value()) {
       std::cerr << absl::StreamFormat("WARNING: Ignoring sequence '%s', could not determine its date\n", fasta_entry.id);
     } else {
       auto delta = calculate_delta_from_reference(fasta_entry.sequence, resolved_ref_seq);
@@ -92,6 +61,25 @@ auto build_rough_initial_tree_from_fasta(
     return build_random_tree(std::move(resolved_ref_seq), std::move(tip_descs), bitgen);
   } else {
     return build_usher_like_tree(std::move(resolved_ref_seq), std::move(tip_descs), bitgen);
+  }
+}
+
+auto build_rough_initial_tree_from_maple(
+    Maple_file&& in_maple,
+    bool random,
+    absl::BitGenRef bitgen)
+    -> Phylo_tree {
+
+  if (in_maple.tip_descs.empty()) {
+    std::cerr << "MAPLE file has no sequences!\n";
+    std::exit(EXIT_FAILURE);
+  }
+  
+  // Join all the tips up in a very rough approximation to greedy parsimony
+  if (random) {
+    return build_random_tree(std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen);
+  } else {
+    return build_usher_like_tree(std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen);
   }
 }
 
@@ -115,6 +103,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       ("v0-seed", "Initial random number seed (default: random)",
        cxxopts::value<uint32_t>())
       ("v0-in-fasta", "input FASTA file", cxxopts::value<std::string>())
+      ("v0-in-maple", "input MAPLE file", cxxopts::value<std::string>())
       ("v0-init-heuristic", "Build initial tree with rough heuristics instead of randomly (default)",
        cxxopts::value<bool>())
       ("v0-init-random", "Build initial tree with random",
@@ -182,16 +171,6 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     auto prng = std::make_unique<std::mt19937>(seed);
     std::cerr << "# Seed: " << seed << "\n";
     
-    auto in_fasta_filename = opts["v0-in-fasta"].as<std::string>();
-    auto in_fasta_is = std::ifstream{in_fasta_filename};
-    if (not in_fasta_is) {
-      std::cerr << "ERROR: Could not read input FASTA file " << in_fasta_filename << "\n";
-      std::exit(EXIT_FAILURE);
-    }
-    std::cerr << "Reading fasta file " << in_fasta_filename << "\n";
-    auto in_fasta = read_fasta(in_fasta_is);
-    in_fasta_is.close();
-
     if (opts.count("v0-init-heuristic") > 0 && opts.count("v0-init-random") > 0) {
       std::cerr << "ERROR: The options --v0-init-heuristic and --v0-init-random are mutually exclusive.  Pick one.\n";
       std::exit(EXIT_FAILURE);
@@ -200,8 +179,40 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         opts.count("v0-init-heuristic") > 0 ? false :
         opts.count("v0-init-random") > 0 ? true :
         false;
-    std::cerr << (init_random ? "Building random initial tree..." : "Building rough initial tree...") << "\n";
-    auto tree = build_rough_initial_tree_from_fasta(in_fasta, init_random, *prng);
+
+    auto tree = Phylo_tree{};
+    if (opts.count("v0-in-fasta") > 0 && opts.count("v0-in-maple") > 0) {
+      std::cerr << "ERROR: The options --v0-in-fasta and --v0-in-maple are mutually exclusive.  Pick one.\n";
+      std::exit(EXIT_FAILURE);
+    }
+    if (opts.count("v0-in-fasta") > 0) {
+      auto in_fasta_filename = opts["v0-in-fasta"].as<std::string>();
+      auto in_fasta_is = std::ifstream{in_fasta_filename};
+      if (not in_fasta_is) {
+        std::cerr << "ERROR: Could not read input FASTA file " << in_fasta_filename << "\n";
+        std::exit(EXIT_FAILURE);
+      }
+      std::cerr << "Reading fasta file " << in_fasta_filename << "\n";
+      auto in_fasta = read_fasta(in_fasta_is);
+      in_fasta_is.close();
+      
+      std::cerr << (init_random ? "Building random initial tree..." : "Building rough initial tree...") << "\n";
+      tree = build_rough_initial_tree_from_fasta(in_fasta, init_random, *prng);
+    }
+    if (opts.count("v0-in-maple") > 0) {
+      auto in_maple_filename = opts["v0-in-maple"].as<std::string>();
+      auto in_maple_is = std::ifstream{in_maple_filename};
+      if (not in_maple_is) {
+        std::cerr << "ERROR: Could not read input MAPLE file " << in_maple_filename << "\n";
+        std::exit(EXIT_FAILURE);
+      }
+      std::cerr << "Reading MAPLE file " << in_maple_filename << "\n";
+      auto in_maple = read_maple(in_maple_is);
+      in_maple_is.close();
+      
+      std::cerr << (init_random ? "Building random initial tree..." : "Building rough initial tree...") << "\n";
+      tree = build_rough_initial_tree_from_maple(std::move(in_maple), init_random, *prng);
+    }
     
     assert_phylo_tree_integrity(tree);
     

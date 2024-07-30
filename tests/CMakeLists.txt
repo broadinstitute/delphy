@@ -8,6 +8,7 @@ add_executable(tests
   dates_tests.cpp
   distributions_tests.cpp
   interval_set_tests.cpp
+  io_tests.cpp
   missation_map_tests.cpp
   no_bit_gen_tests.cpp
   phylo_tree_calc_tests.cpp

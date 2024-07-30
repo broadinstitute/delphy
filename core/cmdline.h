@@ -13,7 +13,6 @@
 namespace delphy {
 
 // TODO: Should live elsewhere
-auto extract_date_from_fasta_id(const std::string_view id) -> std::optional<double>;
 auto build_rough_initial_tree_from_fasta(
     const std::vector<Fasta_entry>& in_fasta,
     bool random,
