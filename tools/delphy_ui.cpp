@@ -827,7 +827,7 @@ auto ui_main_loop(Processed_cmd_line& c) -> int {
   leaf_index.assign(std::ssize(ui_run->tree()), 0);
   auto next_leaf_index = Node_index{0};
   const auto& tree = ui_run->tree();
-  for (const auto& node : in_order_traversal(tree)) {  // in-order => leaf indices match input
+  for (const auto& node : index_order_traversal(tree)) {  // index-order => leaf indices match input order in FASTA/MAPLE
     if (tree.at(node).is_tip()) {
       leaf_index[node] = next_leaf_index;
       ++next_leaf_index;
