@@ -58,7 +58,11 @@ auto Scalable_coalescent_prior::ensure_space(double t) -> void {
 
       auto t_min_new = t_max_new - t_step_;
       auto cum_popsize_min = pop_model_.cum_pop_at_time(t_min_new);
-      popsize_bars_.push_front((cum_popsize_max - cum_popsize_min) / t_step_);
+      auto popsize_bar = (cum_popsize_max - cum_popsize_min) / t_step_;
+      if (popsize_bar == 0.0) {
+        popsize_bar = 1e-100;  // Stopgap
+      }
+      popsize_bars_.push_front(popsize_bar);
 
       t_max_new = t_min_new;
       cum_popsize_max = cum_popsize_min;
@@ -74,7 +78,11 @@ auto Scalable_coalescent_prior::ensure_space(double t) -> void {
 
       auto t_max_new = t_min_new + t_step_;
       auto cum_popsize_max = pop_model_.cum_pop_at_time(t_max_new);
-      popsize_bars_.push_back((cum_popsize_max - cum_popsize_min) / t_step_);
+      auto popsize_bar = (cum_popsize_max - cum_popsize_min) / t_step_;
+      if (popsize_bar == 0.0) {
+        popsize_bar = 1e-100;  // Stopgap
+      }
+      popsize_bars_.push_back(popsize_bar);
       t_min_new = t_max_new;
       cum_popsize_min = cum_popsize_max;
     }
@@ -145,7 +153,12 @@ auto Scalable_coalescent_prior::pop_model_changed() -> void {
     auto t_max = t_min + t_step_;
     auto cum_popsize_max = pop_model_.cum_pop_at_time(t_max);
 
-    *iter_popsize_bar = (cum_popsize_max - cum_popsize_min) / t_step_;
+    auto popsize_bar = (cum_popsize_max - cum_popsize_min) / t_step_;
+    if (popsize_bar == 0.0) {
+      popsize_bar = 1e-100;  // Stopgap
+    }
+    
+    *iter_popsize_bar = popsize_bar;
 
     t_min = t_max;
     cum_popsize_min = cum_popsize_max;
@@ -168,6 +181,10 @@ auto Scalable_coalescent_prior::calc_log_prior() const -> double {
     auto kbar = *iter_k_bar;
     auto popsize_bar = (cum_popsize_max - cum_popsize_min) / t_step_;
 
+    if (popsize_bar == 0.0) {
+      popsize_bar = 1e-100;  // Stopgap
+    }
+    
     result -= t_step_ * kbar * (kbar - 1) / (2.0 * popsize_bar);
 
     t_min = t_max;

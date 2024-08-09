@@ -35,7 +35,7 @@ auto Exp_pop_model::cum_pop_at_time(double t) const -> double {
   if (growth_rate_ == 0.0) {
     return t * pop_at_t0_;
   } else {
-    return (std::exp(growth_rate_ * (t - t0_)) - 1) * pop_at_t0_ / growth_rate_;
+    return std::expm1(growth_rate_ * (t - t0_)) * pop_at_t0_ / growth_rate_;
   }
 }
 
@@ -44,7 +44,7 @@ auto Exp_pop_model::intensity_at_time(double t) const -> double {
   if (growth_rate_ == 0.0) {
     return t / pop_at_t0_;
   } else {
-    return (1 - std::exp(-growth_rate_ * (t-t0_))) / (growth_rate_ * pop_at_t0_);
+    return -std::expm1(-growth_rate_ * (t-t0_)) / (growth_rate_ * pop_at_t0_);
   }
 }
 

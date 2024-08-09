@@ -17,7 +17,7 @@ Run::Run(ctpl::thread_pool& thread_pool, absl::BitGenRef bitgen, Phylo_tree tree
       alpha_{10.0},
       nu_(tree_.num_sites(), 1.0),
       evo_{make_single_partition_global_evo_model(tree_.num_sites())},
-      coalescent_prior_{pop_model_, tree_.size(), 0.0, 1.0} {
+      coalescent_prior_{pop_model_, tree_.size(), calc_max_tip_time(tree_), 1.0} {
 
   // In Debug builds, record input tip sequences so that we can check that MCMC moves don't result
   // in incompatible real tip sequences
