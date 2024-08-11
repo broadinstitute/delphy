@@ -176,9 +176,13 @@ auto make_very_scalable_coalescent_prior_parts(
   // Sample k_twiddle_bar_p for each part
   for (auto& info : infos) {
     for (auto i = 0; i < std::ssize(info.k_twiddle_bar_p); ++i) {
-      auto mu = info.k_bar_p[i] - k_bar[i] / num_active_parts[i];
-      auto sigma = std::sqrt(popsize_bar[i] / (num_active_parts[i] * t_step));
-      info.k_twiddle_bar_p[i] = std::normal_distribution<double>{mu, sigma}(prngs[info.part_index]);
+      if (info.k_bar_p[i] != 0.0) {
+        auto mu = info.k_bar_p[i] - k_bar[i] / num_active_parts[i];
+        auto sigma = std::sqrt(popsize_bar[i] / (num_active_parts[i] * t_step));
+        info.k_twiddle_bar_p[i] = std::normal_distribution<double>{mu, sigma}(prngs[info.part_index]);
+      } else {
+        info.k_twiddle_bar_p[i] = 0.0;
+      }
     }
   }
 

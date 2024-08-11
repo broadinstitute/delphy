@@ -723,6 +723,7 @@ auto keyboard_func(unsigned char key, int, int) -> void {
     case '8':
     case '9': {
       auto new_num_parts = static_cast<int>(key - '0');
+      if (new_num_parts == 9) { new_num_parts = 96; }
       ui_run->set_num_parts(new_num_parts);
       std::cerr << "*** USING " << ui_run->num_parts() << " SUBTREES IN PARALLEL ***" << std::endl;
       timestamps.clear();
