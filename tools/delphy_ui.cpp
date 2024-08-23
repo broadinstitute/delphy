@@ -247,6 +247,40 @@ static auto render_tree() -> void {
       glEnd();
     }
   }
+
+  // // Draw num_active_parts
+  // auto y_min = 0.02;
+  // auto y_scale = 0.02 / std::ssize(ui_run->partition().parts());
+
+  // glBegin(GL_LINES);
+  // glColor3d(0.0, 0.0, 0.0);
+  // glVertex2d(x_for(ui_run->coalescent_prior_.t_ref_), y_min);
+  // glVertex2d(x_for(ui_run->coalescent_prior_.t_ref_), 0.05);
+  // glEnd();
+  
+  // for (auto p = 0; p != std::ssize(ui_run->partition().parts()); ++p) {
+  //   const auto& vscp = ui_run->coalescent_prior_parts_.at(p);
+  //   auto num_cells = std::ssize(vscp.num_active_parts_);
+    
+  //   auto color_index = p % std::ssize(partition_colors);
+  //   auto [r,g,b] = partition_colors[color_index];
+  //   glColor3d(r, g, b);
+
+  //   glBegin(GL_LINE_STRIP);
+  //   glVertex2d(x_for(vscp.t_ref_), y_min);
+    
+  //   for (auto cell = 0; cell != num_cells; ++cell) {
+  //     auto t_max = vscp.t_ref_ - cell*vscp.t_step_;
+  //     auto t_min = t_max - vscp.t_step_;
+
+  //     auto y = y_min + y_scale*vscp.num_active_parts_[cell];
+  //     glVertex2d(x_for(t_max), y);
+  //     glVertex2d(x_for(t_min), y);
+  //   }
+
+  //   glVertex2d(x_for(vscp.t_ref_ - num_cells*vscp.t_step_), y_min);
+  //   glEnd();
+  // }
 }
 
 

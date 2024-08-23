@@ -95,7 +95,7 @@ auto make_very_scalable_coalescent_prior_parts(
     infos[i].part_index = i;
     infos[i].subtree = subtrees[i];
     infos[i].t_min = std::numeric_limits<double>::max();
-    infos[i].t_max = std::numeric_limits<double>::min();
+    infos[i].t_max = -std::numeric_limits<double>::max();
   }
 
   // Find t_min and t_max of every partition
