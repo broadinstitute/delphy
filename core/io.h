@@ -29,6 +29,8 @@ auto extract_date_from_sequence_id(const std::string_view id) -> std::optional<d
 struct stamp_version_into_log_file{};  // dummy type for stream command
 auto operator<<(std::ostream& os, stamp_version_into_log_file) -> std::ostream&;
 
+auto output_resolved_fasta(const Phylo_tree& tree, std::ostream& os) -> void;
+
 }  // namespace delphy
 
 #endif // DELPHY_IO_H_

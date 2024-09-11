@@ -7,6 +7,7 @@
 #include "dates.h"
 #include "version.h"
 #include "cmdline.h"
+#include "phylo_tree_calc.h"
 
 namespace delphy {
 
@@ -198,6 +199,21 @@ auto operator<<(std::ostream& os, stamp_version_into_log_file) -> std::ostream& 
     os << "\n";
   }
   return os;
+}
+
+auto output_resolved_fasta(const Phylo_tree& tree, std::ostream& os) -> void {
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip()) {
+      
+      os << '>' << tree.at(node).name << '\n';
+      
+      auto seq = view_of_sequence_at(tree, node);  // Missing sites resolved by inheriting from state at missations
+      for (auto l = Site_index{0}; l != tree.num_sites(); ++l) {
+        os << to_char(seq[l]);
+      }
+      os << '\n';
+    }
+  }
 }
 
 }  // namespace delphy

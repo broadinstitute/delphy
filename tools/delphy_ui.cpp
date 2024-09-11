@@ -822,6 +822,16 @@ auto keyboard_func(unsigned char key, int, int) -> void {
       }
       break;
     }
+    case 'h':
+    case 'H': {
+      std::cerr << "*** EXPORTING RESOLVED FASTA ('snapshot.fasta') ***" << std::endl;
+      auto os = std::ofstream("snapshot.fasta");
+      if (os) {
+        output_resolved_fasta(ui_run->tree(), os);
+      }
+      std::cerr << "*** EXPORT COMPLETE ***" << std::endl;
+      break;
+    };
     case 'x':
     case 'X': {
       ui_run->set_mpox_hack_enabled(not ui_run->mpox_hack_enabled());
