@@ -922,7 +922,18 @@ auto build_usher_like_tree(
     tree.at(S).parent = P;
 
     // Distribute needed mutations randomly
+    //  - ordered_mutations is here to avoid the non-determinism introduced by abseil's flat_hash_map
+    //    (so delphy invocations with the same seed produce identical starting trees)
+    auto ordered_mutations = Scratch_vector<std::pair<Site_index, Site_delta>>{scratch};
     for (const auto& [l, delta] : deltas_P_to_X) {
+      ordered_mutations.push_back({l, delta});
+    }
+    std::ranges::sort(ordered_mutations, [](const auto& pair_a, const auto& pair_b) {
+      const auto& [la, _1] = pair_a;
+      const auto& [lb, _2] = pair_b;
+      return la < lb;
+    });
+    for (const auto& [l, delta] : ordered_mutations) {
       tree.at(X).mutations.push_back(Mutation{
           delta.from, l, delta.to,
           absl::Uniform(absl::IntervalOpenClosed, bitgen, t_P, t_X)});
