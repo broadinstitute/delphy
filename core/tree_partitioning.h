@@ -18,19 +18,14 @@ namespace delphy {
 // the `cut_point` in T.
 struct Partition_part_info {
   Node_index cut_point;
-  Node_index num_nodes;  // 1 more than the number of branches
 };
 
-// Generates a random partition of tree `tree` into at most `num_parts` parts (possibly fewer).  A best effort
-// is made to make the parts roughly of equal size.  If `forbidden_cut_points` is specified and not
-// empty, then those points will not be chosen as cut points for the partition (see above).  Useful to
-// generate a sequence of random partitions that eventually include every inner node of `tree` as an
-// inner node of some part.
-auto generate_random_partition(
+// Generates a random partition stencil of tree `tree` into at most `num_parts` parts (possibly fewer).  A best effort
+// is made to make the parts roughly of equal size.
+auto generate_random_partition_stencil(
     const Tree_like auto& t,
     int num_parts,
-    absl::BitGenRef bitgen,
-    const Node_set& forbidden_cut_points)
+    absl::BitGenRef bitgen)
     -> std::vector<Partition_part_info>;
 
 class Partition_part_node : public Binary_node {
@@ -90,62 +85,13 @@ auto reassemble_tree(const Partition& partition) -> Tree<Binary_node>;
 
 namespace details {
 
-// Picks a random path starting at the root and report the node with number of descendants closest to target_branches.
-// The random path is biased towards children with more descendants, to avoid going down rabbit holes.
-// Unless we choose the root, the chosen cut point will never be one with an index in forbidden_cut_node_indices
-auto choose_cut_point(
-    const Tree_like auto& tree,
-    const Node_vector<int>& descendants,
-    int target_branches,
-    absl::BitGenRef bitgen,
-    const Node_set& forbidden_cut_points)
-    -> Node_index {
-  
-  auto best = tree.root;
-  auto best_score = std::abs(target_branches - descendants[best]);
-
-  auto cur = tree.root;
-  while (descendants[cur] != 0) {
-    auto cur_descendants = descendants[cur];
-    auto cur_score = std::abs(target_branches - cur_descendants);
-    auto is_allowed = not forbidden_cut_points.contains(cur);
-    if (is_allowed && cur_score < best_score) {
-      best = cur;
-      best_score = cur_score;
-    }
-    if (cur_descendants < target_branches && cur_score >= best_score) {
-      // Score of descendants can only be worse as we go further down the tree; no point in going further
-      break;
-    }
-
-    assert(not tree.at(cur).children.empty());
-    auto left = tree.at(cur).left_child();
-    auto right = tree.at(cur).right_child();
-
-    auto w_left = std::pow(descendants[left], 2.0);
-    auto w_right = std::pow(descendants[right], 2.0);
-    auto p_left = w_left / (w_left + w_right);
-
-    cur = std::uniform_real_distribution{0.0, 1.0}(bitgen) < p_left ? left : right;
-  }
-
-  return best;
-}
-
-auto discount_descendants_of(const Tree_like auto& tree, Node_index node, Node_vector<int>& descendants) -> void {
-  auto num_gone = descendants[node];
-  for (auto cur = node; cur != k_no_node; cur = tree.at(cur).parent) {
-    descendants[cur] -= num_gone;
-  }
-}
-
 auto make_partition_part(
     const Tree_like auto& src_tree,
-    const Partition_part_info& part_info,
+    const Node_index cut_point,
     const Node_set& src_cut_points)
     -> Partition_part {
   
-  auto part = Partition_part{part_info};
+  auto part = Partition_part{Partition_part_info{cut_point}};
 
   struct Work_item {
     Node_index src_node;
@@ -155,7 +101,7 @@ auto make_partition_part(
 
   auto root_dst_node = part.add_node();
   part.root = root_dst_node;
-  work_stack.push({.src_node = part_info.cut_point, .dst_node = root_dst_node});
+  work_stack.push({.src_node = cut_point, .dst_node = root_dst_node});
   
   while (not work_stack.empty()) {
     // Every node in the destination tree will appear exactly once in this loop as cur.dst_node
@@ -165,7 +111,7 @@ auto make_partition_part(
     part.at(dst_node).set_orig_tree_index(src_node);
     
     auto src_node_is_cut_point = src_cut_points.contains(src_node);
-    if (src_tree.at(src_node).is_tip() || (src_node_is_cut_point && src_node != part_info.cut_point)) {
+    if (src_tree.at(src_node).is_tip() || (src_node_is_cut_point && src_node != cut_point)) {
       // dst_node will be a tip in this subtree
       part.at(dst_node).children = {};
     } else {
@@ -190,75 +136,99 @@ auto make_partition_part(
 
 }  // namespace details
 
-auto generate_random_partition(
+auto generate_random_partition_stencil(
     const Tree_like auto& tree,
     int num_parts,
-    absl::BitGenRef bitgen,
-    const Node_set& forbidden_cut_points)
+    absl::BitGenRef bitgen)
     -> std::vector<Partition_part_info> {
   
   auto part_infos = std::vector<Partition_part_info>{};
   part_infos.reserve(num_parts);
 
-  // As we proceed, descendants[i] is the number of descendants of i that aren't already assigned a part_index.
-  // For efficiency, if descendants[i] == 0, then we don't update or use descendants[j] for all descendants j of i
-  auto descendants = count_all_descendants(tree);
+  // As we proceed, descendants[i] will count the number of descendants of i that aren't already assigned a part_index.
+  auto descendants = Node_vector<int>(std::ssize(tree), 0);
 
-  auto num_branches_left = descendants[tree.root];
-  for (auto num_parts_left = num_parts; num_parts_left > 1 && num_branches_left > 0; --num_parts_left) {
+  auto num_branches_left = std::ssize(tree);
+  auto num_parts_left = num_parts;
+  for (auto node : randomized_post_order_traversal(tree, bitgen)) {  // insert a bit of randomness in traversal
 
-    auto ideal_target_branches = num_branches_left / num_parts_left;
-    auto min_target_branches = std::max(static_cast<int>(std::floor(ideal_target_branches * 0.7)), 1);
-    auto max_target_branches = std::min(static_cast<int>(std::ceil(ideal_target_branches * 1.3)), num_branches_left);
+    // The root never goes explicitly into the stencils
+    if (node == tree.root) { break; }
+    
+    // Stop if we've already cut into num_parts-1 parts (the last one will implicitly start at the root)
+    if (std::ssize(part_infos) == (num_parts - 1)) { break; }
+    
+    // Accumulate descendants
+    descendants[node] = 1;
+    for (auto child : tree.at(node).children) {
+      descendants[node] += descendants[child];
+    }
 
-    auto target_branches =
-        (min_target_branches >= max_target_branches)
-        ? num_branches_left
-        : std::uniform_int_distribution{min_target_branches, max_target_branches}(bitgen);
+    // Should we cut here?
+    auto min_subtree_size = std::max(10L, num_branches_left / (num_parts_left + 1));  // +1 => a little bit of slack
+    if (descendants[node] >= min_subtree_size) {
 
-    auto cut_point = details::choose_cut_point(tree, descendants, target_branches, bitgen, forbidden_cut_points);
-    auto num_branches_in_part = descendants[cut_point];
-    num_branches_left -= num_branches_in_part;
-    details::discount_descendants_of(tree, cut_point, descendants);
+      // Can we cut here?
+      auto is_allowed = true;
+      
+      // 1. Don't cut if the remaining stump would be too small
+      if (is_allowed && (num_branches_left - (descendants[node] - 1)) < min_subtree_size) { is_allowed = false; }
 
-    part_infos.push_back({cut_point, 1 + num_branches_in_part});
-  }
+      // 2. A bit of randomness
+      if (is_allowed && std::bernoulli_distribution{0.5}(bitgen)) { is_allowed = false; }
 
-  // All remaining branches are lumped into a part_index rooted at the tree root
-  if (num_branches_left > 0) {
-    part_infos.push_back({tree.root, 1 + num_branches_left});
+      if (is_allowed) {
+        // Cut here!
+        auto cut_point = node;
+        auto num_branches_in_part = descendants[cut_point] - 1;
+        num_branches_left -= num_branches_in_part;
+        CHECK_GE(num_branches_left, 0);
+        part_infos.push_back({cut_point});
+        descendants[cut_point] = 1;
+        --num_parts_left;
+      }
+    }
   }
 
   return part_infos;
 }
 
-auto partition_tree(const Tree_like auto& tree, const std::vector<Partition_part_info>& part_infos) -> Partition {
-  DCHECK_EQ(std::ranges::count_if(part_infos,
-                                  [&](const auto& part_info) { return part_info.cut_point == tree.root; }),
-            1);
-
-  auto partition = Partition{static_cast<int>(std::ssize(part_infos))};
-  partition.parts().reserve(std::ssize(part_infos));
+auto partition_tree(const Tree_like auto& tree, const std::vector<Partition_part_info>& stencil) -> Partition {
+  // The root partition is implicitly the last one in the stencil if it's not explicitly in the stencil
+  auto root_part_index = static_cast<int>(std::ssize(stencil));
+  auto root_in_stencil = false;
+  for (auto i = 0; i != std::ssize(stencil); ++i) {
+    const auto& p = stencil[i];
+    if (p.cut_point == tree.root) {
+      root_in_stencil = true;
+      root_part_index = i;
+      break;
+    }
+  }
+  
+  auto num_partitions = static_cast<int>(std::ssize(stencil) + (root_in_stencil ? 0 : 1));
+  
+  auto partition = Partition{num_partitions};
 
   auto partition_cut_points = Node_set{};
-  partition_cut_points.reserve(std::ssize(part_infos));
-  for (const auto& p : part_infos) {
+  partition_cut_points.reserve(num_partitions);
+  for (const auto& p : stencil) {
     partition_cut_points.insert(p.cut_point);
   }
 
-  auto root_part_index = std::ssize(part_infos);
-  for (auto i = 0; i != std::ssize(part_infos); ++i) {
-    const auto& p = part_infos[i];
-    partition.parts()[i] = details::make_partition_part(tree, p, partition_cut_points);
-    if (p.cut_point == tree.root) {
-      root_part_index = i;
-    }
+  if (not root_in_stencil) {
+    partition_cut_points.insert(tree.root);  // Implicit final partition
+    root_part_index = num_partitions - 1;
   }
-  CHECK_NE(root_part_index, std::ssize(part_infos));
   partition.set_root_part_index(root_part_index);
 
+  for (auto i = 0; i != num_partitions; ++i) {
+    auto cut_point = (i == partition.root_part_index()) ? tree.root : stencil[i].cut_point;
+    partition.parts()[i] = details::make_partition_part(tree, cut_point, partition_cut_points);
+  }
+
   partition.tree_index_to_partition_index().assign(std::ssize(tree), -1);
-  for (auto i = 0; i != std::ssize(part_infos); ++i) {
+  for (auto i = 0; i != num_partitions; ++i) {
     const auto& partition_part = partition.parts()[i];
     for (const auto& pnode : index_order_traversal(partition_part)) {
       partition.tree_index_to_partition_index()[partition_part.at(pnode).orig_tree_index()] = static_cast<int>(i);

@@ -27,6 +27,7 @@ Run::Run(ctpl::thread_pool& thread_pool, absl::BitGenRef bitgen, Phylo_tree tree
   step_ = 0;
   set_local_moves_per_global_move(-1);  // use default
   next_global_move_step_ = -1;
+  next_partition_stencil_refresh_step_ = -1;
   
   // Initialize coalescent prior
   for (const auto& node : index_order_traversal(tree_)) {
@@ -63,19 +64,42 @@ Run::Run(ctpl::thread_pool& thread_pool, absl::BitGenRef bitgen, Phylo_tree tree
   invalidate_derived_quantities();
 }
 
+auto Run::refresh_partition_stencils() -> void {
+  // Make 10 partition stencils very occasionally; during the run, we switch between these stencils randomly.
+  // It's important for correctness that all partitions are equally likely to be chosen during a run.
+  // If we change the set of partitions over which this choice takes place *slowly* (~ less than once
+  // per effective sample), then it doesn't matter *how* those partitions are chosen.  But if we do it
+  // more quickly, the sampling becomes biased.
+
+  if (partition_stencils_valid_ && step_ < next_partition_stencil_refresh_step_) {
+    return;
+  }
+
+  std::cerr << "\n\n*****\nREFRESHING PARTITION STENCILS\n*****\n\n";
+
+  partition_stencils_.clear();
+  for (auto i = 0; i != 10; ++i) {
+    partition_stencils_.push_back(generate_random_partition_stencil(tree_, num_parts_, bitgen_));
+  }
+
+  partition_stencils_valid_ = true;
+  next_partition_stencil_refresh_step_ = step_ + 200 * local_moves_per_global_move_;
+  force_repartition_ = true;
+}
+
 auto Run::repartition() -> void {
   // Ensure we have enough bitgens around
   while (std::ssize(subbitgens_) < num_parts_) {
     subbitgens_.emplace_back(bitgen_());
   }
 
+  // Ensure partition stencils are in up to date
+  refresh_partition_stencils();
+
   //std::cerr << "*** REPARTITION ***" << std::endl;
-  auto forbidden_cut_points = Node_set{};
-  for (const auto& part : tree_partition_.parts()) {
-    forbidden_cut_points.insert(part.info().cut_point);
-  }
-  auto partition_part_infos_ = generate_random_partition(tree_, num_parts_, bitgen_, forbidden_cut_points);
-  tree_partition_ = partition_tree(tree_, partition_part_infos_);
+  auto partition_stencils_index = std::uniform_int_distribution<int>{0, int(std::ssize(partition_stencils_)-1)}(bitgen_);
+  auto& partition_stencil = partition_stencils_.at(partition_stencils_index);
+  tree_partition_ = partition_tree(tree_, partition_stencil);
 
   // Before we propagate the reference sequence to subruns, normalize
   CHECK(tree_.at_root().missations.from_states.empty());
@@ -86,7 +110,6 @@ auto Run::repartition() -> void {
   
   // Make subruns
   subruns_.clear();
-  coalescent_prior_parts_.clear();
   for (auto& partition_part : tree_partition_.parts()) {
     auto subroot = partition_part.info().cut_point;
     auto subroot_seq_view = view_of_sequence_at(tree_, subroot);
@@ -134,6 +157,8 @@ auto Run::repartition() -> void {
       subrun.set_original_sequences(std::move(original_sequences), std::move(original_missing_sites_all));
     }
   }
+
+  // Start very_scalable_coalescent_prior from scratch
   reset_very_scalable_coalescent_parts();
 
   force_repartition_ = false;
@@ -226,7 +251,7 @@ auto Run::reset_very_scalable_coalescent_parts() -> void {
   }
   coalescent_prior_parts_ = make_very_scalable_coalescent_prior_parts(
       phylo_subtrees,
-      partition().root_part_index(),
+      tree_partition_.root_part_index(),
       pop_model_,
       subbitgens_,
       coalescent_prior_.t_step()  // NOTE: This picks up any changes to t_step midway
@@ -524,6 +549,7 @@ auto Run::set_step(int64_t step) -> void {
   }
   step_ = step;
   next_global_move_step_ = -1;
+  next_partition_stencil_refresh_step_ = -1;
 }
 
 auto Run::set_local_moves_per_global_move(int local_moves_per_global_move) -> void {
@@ -536,6 +562,7 @@ auto Run::set_local_moves_per_global_move(int local_moves_per_global_move) -> vo
   }
   local_moves_per_global_move_ = local_moves_per_global_move;
   next_global_move_step_ = -1;
+  next_partition_stencil_refresh_step_ = -1;
 }
 
 auto Run::run_local_moves(int count) -> void {

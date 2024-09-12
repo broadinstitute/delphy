@@ -6,6 +6,20 @@
 
 namespace delphy {
 
+namespace Very_scalable_coalescent_prior {
+auto cell_for(double t, double t_ref, double t_step) -> int;
+auto cell_ubound(int cell, double t_ref, double t_step) -> double;
+auto cell_lbound(int cell, double t_ref, double t_step) -> double;
+auto add_interval(
+    double t_start,
+    double t_end,
+    double delta_k,
+    std::vector<double>& k,
+    double t_ref,
+    double t_step)
+    -> void;
+};
+
 class Very_scalable_coalescent_prior_part {
  public:
   Very_scalable_coalescent_prior_part(

@@ -29,11 +29,11 @@ class Run {
   auto local_moves_per_global_move() const -> int { return local_moves_per_global_move_; }
   auto set_local_moves_per_global_move(int local_moves_per_global_move) -> void;
   auto num_parts() const -> int { return num_parts_; }
-  auto set_num_parts(int num_parts) -> void { num_parts_ = num_parts; force_repartition_ = true; }
+  auto set_num_parts(int num_parts) -> void { num_parts_ = num_parts; partition_stencils_valid_ = false; }
   
   auto do_mcmc_steps(int steps) -> void;
 
-  auto tree_modified() -> void { invalidate_derived_quantities(); }
+  auto tree_modified() -> void { partition_stencils_valid_ = false; invalidate_derived_quantities(); }
   auto coalescent_prior_t_step() const -> double { return coalescent_prior_.t_step(); }
   auto set_coalescent_prior_t_step(double t_step) -> void;
   auto mu() const -> double { return hky_model_.mu; }
@@ -152,8 +152,6 @@ class Run {
   auto set_mu_move_enabled(bool enabled) -> void {
     mu_move_enabled_ = enabled; }
 
-  auto repartition() -> void;
-
  private:
   ctpl::thread_pool* thread_pool_;
   absl::BitGenRef bitgen_;
@@ -165,6 +163,9 @@ class Run {
   
   Partition tree_partition_;
   int num_parts_;
+  std::vector<std::vector<Partition_part_info>> partition_stencils_;
+  mutable bool partition_stencils_valid_ = false;
+  mutable int64_t next_partition_stencil_refresh_step_;
   bool force_repartition_ = false;
   std::vector<std::mt19937> subbitgens_;
   std::vector<Subrun> subruns_;
@@ -205,6 +206,8 @@ class Run {
   mutable Scalable_coalescent_prior coalescent_prior_;
   mutable std::vector<Very_scalable_coalescent_prior_part> coalescent_prior_parts_;
 
+  auto refresh_partition_stencils() -> void;
+  auto repartition() -> void;
   auto reassemble() -> void;
   auto normalize_root() -> void;
   auto push_tree_to_subruns() -> void;

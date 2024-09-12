@@ -648,7 +648,6 @@ auto keyboard_func(unsigned char key, int, int) -> void {
       ui_run->tree_modified();
       std::cerr << "*** TREE RANDOMIZED ***" << std::endl;
       ui_run->set_alpha(1.0);  // Force reset of site relative rates, which may be so low as to cause underflows
-      ui_run->repartition();
       tree_snapshots.clear();
       mcc_tree = {};
       //reset_imcc();
@@ -658,8 +657,6 @@ auto keyboard_func(unsigned char key, int, int) -> void {
       randomize_tree_times(ui_run->tree());
       ui_run->tree_modified();
       std::cerr << "*** TREE TIMES RANDOMIZED ***" << std::endl;
-      ui_run->invalidate_derived_quantities();
-      ui_run->repartition();
       break;
     }
     case 'T':
@@ -756,8 +753,7 @@ auto keyboard_func(unsigned char key, int, int) -> void {
     case '7':
     case '8':
     case '9': {
-      auto new_num_parts = static_cast<int>(key - '0');
-      if (new_num_parts == 9) { new_num_parts = 96; }
+      auto new_num_parts = 1 << static_cast<int>(key - '1');
       ui_run->set_num_parts(new_num_parts);
       std::cerr << "*** USING " << ui_run->num_parts() << " SUBTREES IN PARALLEL ***" << std::endl;
       timestamps.clear();

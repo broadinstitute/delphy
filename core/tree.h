@@ -10,6 +10,8 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/log/check.h"
+#include "absl/random/bit_gen_ref.h"
+#include "absl/random/distributions.h"
 #include "cppcoro/generator.hpp"
 
 #include "estd.h"
@@ -317,6 +319,49 @@ auto post_order_traversal(const Tree_like auto& tree) -> cppcoro::generator<Node
 
 auto index_order_traversal(const Tree_like auto& tree) {
   return std::views::iota(0, std::ssize(tree));
+}
+
+// Like `traversal`, but traverse children in random order (specialized to binary trees)
+auto randomized_traversal(const Tree_like auto& tree, absl::BitGenRef bitgen) -> cppcoro::generator<detail::Node_visitation> {
+  if (std::ssize(tree) == 0) { co_return; }
+  
+  auto work_stack = std::stack<detail::Node_visitation>{};
+  work_stack.emplace(tree.root, -1);
+  
+  while (not work_stack.empty()) {
+    auto [node, children_so_far] = work_stack.top();
+    work_stack.pop();
+
+    if (children_so_far != -1) {
+      co_yield detail::Node_visitation{node, children_so_far};
+    } else {
+      const auto& children = tree.at(node).children;
+      auto num_children = std::ssize(children);
+      work_stack.emplace(node, num_children);
+      if (num_children != 0) {
+        CHECK_EQ(num_children, 2);
+        if (std::bernoulli_distribution{0.5}(bitgen)) {
+          work_stack.emplace(children[0], -1);
+          work_stack.emplace(node, 1);
+          work_stack.emplace(children[1], -1);
+          work_stack.emplace(node, 0);
+        } else {
+          work_stack.emplace(children[1], -1);
+          work_stack.emplace(node, 1);
+          work_stack.emplace(children[0], -1);
+          work_stack.emplace(node, 0);
+        }
+      }
+    }
+  }
+}
+
+auto randomized_post_order_traversal(const Tree_like auto& tree, absl::BitGenRef bitgen) -> cppcoro::generator<Node_index> {
+  for (const auto& [node, children_so_far] : randomized_traversal(tree, bitgen)) {
+    if (children_so_far == std::ssize(tree.at(node).children)) {
+      co_yield Node_index{node};
+    }
+  }
 }
 
 
