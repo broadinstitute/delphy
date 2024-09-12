@@ -173,11 +173,22 @@ auto Subrun::inner_node_displace_move() -> void {
     d_logG_dt -= -lambda_just_below_node;
   }
 
-  // Pick tree_.at(node).t as ~ exp(d_logG_dt * node.t), bounded by t_min and t_max.
-  // The proposal probability being proportional to the likelihood, the MH ratio is 1.0 up to this point
-  auto old_node_t = tree_.at(node).t;
-  auto t_dist = Bounded_exponential_distribution{d_logG_dt, t_min, t_max};
-  auto new_node_t = t_dist(bitgen_);
+   // Pick tree_.at(node).t as ~ exp(d_logG_dt * node.t), bounded by t_min and t_max.
+   auto old_node_t = tree_.at(node).t;
+  auto log_alpha_old_to_new_over_new_to_old = 0.0;
+  auto new_node_t = old_node_t;
+  if (node == tree_.root) {
+    auto delta_scale = (1 / lambda_i_.at(node)) / 2;  // 95% of the time, won't hop past more than 1 mutation
+    new_node_t = old_node_t + absl::Gaussian(bitgen_, 0.0, delta_scale);
+    if (new_node_t < t_min || new_node_t > t_max) { return; }
+    log_alpha_old_to_new_over_new_to_old = 0.0;
+  } else {
+    auto t_dist = Bounded_exponential_distribution{d_logG_dt, t_min, t_max};
+    auto new_node_t = t_dist(bitgen_);
+    
+    // The proposal probability being proportional to the likelihood, the MH ratio will be 1.0 (before considering the coalescent prior)
+    log_alpha_old_to_new_over_new_to_old = d_logG_dt * (new_node_t - old_node_t);
+  }
 
   // Forbid zero-length branches or mutation times that coincide with node times
   if (new_node_t == t_min || new_node_t == t_max) { return; }
@@ -187,9 +198,11 @@ auto Subrun::inner_node_displace_move() -> void {
   CHECK(new_node_t <= t_max);
 
   // See if coalescent prior agrees with us
+  auto delta_log_G = d_logG_dt * (new_node_t - old_node_t);
   auto delta_log_prior =
       coalescent_prior_part_->calc_delta_partial_log_prior_after_displace_coalescence(old_node_t, new_node_t);
-  if (delta_log_prior >= 0.0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(delta_log_prior)) {
+  auto log_mh = delta_log_G + delta_log_prior - log_alpha_old_to_new_over_new_to_old;
+  if (log_mh >= 0.0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_mh)) {
     // Accept
     coalescent_prior_part_->coalescence_displaced(old_node_t, new_node_t);
     tree_.at(node).t = new_node_t;
