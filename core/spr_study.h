@@ -8,7 +8,7 @@ namespace delphy {
 
 // A candidate region is a portion of a single branch where a subtree rooted at X might be reattached.  The portion
 // ranges from [[b,muts[im-1].t]] (exclusive) to [[b,muts[im].t]] (inclusive), where b is the branch index `branch` and
-// `im` is the index `end_mut_idx` of the mutation that delimits the end of this candidate region.  For convenience,
+// `im` is the index `mut_idx` of the mutation that delimits the end of this candidate region.  For convenience,
 // muts[-1].t is the branch start time and muts[muts.size()].t is the branch end time.  Reattaching X anywhere on this
 // region requires a minimum of min_muts mutations.
 //
@@ -47,7 +47,7 @@ inline auto operator<<(std::ostream& os, const Candidate_region& region) -> std:
 //
 // The builder will not enter the branch X if it is present, and will generate regions as if the parent node P of X were
 // not in the tree if it's there (i.e., the regions on branch P will be reported as on branch S, and the final region of
-// P and initial region of S will be merged).  Further, it P is the root of the tree and `include_above_root` is set to
+// P and initial region of S will be merged).  Further, if P is the root of the tree and `include_above_root` is set to
 // `true`, then the region (S, std::ssize(S.mutations)) will be extended to -Infinity, removing all the preceding
 // regions (as if those paths had disappeared when X was removed).  If instead `include_above_root` is `false`, then the
 // region above P will be removed.  Before these adjustments, the regions describe the tree while X is still attached.

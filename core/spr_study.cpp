@@ -146,10 +146,15 @@ auto Spr_study_builder::account_for_Xs_detachment(bool can_change_root) -> void 
   auto num_muts_G_to_P = std::ssize(tree->at(P).mutations);
 
   for (auto& region : result) {
-    // May need to remove any region above the root is we can't change the root
-    if (region.branch == tree->root && not can_change_root) {
-      region.branch = -1;  // Mark for deletion below;
-      continue;
+    // May need to remove any region above the root if we can't change the root
+    if (not can_change_root) {
+      if (region.branch == tree->root) {
+        CHECK(region.is_above_root());
+        region.branch = -1;  // Mark for deletion below;
+        continue;
+      } else {
+        CHECK(not region.is_above_root());
+      }
     }
 
     // Otherwise, no regions except those on the G-P and P-S branches are adjusted
