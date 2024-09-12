@@ -30,6 +30,10 @@ class Run {
   auto set_local_moves_per_global_move(int local_moves_per_global_move) -> void;
   auto num_parts() const -> int { return num_parts_; }
   auto set_num_parts(int num_parts) -> void { num_parts_ = num_parts; partition_stencils_valid_ = false; }
+  auto target_coal_prior_cells() const -> int { return target_coal_prior_cells_; }
+  auto set_target_coal_prior_cells(int target_coal_prior_cells) -> void {
+    target_coal_prior_cells_ = target_coal_prior_cells; partition_stencils_valid_ = false;
+  }
   
   auto do_mcmc_steps(int steps) -> void;
 
@@ -163,6 +167,7 @@ class Run {
   
   Partition tree_partition_;
   int num_parts_;
+  int target_coal_prior_cells_;
   std::vector<std::vector<Partition_part_info>> partition_stencils_;
   mutable bool partition_stencils_valid_ = false;
   mutable int64_t next_partition_stencil_refresh_step_;

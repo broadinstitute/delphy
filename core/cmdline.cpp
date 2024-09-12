@@ -132,6 +132,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<std::string>())
       ("v0-mpox-hack", "Enable mpox hack (very crude treatment of APOBEC3 mechanism)",
        cxxopts::value<bool>()->default_value("false"))
+      ("v0-target-coal-prior-cells", "Target number of cells to use in parallelized coalescent prior (coalescent prior resolution is adjusted if actual number is more than 33% away from target); higher is more accurate but more expensive",
+       cxxopts::value<int>()->default_value("400"))
       ;
 
   try {
@@ -282,6 +284,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     init_mu /= 365.0;  // convert to subst / site / day
 
     auto mpox_hack_enabled = opts["v0-mpox-hack"].as<bool>();
+
+    auto target_coal_prior_cells = opts["v0-target-coal-prior-cells"].as<int>();
     
     // Create and configure initial run
     auto run = std::make_shared<Run>(*thread_pool, *prng, std::move(tree));
@@ -289,6 +293,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     run->set_alpha_move_enabled(alpha_move_enabled);
     run->set_mu_move_enabled(not fix_mutation_rate);
     run->set_mu(init_mu);
+    run->set_target_coal_prior_cells(target_coal_prior_cells);
 
     // Output BEAST input XML if needed
     if (opts.count("v0-out-beast-xml")) {
@@ -322,7 +327,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       .alpha_move_enabled = alpha_move_enabled,
       .mu_move_enabled = not fix_mutation_rate,
       .init_mu = init_mu,
-      .mpox_hack_enabled = mpox_hack_enabled
+      .mpox_hack_enabled = mpox_hack_enabled,
+      .target_coal_prior_cells = target_coal_prior_cells
     };
     
   } catch (cxxopts::exceptions::exception& x) {

@@ -34,6 +34,7 @@ struct Processed_cmd_line {
   bool mu_move_enabled;
   double init_mu;
   bool mpox_hack_enabled;
+  int target_coal_prior_cells;
 };
 auto process_args(int argc, char** argv) -> Processed_cmd_line;
 

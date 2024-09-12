@@ -13,6 +13,7 @@ Run::Run(ctpl::thread_pool& thread_pool, absl::BitGenRef bitgen, Phylo_tree tree
       bitgen_{bitgen},
       tree_{std::move(tree)},
       num_parts_{1},
+      target_coal_prior_cells_{400},
       pop_model_{calc_max_tip_time(tree_), 1000.0, 0.0},
       alpha_{10.0},
       nu_(tree_.num_sites(), 1.0),
@@ -624,13 +625,12 @@ auto Run::run_global_moves() -> void {
     max_t = std::max(max_t, tree_.at(node).t);
   }
   auto cur_t_step = coalescent_prior_.t_step();
-  auto target_num_coal_bins = 400.0;
-  auto target_t_step = (max_t - min_t) / target_num_coal_bins;
-  auto min_t_step = (1.0) / target_num_coal_bins;  // Avoid degenerate cases when tree collapses
+  auto target_t_step = (max_t - min_t) / target_coal_prior_cells_;
+  auto min_t_step = (1.0) / target_coal_prior_cells_;  // Avoid degenerate cases when tree collapses
   auto ratio_cur_to_target = cur_t_step / target_t_step;
   auto retarget =  // Don't do this unless really needed
       (cur_t_step > min_t_step) &&
-      (ratio_cur_to_target < 0.75 || ratio_cur_to_target > 1.50);
+      (ratio_cur_to_target < 2./3. || ratio_cur_to_target > 4./3.);
   if (retarget) {
     auto new_t_step = std::max(min_t_step, 0.5 * (cur_t_step + target_t_step)); // Avoid jumping to an extreme
     set_coalescent_prior_t_step(new_t_step);
