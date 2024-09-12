@@ -472,7 +472,10 @@ auto Subrun::spr1_move() -> void {
   auto t_new_G = (new_G == k_no_node) ? -std::numeric_limits<double>::max() : tree_.at(new_G).t;
   
   // Forbid zero-length branches
-  if (new_t_P == t_X || new_t_P == t_new_S || new_t_P == t_new_G) { return; }
+  if (new_t_P == t_X || new_t_P == t_new_S || new_t_P == t_new_G) {
+    spr.apply_graft(old_graft);
+    return;
+  }
 
   
   // 3. Pre-flight SPR move
