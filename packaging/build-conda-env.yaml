@@ -1,0 +1,12 @@
+name: base
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.10
+  - binutils=2.40
+  - conan=1.64.1
+  - make=4.4.1
+  - cmake=3.30.2
+  - gcc=13.2.0
+  - gxx=13.2.0
