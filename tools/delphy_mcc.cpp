@@ -82,7 +82,7 @@ auto output_mcc_tree(const Mcc_tree& mcc_tree, std::ostream& os) -> void {
       }
       auto days = node == mcc_tree.root
           ? 0.0
-          : mcc_tree.at(node).t() - mcc_tree.at_parent_of(node).t();
+          : mcc_tree.at(node).t_mrca() - mcc_tree.at_parent_of(node).t_mrca();
       os << ":" << (days / 365.0);  // Days (internal) -> Years (output)
     }
   }
@@ -102,10 +102,24 @@ auto main(int argc, char** argv) -> int {
   auto tree_is = std::ifstream{argv[1]};
   CHECK(tree_is);
 
-  auto min_state = 200'000'000'000L;
+  auto min_state = 0L;
   auto trees = read_beasty_trees(tree_is, min_state);
   tree_is.close();
 
+  std::cerr << absl::StreamFormat("Read %d trees", std::ssize(trees)) << std::endl;
+
+  min_state = trees.begin()->first;
+  auto max_state = trees.rbegin()->first;
+
+  auto max_burnin_state = min_state + ((max_state - min_state) * 3) / 10;  // Hard-coded 30% burn-in
+  
+  auto num_burnin_trees = 0;
+  for (auto i = trees.begin();
+       i != trees.end() && i->first <= max_burnin_state;
+       i = trees.erase(i)) {
+    ++num_burnin_trees;
+  }
+  std::cerr << absl::StreamFormat("Discarded %d trees as burn-in", num_burnin_trees) << std::endl;
   std::cerr << absl::StreamFormat("Read %d post-burnin trees", std::ssize(trees)) << std::endl;
 
   auto base_trees = std::vector<Phylo_tree*>{};

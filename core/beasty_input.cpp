@@ -77,7 +77,8 @@ auto read_beasty_trees(
   
   auto line = std::string{};
   CHECK(std::getline(is, line) && trim(line) == "#NEXUS");
-  CHECK(std::getline(is, line) && trim(line) == "");
+  while (std::getline(is, line) && line[0] == '#') { continue; }
+  CHECK(trim(line) == "");
   CHECK(std::getline(is, line) && trim(line) == "Begin taxa;");
   CHECK(std::getline(is, line) && trim(line).starts_with("Dimensions ntax="));
   auto ntax_sv = std::string_view{line.begin() + line.find('=')+1, line.begin() + line.find(';')};
