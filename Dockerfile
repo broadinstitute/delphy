@@ -86,7 +86,7 @@ RUN cmake ../.. -DCMAKE_BUILD_TYPE=${BUILD_TYPE} \
                 -DBUILD_SHARED_LIBS=OFF \
                 -DCMAKE_EXE_LINKER_FLAGS="-static"
 
-# compile; use all cores available, reserving one for system housekeeping
+# compile; use all cores available
 RUN make VERBOSE=1 -j $(nproc)
 
 # quick checdk that the binary will run
