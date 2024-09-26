@@ -34,6 +34,10 @@ struct Processed_cmd_line {
   bool mu_move_enabled;
   double init_mu;
   bool mpox_hack_enabled;
+  bool final_pop_size_move_enabled;
+  double init_final_pop_size;
+  bool pop_growth_rate_move_enabled;
+  double init_pop_growth_rate;
   int target_coal_prior_cells;
 };
 auto process_args(int argc, char** argv) -> Processed_cmd_line;

@@ -417,7 +417,9 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_MPOX_MU = 50,
     VT_MPOX_MU_STAR = 52,
     VT_MU_MOVE_ENABLED = 54,
-    VT_POP_T0 = 56
+    VT_POP_T0 = 56,
+    VT_FINAL_POP_SIZE_MOVE_ENABLED = 58,
+    VT_POP_GROWTH_RATE_MOVE_ENABLED = 60
   };
   int64_t step() const {
     return GetField<int64_t>(VT_STEP, 0);
@@ -500,6 +502,12 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   double pop_t0() const {
     return GetField<double>(VT_POP_T0, 0.0);
   }
+  bool final_pop_size_move_enabled() const {
+    return GetField<uint8_t>(VT_FINAL_POP_SIZE_MOVE_ENABLED, 1) != 0;
+  }
+  bool pop_growth_rate_move_enabled() const {
+    return GetField<uint8_t>(VT_POP_GROWTH_RATE_MOVE_ENABLED, 1) != 0;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int64_t>(verifier, VT_STEP, 8) &&
@@ -530,6 +538,8 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyField<double>(verifier, VT_MPOX_MU_STAR, 8) &&
            VerifyField<uint8_t>(verifier, VT_MU_MOVE_ENABLED, 1) &&
            VerifyField<double>(verifier, VT_POP_T0, 8) &&
+           VerifyField<uint8_t>(verifier, VT_FINAL_POP_SIZE_MOVE_ENABLED, 1) &&
+           VerifyField<uint8_t>(verifier, VT_POP_GROWTH_RATE_MOVE_ENABLED, 1) &&
            verifier.EndTable();
   }
 };
@@ -619,6 +629,12 @@ struct ParamsBuilder {
   void add_pop_t0(double pop_t0) {
     fbb_.AddElement<double>(Params::VT_POP_T0, pop_t0, 0.0);
   }
+  void add_final_pop_size_move_enabled(bool final_pop_size_move_enabled) {
+    fbb_.AddElement<uint8_t>(Params::VT_FINAL_POP_SIZE_MOVE_ENABLED, static_cast<uint8_t>(final_pop_size_move_enabled), 1);
+  }
+  void add_pop_growth_rate_move_enabled(bool pop_growth_rate_move_enabled) {
+    fbb_.AddElement<uint8_t>(Params::VT_POP_GROWTH_RATE_MOVE_ENABLED, static_cast<uint8_t>(pop_growth_rate_move_enabled), 1);
+  }
   explicit ParamsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -658,7 +674,9 @@ inline ::flatbuffers::Offset<Params> CreateParams(
     double mpox_mu = 0.0,
     double mpox_mu_star = 0.0,
     bool mu_move_enabled = true,
-    double pop_t0 = 0.0) {
+    double pop_t0 = 0.0,
+    bool final_pop_size_move_enabled = true,
+    bool pop_growth_rate_move_enabled = true) {
   ParamsBuilder builder_(_fbb);
   builder_.add_pop_t0(pop_t0);
   builder_.add_mpox_mu_star(mpox_mu_star);
@@ -681,6 +699,8 @@ inline ::flatbuffers::Offset<Params> CreateParams(
   builder_.add_step(step);
   builder_.add_nu(nu);
   builder_.add_num_parts(num_parts);
+  builder_.add_pop_growth_rate_move_enabled(pop_growth_rate_move_enabled);
+  builder_.add_final_pop_size_move_enabled(final_pop_size_move_enabled);
   builder_.add_mu_move_enabled(mu_move_enabled);
   builder_.add_mpox_hack_enabled(mpox_hack_enabled);
   builder_.add_alpha_move_enabled(alpha_move_enabled);
@@ -718,7 +738,9 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
     double mpox_mu = 0.0,
     double mpox_mu_star = 0.0,
     bool mu_move_enabled = true,
-    double pop_t0 = 0.0) {
+    double pop_t0 = 0.0,
+    bool final_pop_size_move_enabled = true,
+    bool pop_growth_rate_move_enabled = true) {
   auto nu__ = nu ? _fbb.CreateVector<double>(*nu) : 0;
   return delphy::api::CreateParams(
       _fbb,
@@ -748,7 +770,9 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
       mpox_mu,
       mpox_mu_star,
       mu_move_enabled,
-      pop_t0);
+      pop_t0,
+      final_pop_size_move_enabled,
+      pop_growth_rate_move_enabled);
 }
 
 }  // namespace api

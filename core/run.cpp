@@ -640,10 +640,14 @@ auto Run::run_global_moves() -> void {
   // Depends only on tree topology; after enough MCMC moves, the
   // resulting population model parameters are practically Gibbs sampled
   for (auto i = 0; i != 50; ++i) {
-    pop_size_move();
-    check_derived_quantities();
-    pop_growth_rate_move();
-    check_derived_quantities();
+    if (final_pop_size_move_enabled_) {
+      pop_size_move();
+      check_derived_quantities();
+    }
+    if (pop_growth_rate_move_enabled_) {
+      pop_growth_rate_move();
+      check_derived_quantities();
+    }
   }
 }
 

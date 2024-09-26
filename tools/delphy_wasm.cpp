@@ -730,8 +730,7 @@ auto delphy_run_get_pop_n0(Delphy_context& /*ctx*/, const Run& run) -> double {
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_set_pop_n0(Delphy_context& /*ctx*/, Run& run, double pop_n0) -> void {
-  auto old_pop_model = run.pop_model();
-  run.set_pop_model(Exp_pop_model{old_pop_model.t0(), pop_n0, old_pop_model.growth_rate()});
+  run.set_final_pop_size(pop_n0);
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -743,8 +742,7 @@ auto delphy_run_get_pop_g(Delphy_context& /*ctx*/, const Run& run) -> double {
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_set_pop_g(Delphy_context& /*ctx*/, Run& run, double pop_g) -> void {
-  auto old_pop_model = run.pop_model();
-  run.set_pop_model(Exp_pop_model{old_pop_model.t0(), old_pop_model.pop_at_t0(), pop_g});
+  run.set_pop_growth_rate(pop_g);
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -877,6 +875,30 @@ EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_set_mu_move_enabled(Delphy_context& /*ctx*/, Run& run, bool mu_move_enabled) -> void {
   run.set_mu_move_enabled(mu_move_enabled);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_is_final_pop_size_move_enabled(Delphy_context& /*ctx*/, const Run& run) -> bool {
+  return run.final_pop_size_move_enabled();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_final_pop_size_move_enabled(Delphy_context& /*ctx*/, Run& run, bool final_pop_size_move_enabled) -> void {
+  run.set_final_pop_size_move_enabled(final_pop_size_move_enabled);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_is_pop_growth_rate_move_enabled(Delphy_context& /*ctx*/, const Run& run) -> bool {
+  return run.pop_growth_rate_move_enabled();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_pop_growth_rate_move_enabled(Delphy_context& /*ctx*/, Run& run, bool pop_growth_rate_move_enabled) -> void {
+  run.set_pop_growth_rate_move_enabled(pop_growth_rate_move_enabled);
 }
 
 // Caller is responsible for freeing the flatbuffer (using fb_holder_delete).  Root object type: `Params`

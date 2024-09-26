@@ -34,9 +34,13 @@ auto Beasty_log_output::output_headers(const Run& run) -> void {
       *os_ << "gammaShape\t";
     }
     *os_ << "kappa\t";
-    *os_ << "CoalescentExponential\t"
-         << "ePopSize\t"
-         << "growthRate\t";
+    *os_ << "CoalescentExponential\t";
+    if (run.final_pop_size_move_enabled()) {
+      *os_ << "ePopSize\t";
+    }
+    if (run.pop_growth_rate_move_enabled()) {
+      *os_ << "growthRate\t";
+    }
     *os_ << "freqParameter.1\t"
          << "freqParameter.2\t"
          << "freqParameter.3\t"
@@ -112,13 +116,17 @@ auto Beasty_log_output::output_log(const Run& run) -> void {
     
     // Coalescent prior has units of (1/time)^(# coalescences)
     // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-    *os_ << run.log_coalescent_prior() + num_inner_nodes * std::log(365.0) << "\t"
-        
-        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-         << run.pop_model().pop_at_time(beast_t0)/365 << "\t"
-        
-        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-         << run.pop_model().growth_rate()*365 << "\t";
+    *os_ << run.log_coalescent_prior() + num_inner_nodes * std::log(365.0) << "\t";
+
+    if (run.final_pop_size_move_enabled()) {
+      // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+      *os_ << run.pop_model().pop_at_time(beast_t0)/365 << "\t";
+    }
+
+    if (run.pop_growth_rate_move_enabled()) {
+      // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+      *os_ << run.pop_model().growth_rate()*365 << "\t";
+    }
     
     if (not run.mpox_hack_enabled()) {
       *os_ << run.hky_pi()[Real_seq_letter::A] << "\t"

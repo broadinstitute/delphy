@@ -195,6 +195,8 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   params_builder.add_repartitioning_enabled(run.repartitioning_enabled());
   params_builder.add_alpha_move_enabled(run.alpha_move_enabled());
   params_builder.add_mu_move_enabled(run.mu_move_enabled());
+  params_builder.add_final_pop_size_move_enabled(run.final_pop_size_move_enabled());
+  params_builder.add_pop_growth_rate_move_enabled(run.pop_growth_rate_move_enabled());
 
   params_builder.add_log_posterior(run.log_G() + run.log_coalescent_prior() + run.log_other_priors());
   params_builder.add_log_other_priors(run.log_other_priors());
@@ -242,6 +244,8 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
   run.set_repartitioning_enabled(api_params->repartitioning_enabled());
   run.set_alpha_move_enabled(api_params->alpha_move_enabled());
   run.set_mu_move_enabled(api_params->mu_move_enabled());
+  run.set_final_pop_size_move_enabled(api_params->final_pop_size_move_enabled());
+  run.set_pop_growth_rate_move_enabled(api_params->pop_growth_rate_move_enabled());
 
   // Mpox hack
   run.set_mpox_hack_enabled(api_params->mpox_hack_enabled());

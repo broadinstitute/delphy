@@ -56,7 +56,7 @@ table TreeInfo {
 }
 
 table Params {
-  // Next free id: 27
+  // Next free id: 29
   
   step: int64   (id:  0);      // MCMC steps taken so far [unitless, >= 0]
   num_local_moves_per_global_move: int64 = -1 (id: 1);  // [unitless, >= 1].  -1 => use reasonable default
@@ -79,6 +79,8 @@ table Params {
   repartitioning_enabled: bool (id: 15);
   alpha_move_enabled: bool (id: 16);
   mu_move_enabled: bool = true (id: 25);
+  final_pop_size_move_enabled: bool = true (id: 27);
+  pop_growth_rate_move_enabled: bool = true (id: 28);
 
   // Read-only (setting these has no effect)
   log_posterior: float64 (id: 17);

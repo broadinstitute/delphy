@@ -51,7 +51,16 @@ class Run {
   auto hky_pi() const -> Seq_vector<double> { return hky_model_.pi_a; }
   auto set_hky_pi(const Seq_vector<double>& hky_pi) -> void { hky_model_.pi_a = hky_pi, invalidate_derived_quantities(); }
   auto pop_model() const -> const Exp_pop_model& { return pop_model_; }
-  auto set_pop_model(const Exp_pop_model& pop_model) -> void { pop_model_ = pop_model, invalidate_derived_quantities(); }
+  auto set_pop_model(const Exp_pop_model& pop_model) -> void {
+    pop_model_ = pop_model;
+    coalescent_prior_.pop_model_changed();
+    invalidate_derived_quantities(); }
+  auto final_pop_size() const -> double { return pop_model_.pop_at_t0(); }
+  auto set_final_pop_size(double final_pop_size) -> void {
+    set_pop_model(Exp_pop_model{pop_model_.t0(), final_pop_size, pop_model_.growth_rate()}); }
+  auto pop_growth_rate() const -> double { return pop_model_.growth_rate(); }
+  auto set_pop_growth_rate(double pop_growth_rate) -> void {
+    set_pop_model(Exp_pop_model{pop_model_.t0(), pop_model_.pop_at_t0(), pop_growth_rate}); }
 
   auto evo() const -> const Global_evo_model& {
     return validate_derived_quantities(), evo_; }
@@ -155,6 +164,12 @@ class Run {
   auto mu_move_enabled() const -> bool { return mu_move_enabled_; }
   auto set_mu_move_enabled(bool enabled) -> void {
     mu_move_enabled_ = enabled; }
+  auto final_pop_size_move_enabled() const -> bool { return final_pop_size_move_enabled_; }
+  auto set_final_pop_size_move_enabled(bool enabled) -> void {
+    final_pop_size_move_enabled_ = enabled; }
+  auto pop_growth_rate_move_enabled() const -> bool { return pop_growth_rate_move_enabled_; }
+  auto set_pop_growth_rate_move_enabled(bool enabled) -> void {
+    pop_growth_rate_move_enabled_ = enabled; }
 
  private:
   ctpl::thread_pool* thread_pool_;
@@ -186,6 +201,8 @@ class Run {
   bool repartitioning_enabled_ = true;
   bool alpha_move_enabled_ = false;
   bool mu_move_enabled_ = true;
+  bool final_pop_size_move_enabled_ = true;
+  bool pop_growth_rate_move_enabled_ = true;
 
   // Parameters
   Exp_pop_model pop_model_;

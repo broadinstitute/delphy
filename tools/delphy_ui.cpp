@@ -715,6 +715,36 @@ auto keyboard_func(unsigned char key, int, int) -> void {
       std::cerr << "*** MU RESET TO 1.0x10^-3 / site / year ***" << std::endl;
       break;
     }
+    case 'Z': {
+      if (ui_run->final_pop_size_move_enabled()) {
+        ui_run->set_final_pop_size_move_enabled(false);
+        std::cerr << "*** FINAL POPULATION SIZE FIXED ***" << std::endl;
+      } else {
+        ui_run->set_final_pop_size_move_enabled(true);
+        std::cerr << "*** FINAL POPULATION SIZE WILL BE INFERRED ***" << std::endl;
+      }
+      break;
+    }
+    case 'z': {
+      ui_run->set_final_pop_size(3.0 * 365.0);
+      std::cerr << "*** FINAL POPULATION SIZE RESET TO 3.0 years ***" << std::endl;
+      break;
+    }
+    case 'G': {
+      if (ui_run->pop_growth_rate_move_enabled()) {
+        ui_run->set_pop_growth_rate_move_enabled(false);
+        std::cerr << "*** POPULATION GROWTH RATE FIXED ***" << std::endl;
+      } else {
+        ui_run->set_pop_growth_rate_move_enabled(true);
+        std::cerr << "*** POPULATION GROWTH RATE WILL BE INFERRED ***" << std::endl;
+      }
+      break;
+    }
+    case 'g': {
+      ui_run->set_pop_growth_rate(0.0);
+      std::cerr << "*** POPULATION GROWTH RATE RESET TO 0.0 e-foldings / year ***" << std::endl;
+      break;
+    }
     case '=':
     case '+':  // Shift-=
     case '-':

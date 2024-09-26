@@ -100,6 +100,7 @@ auto Delphy_output::output_preamble(const Run& run, int64_t steps_per_sample) ->
   write_uint32(run.alpha_move_enabled() ? 1 : 0);
   write_uint32(run.mpox_hack_enabled() ? 1 : 0);
   write_uint32(run.mu_move_enabled() ? 1 : 0);
+  // Other flags like run.final_pop_size_move_enabled() and run.pop_growth_rate_move_enabled() derived from first Params
   write_float32(run.mu());
   
   auto api_tree_info = phylo_tree_to_api_tree_info(run.tree());

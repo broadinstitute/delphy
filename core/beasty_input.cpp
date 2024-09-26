@@ -261,10 +261,14 @@ auto export_beast_input(
   }
   os << "    <parameter id=\"kappa.s:input_alignment\" spec=\"parameter.RealParameter\" lower=\"0.0\" name=\"stateNode\">"
      << 2.0 << "</parameter>\n";
-  os << "    <parameter id=\"ePopSize.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">"
-     << 0.3 << "</parameter>\n";
-  os << "    <parameter id=\"growthRate.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">"
-     << 3.0E-4 << "</parameter>\n";
+  if (run.final_pop_size_move_enabled()) {
+    os << "    <parameter id=\"ePopSize.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">"
+       << 0.3 << "</parameter>\n";
+  }
+  if (run.pop_growth_rate_move_enabled()) {
+    os << "    <parameter id=\"growthRate.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">"
+       << 3.0E-4 << "</parameter>\n";
+  }
   os << "    <parameter id=\"freqParameter.s:input_alignment\" spec=\"parameter.RealParameter\" dimension=\"4\" lower=\"0.0\" name=\"stateNode\" upper=\"1.0\">"
      << 0.25 << "</parameter>\n";
   os << "  </state>\n";
@@ -283,7 +287,19 @@ auto export_beast_input(
   os << "    <distribution id=\"prior\" spec=\"util.CompoundDistribution\">\n";
   
   os << "      <distribution id=\"CoalescentExponential.t:input_alignment\" spec=\"Coalescent\">\n";
-  os << "        <populationModel id=\"ExponentialGrowth.t:input_alignment\" spec=\"ExponentialGrowth\" growthRate=\"@growthRate.t:input_alignment\" popSize=\"@ePopSize.t:input_alignment\"/>\n";
+  os << "        <populationModel id=\"ExponentialGrowth.t:input_alignment\" spec=\"ExponentialGrowth\" growthRate=\"";
+  if (run.pop_growth_rate_move_enabled()) {
+    os << "@growthRate.t:input_alignment";
+  } else {
+      os << absl::StreamFormat("%g", run.pop_growth_rate()*365.0);  // per year!
+  }
+  os << "\" popSize=\"";
+  if (run.final_pop_size_move_enabled()) {
+      os << "@ePopSize.t:input_alignment";
+  } else {
+      os << absl::StreamFormat("%g", run.final_pop_size()/365.0);  // years!
+  }
+  os << "\"/>\n";
   os << "        <treeIntervals id=\"TreeIntervals.t:input_alignment\" spec=\"TreeIntervals\" tree=\"@Tree.t:input_alignment\"/>\n";
   os << "      </distribution>\n";
 
@@ -292,10 +308,12 @@ auto export_beast_input(
     os << "        <Uniform id=\"Uniform.0\" name=\"distr\" upper=\"Infinity\"/>\n";
     os << "      </prior>\n";
   }
-  
-  os << "      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n";
-  os << "        <OneOnX id=\"OneOnX.1\" name=\"distr\"/>\n";
-  os << "      </prior>\n";
+
+  if (run.final_pop_size_move_enabled()) {
+    os << "      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n";
+    os << "        <OneOnX id=\"OneOnX.1\" name=\"distr\"/>\n";
+    os << "      </prior>\n";
+  }
 
   os << "      <prior id=\"FrequenciesPrior.s:input_alignment\" name=\"distribution\" x=\"@freqParameter.s:input_alignment\">\n";
   os << "        <Uniform id=\"Uniform.3\" name=\"distr\"/>\n";
@@ -311,16 +329,18 @@ auto export_beast_input(
     os << "      </prior>\n";
   }
 
-  auto growth_rate_mu = 0.001;  // per year - these defaults come from BEAUti2
-  auto growth_rate_scale = 30.701135;  // per year - these defaults come from BEAUti2
-  os << "      <prior id=\"GrowthRatePrior.t:input_alignment\" name=\"distribution\" x=\"@growthRate.t:input_alignment\">\n";
-  os << "        <LaplaceDistribution id=\"LaplaceDistribution.0\" name=\"distr\">\n";
-  os << "          <parameter id=\"RealParameter.3\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mu\">"
-     << absl::StreamFormat("%f", growth_rate_mu) << "</parameter>\n";
-  os << "          <parameter id=\"RealParameter.4\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"scale\">"
-     << absl::StreamFormat("%f", growth_rate_scale) << "</parameter>\n";
-  os << "        </LaplaceDistribution>\n";
-  os << "      </prior>\n";
+  if (run.pop_growth_rate_move_enabled()) {
+    auto growth_rate_mu = 0.001;  // per year - these defaults come from BEAUti2
+    auto growth_rate_scale = 30.701135;  // per year - these defaults come from BEAUti2
+    os << "      <prior id=\"GrowthRatePrior.t:input_alignment\" name=\"distribution\" x=\"@growthRate.t:input_alignment\">\n";
+    os << "        <LaplaceDistribution id=\"LaplaceDistribution.0\" name=\"distr\">\n";
+    os << "          <parameter id=\"RealParameter.3\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mu\">"
+       << absl::StreamFormat("%f", growth_rate_mu) << "</parameter>\n";
+    os << "          <parameter id=\"RealParameter.4\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"scale\">"
+       << absl::StreamFormat("%f", growth_rate_scale) << "</parameter>\n";
+    os << "        </LaplaceDistribution>\n";
+    os << "      </prior>\n";
+  }
 
   auto log_kappa_mu = 1.0;  // these defaults come from BEAUti2
   auto log_kappa_sigma = 1.25;  // these defaults come from BEAUti2
@@ -389,9 +409,13 @@ auto export_beast_input(
 
   os << "  <operator id=\"CoalescentExponentialWilsonBalding.t:input_alignment\" spec=\"WilsonBalding\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n";
   
-  os << "  <operator id=\"ePopSizeScaler.t:input_alignment\" spec=\"ScaleOperator\" parameter=\"@ePopSize.t:input_alignment\" scaleFactor=\"0.75\" weight=\"3.0\"/>\n";
+  if (run.final_pop_size_move_enabled()) {
+      os << "  <operator id=\"ePopSizeScaler.t:input_alignment\" spec=\"ScaleOperator\" parameter=\"@ePopSize.t:input_alignment\" scaleFactor=\"0.75\" weight=\"3.0\"/>\n";
+  }
 
-  os << "  <operator id=\"GrowthRateRandomWalk.t:input_alignment\" spec=\"RealRandomWalkOperator\" parameter=\"@growthRate.t:input_alignment\" weight=\"3.0\" windowSize=\"1.0\"/>\n";
+  if (run.pop_growth_rate_move_enabled()) {
+      os << "  <operator id=\"GrowthRateRandomWalk.t:input_alignment\" spec=\"RealRandomWalkOperator\" parameter=\"@growthRate.t:input_alignment\" weight=\"3.0\" windowSize=\"1.0\"/>\n";
+  }
 
   os << "  <operator id=\"FrequenciesExchanger.s:input_alignment\" spec=\"DeltaExchangeOperator\" delta=\"0.01\" weight=\"0.1\">\n";
   os << "    <parameter idref=\"freqParameter.s:input_alignment\"/>\n";
@@ -413,8 +437,12 @@ auto export_beast_input(
   }
   os << "    <log idref=\"kappa.s:input_alignment\"/>\n";
   os << "    <log idref=\"CoalescentExponential.t:input_alignment\"/>\n";
-  os << "    <log idref=\"ePopSize.t:input_alignment\"/>\n";
-  os << "    <log idref=\"growthRate.t:input_alignment\"/>\n";
+  if (run.final_pop_size_move_enabled()) {
+    os << "    <log idref=\"ePopSize.t:input_alignment\"/>\n";
+  }
+  if (run.pop_growth_rate_move_enabled()) {
+    os << "    <log idref=\"growthRate.t:input_alignment\"/>\n";
+  }
   os << "    <log idref=\"freqParameter.s:input_alignment\"/>\n";
   os << "  </logger>\n";
   os << "\n";

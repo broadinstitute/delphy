@@ -134,6 +134,14 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<bool>()->default_value("false"))
       ("v0-target-coal-prior-cells", "Target number of cells to use in parallelized coalescent prior (coalescent prior resolution is adjusted if actual number is more than 33% away from target); higher is more accurate but more expensive",
        cxxopts::value<int>()->default_value("400"))
+      ("v0-fix-final-pop-size", "Fix effective population size at time of last tip",
+       cxxopts::value<bool>()->default_value("false"))
+      ("v0-init-final-pop-size", "Initial (or fixed) value of effective population size at time of last time, in years (the effective population size includes a factor of the generation time)",
+       cxxopts::value<double>()->default_value("3.0"))
+      ("v0-fix-pop-growth-rate", "Fix effective population size growth rate",
+       cxxopts::value<bool>()->default_value("false"))
+      ("v0-init-pop-growth-rate", "Initial (or fixed) value of effective population size growth rate, in e-foldings / year",
+       cxxopts::value<double>()->default_value("0.0"))
       ;
 
   try {
@@ -283,6 +291,19 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     }
     init_mu /= 365.0;  // convert to subst / site / day
 
+    auto fix_final_pop_size = opts["v0-fix-final-pop-size"].as<bool>();
+    auto init_final_pop_size = opts["v0-init-final-pop-size"].as<double>();
+    if (init_final_pop_size <= 0.0) {
+      std::cerr << "ERROR: Initial effective population size at time of last tip must be positive, got "
+                << init_final_pop_size << " years"  << "\n";
+      std::exit(EXIT_FAILURE);
+    }
+    init_final_pop_size *= 365.0;  // convert to days
+    
+    auto fix_pop_growth_rate = opts["v0-fix-pop-growth-rate"].as<bool>();
+    auto init_pop_growth_rate = opts["v0-init-pop-growth-rate"].as<double>();
+    init_pop_growth_rate /= 365.0;  // convert to e-foldings / day
+    
     auto mpox_hack_enabled = opts["v0-mpox-hack"].as<bool>();
 
     auto target_coal_prior_cells = opts["v0-target-coal-prior-cells"].as<int>();
@@ -294,6 +315,10 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     run->set_mu_move_enabled(not fix_mutation_rate);
     run->set_mu(init_mu);
     run->set_target_coal_prior_cells(target_coal_prior_cells);
+    run->set_final_pop_size_move_enabled(not fix_final_pop_size);
+    run->set_final_pop_size(init_final_pop_size);
+    run->set_pop_growth_rate_move_enabled(not fix_pop_growth_rate);
+    run->set_pop_growth_rate(init_pop_growth_rate);
 
     // Output BEAST input XML if needed
     if (opts.count("v0-out-beast-xml")) {
@@ -328,6 +353,10 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       .mu_move_enabled = not fix_mutation_rate,
       .init_mu = init_mu,
       .mpox_hack_enabled = mpox_hack_enabled,
+      .final_pop_size_move_enabled = not fix_final_pop_size,
+      .init_final_pop_size = init_final_pop_size,
+      .pop_growth_rate_move_enabled = not fix_pop_growth_rate,
+      .init_pop_growth_rate = init_pop_growth_rate,
       .target_coal_prior_cells = target_coal_prior_cells
     };
     
