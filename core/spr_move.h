@@ -149,10 +149,13 @@ struct Spr_move {
 //
 // Returns the mutational history as a vector of timed mutations (`{t, {site, from, to}}`), sorted by increasing time.
 //
-// Internally, uses an adaptation of the conditional rejection sample method from:
+// The algorithm is heavily inspired by Nielsen's rejection sampling method,
+// and uniformization as described in Lartillot 2006:
 //
-//   Nielsen, R, "Mapping Mutations on Phylogenies", Syst. Biol. 51(5):729–739 (2002)
+// * Nielsen, R, "Mapping Mutations on Phylogenies", Syst. Biol. 51(5):729–739 (2002)
 //   https://dx.doi.org/10.1080/10635150290102393
+// * Lartillot, N, "Conjugate Gibbs sampling for Bayesian phylogenetic models", J. Comput. Bio. 13(10):1701-1722 (2006)
+//   https://dx.doi.org/10.1089/cmb.2006.13.1701
 //
 auto sample_mutational_history(
     Site_index L,

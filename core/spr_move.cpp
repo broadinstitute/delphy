@@ -1172,42 +1172,56 @@ auto sample_mutational_history(
   auto result = Scratch_vector<Mutation>{scratch};
   
   // For sites with deltas, sample CTMC trajectories starting with `from` state with at least one mutation
-  // until we get a trajectory with state `to` at the end
+  // until we get a trajectory with state `to` at the end.  This is equivalent to doing straight rejection
+  // sampling over unconstrained trajectories, but skipping quickly over all proposed trajectories with 0 mutations.
+  auto to_states = Scratch_vector<Real_seq_letter>{scratch};
+  auto mut_times = Scratch_vector<double>{scratch};
   auto trajectory = Scratch_vector<Mutation>{scratch};
-  auto t1_dist = Bounded_exponential_distribution{-mu, 0, T};
+  auto num_muts_dist_ge1 = K_truncated_poisson_distribution{mu*T, 1};
   for (const auto& [l, delta] : deltas) {
-    
+
+    auto n = 0;
     while (true) {
 
-      // t and s track the current time and state along the growing trajectory
-      auto t = -T;
+      // Trajectory has n >= 1 mutations:
+      // * from delta.from to to_states[0]
+      // * from to_states[0] to to_states[1]
+      // ...
+      // * from to_states[n-2] to to_states[n-1]
+      
+      n = num_muts_dist_ge1(bitgen);
+      to_states.clear();
       auto s = delta.from;
-      trajectory.clear();
-      
-      // Nielsen's trick: conditional on the trajectory having at least one mutation,
-      // the pdf for the time from the start to the first mutation is ~ exp[-mu t1], restricted to 0 <= t1 <= T
-      auto t1 = t1_dist(bitgen);
-      CHECK_GE(t1, 0.0);
-      CHECK_LE(t1, T);
-      CHECK_LE(-T + t1, 0.0);
-      auto s1 = choose_different_state(s, bitgen);
-      
-      trajectory.push_back(Mutation{s, l, s1, -T + t1});
-      t = -T + t1;
-      s = s1;
-      
-      while (true) {
-        t += absl::Exponential(bitgen, mu);
-        if (t >= 0.0) { break; }
-        auto next_s = choose_different_state(s, bitgen);
-        trajectory.push_back(Mutation{s, l, next_s, t});
-        s = next_s;
+      for (auto i = 0; i != n; ++i) {
+        s = choose_different_state(s, bitgen);
+        to_states.push_back(s);
       }
-      
-      if (s == delta.to) { break; } // Accept it!
-    }
 
-    for (const auto& m : trajectory) { result.push_back(m); }
+      if (s == delta.to) {
+        // Accept!
+        break;
+      } else {
+        // Reject and start over!
+        continue;
+      }
+    }
+    
+    // Times are uniformly distributed across trajectory
+    mut_times.clear();
+    for (auto i = 0; i != n; ++i) {
+      mut_times.push_back(absl::Uniform(absl::IntervalClosedOpen, bitgen, -T, 0.0));
+    }
+    std::ranges::sort(mut_times);
+
+    auto prev_s = delta.from;
+    for (auto i = 0; i != n; ++i) {
+      auto next_s = to_states[i];
+      auto t = mut_times[i];
+
+      result.push_back(Mutation{prev_s, l, next_s, t});
+      
+      prev_s = next_s;
+    }
   }
 
   // Conceptually, for sites without deltas, whose start and end states are equal, we also do rejection sampling as
@@ -1219,163 +1233,112 @@ auto sample_mutational_history(
   // Given the above, we conceptually iterate over every site, and perform rejection sampling until either an empty
   // trajectory results, or we realize that we're creating a proposed trajectory with 2+ mutations.  For almost every site,
   // we'll just end up sampling an empty trajectory.  Thus, we can easily skip the next `k` such sites until an incipient
-  // proposal with 2+ mutations arises.  Once the first two mutations of the first proposal have been decided, rejection
-  // sampling continues as usual.  The first proposal is completed and accepted if its end state matches its starting
+  // proposal with 2+ mutations arises.  Once we know that the proposal will have at least 2 mutations, we continue rejection
+  // sampling as usual.  The first proposal is completed and accepted if its end state matches its starting
   // state (this happens about 1/3 of the time).  Otherwise, an *entirely new* trajectory is proposed from scratch,
   // which will almost certainly be an empty trajectory.  Hence, the chosen sites do not necessarily end up having
   // mutations.
   //
   // Almost all of the time, this procedure will immediately skip over all sites in the genome, so it's very efficient.
   //
-  // Let's analyze the situation more thoroughly.  First, the probability of a proposal having 0, 1 or 2+ mutations are
-  // respectively:
+  // In detail:
+  // * let p_0 = e^(-mu T) be the probability that the proposed trajectory has 0 mutations
+  // * let p_1 = mu T e^(-mu T) be the probability that the proposed trajectory has 1 mutation
   //
-  //   p_0    = e^(-mu T),
-  //   p_1    = mu T e^(-mu T),
-  //   p_{2+} = 1 - e^(-mu T) - mu T e^(-mu T).
+  // The probability of rejection sampling eventually proposing a trajectory with 0 mutations without ever proposing
+  // one with 2 or more mutations is:
   //
-  // Hence, the probability that the rejection sampling process yields a 2+-mutation proposal before a 0-mutation
-  // proposal is:
+  //  p_* = sum_{k=0}^infty p_1^k p_0 = p_0 / (1 - p_1).
   //
-  //   p_tricky = sum_{k=0}^infty p_1^k p_{2+}
-  //            = p_{2+} / (1 - p_1).
+  // Conversely, the probability that rejection sampling at a particular site hits the point where a 2+-mutation
+  // trajectory should be proposed is:
   //
-  // So for each site, with probability p_tricky, we have to follow up by first constructing the beginning of
-  // a 2+-mutation proposal, then proceeding with rejection sampling as above.  The hardest bit is to kick off
-  // that 2+-mutation proposal.
+  //  1 - p_* = (1 - p0 - p1) / (1 - p1)
   //
-  // The pdf for a proposed trajectory having its first two mutations at times 0 <= t1 <= t2 <= T,
-  // measured from the trajectory start (at time -T), is given by:
+  // During rejection sampling over all sites, the number of sites for which empty trajectories will be accepted without
+  // a single 2+-mutation trajectory being proposed is distributed as Geo(p_*).  We thus repeatedly pick how many sites
+  // to skip over before slowing down and following through on one iteration of rejection sampling at a specific site.
+  // For viral-like parameters in a genomic epi setting (e.g., L = 30,000, mu = 1e-3 / year, T = ~2 weeks), we overwhelmingly
+  // immediately skip over all sites.
   //
-  //    p(t1, t2) = e^(-mu t1) mu e^(-mu (t2-t1)) mu = mu^2 e^(-mu t2).
-  //
-  // Integrating over all valid values of t1 and t2 yields the probablity of proposing a trajectory with
-  // at least 2 mutations, which matches p_{2+} above, as it should:
-  //
-  //    p_{2+} = int_0^T dt2  int_0^t2 dt1  p(t1,t2)
-  //           = 1 - e^(-mu T) - mu T e^(-mu T).
-  //
-  // Curiously, the distribution p(t1,t2) depends on t1 only in its domain: 0 <= t1 <= t2, but conditional on t2,
-  // then t1 is uniformly distributed over that range.
-  //
-  // Similarly, the pdf that a proposed trajectory has at least two mutations before time T from the start,
-  // the first of which is at t1, is also easy to calculate:
-  //
-  //    p(t1) = int_t1^T dt2 p(t1, t2) = mu (e^(-mu t1) - e^(-mu T)).
-  //
-  // [Sanity check: int_0^T dt1 p(t1) = 1 - e^(-mu T) - mu T e^(-mu T) = p_{2+}].
-  //
-  // When mu T >> 1, the condition of having at least two mutations over the range (0,T) is almost immaterial,
-  // so p(t1) reduces to the usual waiting time distribution for the first mutation.  Conversely, when mu T << 1,
-  // p(t1) is practically the triangular distribution with maximum at t1 = 0 and a zero at t1 = T.  In fact,
-  // since exp is a convex function, p(t1) is bounded by such a triangular distribution, and when mu T << 1,
-  // that bound is quite close to the reality.
-  //
-  // The above suggests the following algorithm for deciding the times of the first two mutations for
-  // an initial proposal that we know has at least two mutations:
-  //
-  // 1. Pick t1 from p(t1) using rejection sampling with the bounding distribution p_bound(t1) = 2(1-t1/T).
-  // 2. Pick t2 in the range (t1, T) using Nielsen's trick.
+  // Conceptually, we generate A->A trajectories for all L sites, and then filter out and mutations on sites which
+  // have explicit deltas, which we treated above.  Equivalently, if we ever stop at a site that has an explicit delta,
+  // we immediately skip it.
 
-  auto num_nondelta_sites = L - std::ssize(deltas);
-  auto expm1_minus_mu_T = std::expm1(-mu * T);
-  auto exp_minus_mu_T = 1.0 + expm1_minus_mu_T;
-  auto one_minus_p_0 = -expm1_minus_mu_T;
-  auto p_1 = mu * T * exp_minus_mu_T;
-  auto p_2plus = one_minus_p_0 - p_1;
-  auto p_tricky = p_2plus / (1.0 - p_1);
-  auto num_follow_up_sites = std::binomial_distribution{num_nondelta_sites, p_tricky}(bitgen);
+  auto p_0 = std::exp(-mu*T);
+  auto p_1 = mu * T * p_0;
+  //auto p_tricky               = (1 - p_0 - p_1) /          (1-p_1);
+  //auto one_minus_p_tricky     =      p_0        /          (1-p_1);
+  //auto log_one_minus_p_tricky = std::log(p_0)   - std::log1p(-p_1);
+  auto log_one_minus_p_tricky   =     -mu*T       - std::log1p(-p_1);
   
-  if (num_follow_up_sites > 0) {
-    // This code path is *very* rare, so it's coded for legibility, not efficiency
-
-    // Pick follow-up sites
-    auto follow_up_sites = Scratch_flat_hash_set<Site_index>{scratch};
-    while (std::ssize(follow_up_sites) != num_follow_up_sites) {
-      auto l = absl::Uniform(absl::IntervalClosedOpen, bitgen, 0, L);
-      if (deltas.contains(l)) { continue; }  // Handled above
-      follow_up_sites.insert(l);  // May collide, in which case std::ssize(follow_up_sites) doesn't increase
+  auto l = 0;
+  while (true) {
+    // We really want to do `delta = std::geometric_distribution{p_tricky}(bitgen); l += delta`, but since
+    // p_tricky is very small, the sample drawn might be large enough to overflow integers.
+    //
+    // So we break down the sampling of delta into an exponential sample followed by flooring, and exit early
+    // if the result of the exponential implies that delta >= L.
+    //
+    // Concretely, if u ~ Expo(-ln(1-p)), then floor(u) ~ Geo(p).  So if u >= L, then we can do an early exit
+    auto u = std::exponential_distribution{-log_one_minus_p_tricky}(bitgen);
+    if (u >= L) {
+      break;  // when we turn u into a Geo(p_tricky) sample and add it to l, we'd have l >= L
+    }
+    auto delta = std::floor(u);
+    l += delta;
+    if (l >= L) {
+      break;
     }
 
-    // Follow-up detailed rejection sampling at each such site
-    auto trajectory = Scratch_vector<Mutation>{scratch};
-    for (const auto& l : follow_up_sites) {
-      // Fake start & end states (caller should adjust if necessary)
-      auto start = Real_seq_letter::A;
-      auto end = start;
+    if (deltas.contains(l)) {
+      // Would have filtered afterwards
+      ++l;  // Restart rejection sampling from the *next* site
+      continue;
+    }
 
-      // Pick first mutation
-      trajectory.clear();
-      auto t1 = 0.0;
-      while (true) {
-        //
-        // Pick t1 according to triangular distribution using inverse transform sampling:
-        //
-        //     p_bound(t1) = (2/T) (1-t1/T)
-        // =>  P_bound(t1) = (2/T) (t1 - 0.5 t1^2/T) = 2 t1/T - t1^2/T^2
-        //     P_bound(t1) = u in [0,1)  => t1^2 - 2 T t1 + u T^2 = 0
-        //                               => t1 = (2 T - sqrt(4 T^2 - 4 u T^2)) / 2 = T * (1 - sqrt(1 - u))
-        //
-        auto u = absl::Uniform(absl::IntervalClosedOpen, bitgen, 0.0, 1.0);
-        t1 = T * (1.0 - std::sqrt(1.0 - u));
-        CHECK_GE(t1, 0.0);
-        CHECK_LE(t1, T);
-
-        // Rejection sampling against scaled p(t1):
-        //
-        //     p_scaled(t1) = (e^(-mu t1) - e^(-mu T)) / (1-e^(-mu T))
-        //                  = ((e^(-mu t1)-1) - (e^(-mu T)-1)) / (1-e^(-mu T))
-        //                  = (1 - (e^(-mu t1)-1) / (e^(-mu T)-1))
-        //                [<~ (1 - t1/T) = (T/2) * p_bound(t1)].
-        //
-        auto p_bound_t1 = (1 - t1/T);
-        CHECK_GE(p_bound_t1, 0.0);
-        auto p_scaled_t1 = (1 - std::expm1(-mu * t1) / expm1_minus_mu_T);
-        CHECK_GE(p_scaled_t1, 0.0);
-        CHECK_LE(p_scaled_t1, p_bound_t1);
+    // Propose trajectory starting from A with n >= 2 mutations:
+    // * from A to to_states[0]
+    // * from to_states[0] to to_states[1]
+    // ...
+    // * from to_states[n-2] to to_states[n-1]
+    
+    auto n = K_truncated_poisson_distribution{mu*T, 2}(bitgen);
+    to_states.clear();
+    auto s = Real_seq_letter::A;
+    for (auto i = 0; i != n; ++i) {
+      s = choose_different_state(s, bitgen);
+      to_states.push_back(s);
+    }
+    
+    if (s == Real_seq_letter::A) {
+      // Accept!
+      // Times are uniformly distributed across trajectory
+      mut_times.clear();
+      for (auto i = 0; i != n; ++i) {
+        mut_times.push_back(absl::Uniform(absl::IntervalClosedOpen, bitgen, -T, 0.0));
+      }
+      std::ranges::sort(mut_times);
+      
+      auto prev_s = Real_seq_letter::A;
+      for (auto i = 0; i != n; ++i) {
+        auto next_s = to_states[i];
+        auto t = mut_times[i];
         
-        if (absl::Uniform(absl::IntervalClosedOpen, bitgen, 0.0, p_bound_t1) <= p_scaled_t1) { break; }
-      };
-      auto s1 = choose_different_state(start, bitgen);
-      CHECK_LE(-T + t1, 0.0);
-      trajectory.push_back(Mutation{start, l, s1, -T + t1});
-
-      // Pick second mutation
-      auto t2 = Bounded_exponential_distribution{-mu, t1, T}(bitgen);
-      CHECK_GE(t2, t1);
-      CHECK_LE(t2, T);
-      CHECK_LE(-T + t2, 0.0);
-      auto s2 = choose_different_state(s1, bitgen);
-      trajectory.push_back(Mutation{s1, l, s2, -T + t2});
-
-      // Now continue rejection sampling of trajectory as normal
-      // (remember, new proposals start from scratch, not from the above 2-mutation start!)
-      auto t = -T + t2;
-      auto s = s2;
-      while (true) {
-        t += absl::Exponential(bitgen, mu);
-        if (t < 0.0) {
-          auto next_s = choose_different_state(s, bitgen);
-          trajectory.push_back(Mutation{s, l, next_s, t});
-          s = next_s;
-        } else {
-          if (s == end) {
-            // Accept trajectory
-            break;
-          } else {
-            // Reject it, and start *normally* from the very beginning
-            trajectory.clear();
-            t = -T;
-            s = start;
-          }
-        }
+        result.push_back(Mutation{prev_s, l, next_s, t});
+        
+        prev_s = next_s;
       }
       
-      // We have our trajectory for site l !
-      for (const auto& m : trajectory) { result.push_back(m); }
+      // We're done with this site; restart rejection sampling at the next site
+      ++l;
+    } else {
+      // Reject!  Continue rejection sampling from *this* site
+      continue;
     }
   }
 
+  // Finally, interleave all the mutations in time
   sort_mutations(result);
   
   return result;

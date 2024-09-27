@@ -4,6 +4,7 @@
 #include <cmath>
 
 #include <absl/log/check.h>
+#include <absl/random/distributions.h>
 
 namespace delphy {
 
@@ -65,6 +66,113 @@ class Bounded_exponential_distribution {
   double b_;
 
   auto bound(double x) -> double { return std::ranges::clamp(x, a_, b_); }
+};
+
+// k ~ Pois(lambda), with the restriction that k >= min_k, i.e.:
+//
+//         / c lambda^k / k!,      k >= min_k;
+//  p(k) = |
+//         \ 0,                    otherwise.
+//
+class K_truncated_poisson_distribution {
+ private:
+  double lambda_;
+  int min_k_;
+  double normalization_;
+  double term_before_min_k_;
+  double max_k_;
+  
+ public:
+  K_truncated_poisson_distribution(double lambda, int min_k)
+      : lambda_{lambda}, min_k_{min_k} {
+    CHECK_GT(lambda, 0.0);
+    CHECK_GE(min_k, 0);
+    
+    if (min_k_ <= lambda_) {
+      // Use dumb rejection sampling
+      normalization_ = 0.0;
+    } else {
+      // Use inverse transform sampling.  The trickiest part here is if min_k >> lambda, then
+      // the straightforward way of calculating the normalization constant runs into numerical issues!
+
+      // To avoid accumulation of roundoff errors, we cap the max result
+      max_k_ = std::max(10.0 * min_k_, 10.0 * lambda_);
+      
+      DCHECK_NE(min_k_, 0);
+      auto last_term = 1.0;
+      auto expm1_lambda = std::expm1(lambda_);
+      normalization_ = expm1_lambda;  // Note we already exclude k == 0 here!
+      for (auto k = 1; k < min_k_; ++k) {
+        
+        // On iteration entry:
+        // * last_term == lambda^{k-1} / (k-1)!
+        // * normalization_ == sum_{m=k}^infty (\lambda^m / m!)
+        
+        last_term *= lambda_ / k;
+        normalization_ -= last_term;
+        
+        // On iteration exit:
+        // * last_term == lambda^k / (k-1)!
+        // * normalization_ == sum_{m={k+1}}^infty (\lambda^m / m!)
+      }
+
+      // Here:
+      // * last_term = lambda^{min_k-1} / (min_k-1)!
+      // * normalization_ = sum_{m=min_k}^infty (\lambda^m / m!)
+
+      term_before_min_k_ = last_term;
+
+      if (normalization_ <= 0.0 || fabs(normalization_) < 1e-10*expm1_lambda) {
+        // Don't trust this calculation owing to roundoff!  Do it by summing up to a large value of k
+        // In typical Delphy usecases, this path should never run (we usually have min_k = 1 or 2)
+
+        normalization_ = 0.0;
+        auto new_last_term = last_term;
+        for (auto k = min_k_; k < max_k_; ++k) {
+        
+          // On iteration entry:
+          // * new_last_term == lambda^{k-1} / (k-1)!
+          // * normalization == sum_{m=min_k}^{k-1} (\lambda^m / m!)
+          
+          new_last_term *= lambda_ / k;
+          normalization_ += new_last_term;
+          
+          // On iteration exit:
+          // * new_last_term == lambda^k / (k-1)!
+          // * normalization == sum_{m=min_k}^{k}^infty (\lambda^m / m!)
+        }
+      }
+      
+      CHECK_GT(normalization_, 0.0);
+    }
+  }
+
+  template <typename URBG>
+  auto operator()(URBG& bitgen) -> int {
+    if (normalization_ == 0.0) {
+      // Use dumb rejection sampling
+      while (true) {
+        auto k = std::poisson_distribution<>{lambda_}(bitgen);
+        if (k >= min_k_) {
+          return k;
+        }
+      }
+    } else {
+      // Use inverse transform sampling (see above)
+      auto u = absl::Uniform(absl::IntervalClosedOpen, bitgen, 0.0, normalization_);
+      
+      auto cum_prob = 0.0;
+      auto k = min_k_;
+      auto term_k = term_before_min_k_;  // term_k == lambda^{min_k-1} / (min_k_ - 1)!
+      while (k < max_k_) {
+        term_k *= lambda_ / k;  // term_k == lambda^k / k!
+        cum_prob += term_k;
+        if (cum_prob > u) { break; }
+        ++k;
+      }
+      return k;
+    }
+  }
 };
 
 }  // namespace delphy
