@@ -73,7 +73,7 @@ class Mcc_tree : public Tree<Mcc_node> {
 
  private:
   Base_tree_vector<Phylo_tree*> base_trees_;
-  int master_base_tree_index_;
+  int master_base_tree_index_ = -1;
 };
 
 inline

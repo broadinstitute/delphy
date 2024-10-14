@@ -4,6 +4,12 @@ Some third-party libraries (e.g., abseil) are linked directly in the source tree
 
 # Building locally
 
+If necessary (e.g., Ubuntu >= 24.04), create and activate a python3 virtualenv to install packages
+```
+python3 -m venv delphy-venv
+source delphy-venv/bin/activate
+```
+
 Install Conan 1.59.0 (we do not yet support using Conan 2.0):
 ```
 pip3 install 'conan==1.59.0'   # See https://docs.conan.io/en/latest/installation.html for details

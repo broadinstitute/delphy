@@ -123,6 +123,6 @@ if(EMSCRIPTEN)
     $<$<CONFIG:DEBUG>:-gsource-map --source-map-base ./>
     -pthread -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
     -sEXPORTED_FUNCTIONS=_malloc,_free
-    -sEXPORTED_RUNTIME_METHODS=ccall,cwrap,allocateUTF8,UTF8ToString
+    -sEXPORTED_RUNTIME_METHODS=UTF8ToString
     -sINITIAL_MEMORY=1024mb)
 endif()

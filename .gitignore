@@ -1,4 +1,5 @@
 /.idea
+/delphy-venv
 /build
 .DS_Store
 TAGS

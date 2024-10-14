@@ -78,9 +78,9 @@ class K_truncated_poisson_distribution {
  private:
   double lambda_;
   int min_k_;
-  double normalization_;
-  double term_before_min_k_;
-  double max_k_;
+  double normalization_ = 0.0;
+  double term_before_min_k_ = 0.0;
+  double max_k_ = 0.0;
   
  public:
   K_truncated_poisson_distribution(double lambda, int min_k)
@@ -90,7 +90,6 @@ class K_truncated_poisson_distribution {
     
     if (min_k_ <= lambda_) {
       // Use dumb rejection sampling
-      normalization_ = 0.0;
     } else {
       // Use inverse transform sampling.  The trickiest part here is if min_k >> lambda, then
       // the straightforward way of calculating the normalization constant runs into numerical issues!
