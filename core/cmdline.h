@@ -19,6 +19,13 @@ auto build_rough_initial_tree_from_fasta(
     absl::BitGenRef bitgen)
     -> Phylo_tree;
 
+// TODO: Should live elsewhere
+auto build_rough_initial_tree_from_maple(
+    Maple_file&& in_maple,
+    bool random,
+    absl::BitGenRef bitgen)
+    -> Phylo_tree;
+
 struct Processed_cmd_line {
   std::unique_ptr<std::mt19937> prng;
   std::unique_ptr<ctpl::thread_pool> thread_pool;

@@ -92,8 +92,11 @@ auto delphy_get_commit_string(Delphy_context& /*ctx*/) -> const char* {
 }
 
 // In principle, the JS side can take any usable input format like a FASTA file and set up an initial tree.
-// But it may be easier to expose the C++ implementation?  How do we stream file contents?  Or maybe we don't?
-// Returns false on failure (TODO: better error handling)
+// But it's easier to expose the C++ implementations for input formats that we use for the command-line version.
+// We don't stream file contents: if a file is too large to hold in memory, too bad.
+//
+// TODO: Support a more informative failure callback
+
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_parse_fasta_into_initial_tree_async(
@@ -112,6 +115,37 @@ auto delphy_parse_fasta_into_initial_tree_async(
       auto init_random = false;  // true = random, false = UShER-like
       auto bitgen = std::mt19937{subbitgen_seed};
       auto tree = new Phylo_tree{build_rough_initial_tree_from_fasta(in_fasta, init_random, bitgen)};
+      
+      MAIN_THREAD_ASYNC_EM_ASM({
+          delphyRunCallback($0, $1);
+        }, callback_id, tree);
+    } catch (std::exception& e) {
+      std::cerr << e.what() << std::endl;
+      MAIN_THREAD_ASYNC_EM_ASM({
+          delphyFailCallback($0);
+        }, callback_id);
+    }
+  });
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_parse_maple_into_initial_tree_async(
+    Delphy_context& ctx,
+    const char* maple_bytes,
+    size_t num_maple_bytes,
+    int callback_id)   // Signature: (PhyloTree*) -> void
+    -> void {
+
+  auto subbitgen_seed = ctx.bitgen_();
+  ctx.thread_pool_.push([maple_bytes, num_maple_bytes, callback_id, subbitgen_seed](int /*thread_id*/) {
+    try {
+      auto in_maple_is = boost::iostreams::stream<boost::iostreams::array_source>{maple_bytes, num_maple_bytes};
+      auto in_maple = read_maple(in_maple_is);
+
+      auto init_random = false;  // true = random, false = UShER-like
+      auto bitgen = std::mt19937{subbitgen_seed};
+      auto tree = new Phylo_tree{build_rough_initial_tree_from_maple(std::move(in_maple), init_random, bitgen)};
       
       MAIN_THREAD_ASYNC_EM_ASM({
           delphyRunCallback($0, $1);
