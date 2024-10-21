@@ -4,21 +4,20 @@ Some third-party libraries (e.g., abseil) are linked directly in the source tree
 
 # Building locally
 
-If necessary (e.g., Ubuntu >= 24.04), create and activate a python3 virtualenv to install packages
+Create and activate a python3 virtualenv to install packages
 ```
-python3 -m venv delphy-venv
-source delphy-venv/bin/activate
-```
-
-Install Conan 1.59.0 (we do not yet support using Conan 2.0):
-```
-pip3 install 'conan==1.59.0'   # See https://docs.conan.io/en/latest/installation.html for details
+python3 -m venv delphy-venv      # Only needed once
+source delphy-venv/bin/activate  # Needed every time you open up a new shell
 ```
 
-Make some config adjustment to your Conan profile (see https://docs.conan.io/en/latest/getting_started.html)
+Install Conan 2.8.1
 ```
-conan profile new default --detect
-conan profile update settings.compiler.libcxx=libstdc++11 default
+pip3 install 'conan==2.8.1'   # See https://docs.conan.io/2/installation.html for details
+```
+
+Make some config adjustment to your Conan profile (see https://docs.conan.io/2/tutorial/consuming_packages/build_simple_cmake_project.html)
+```
+conan profile detect
 ```
 
 Make sure git submodules are checked out in the `third-party` directory:
@@ -28,14 +27,18 @@ git submodule update --init
 
 Set up build directory and install dependencies
 ```
-mkdir -p build/debug && cd build/debug
-conan install ../..
+# For Debug binaries
+conan install . --output-folder=build/debug --build=missing --settings=build_type=Debug
+cmake --preset conan-debug
+
+# For Release binaries
+conan install . --output-folder=build/release --build=missing --settings=build_type=Release
+cmake --preset conan-release
 ```
 
-Then compile as usual:
+Then compile as follows:
 ```
-cmake ../.. -DCMAKE_BUILD_TYPE=Debug  # Or Release
-make -j 6
+cmake --build --preset conan-debug  # Or conan-release
 ```
 
 This results in a program, `delphy`, that runs entirely on the command line.
@@ -46,14 +49,18 @@ of the tree inference process.
 
 First set up the build directory and install dependencies using the `wasm.profile`:
 ```
-mkdir -p build/wasm-debug && cd build/wasm-debug
-conan install ../.. -pr ../../wasm.profile
+# For Debug WASM blob
+conan install . --profile=wasm.profile --output-folder=build/wasm-debug --build=missing --settings=build_type=Debug
+cmake --preset conan-emscripten-debug
+
+# For Debug WASM blob
+conan install . --profile=wasm.profile --output-folder=build/wasm-release --build=missing --settings=build_type=Release
+cmake --preset conan-emscripten-release
 ```
 
-Then use the `emcmake` wrapper to cross-compile to WASM:
+Then compile as follows:
 ```
-emcmake cmake ../.. -DCMAKE_BUILD_TYPE=Debug  # Or Release
-make -j 6
+cmake --build --preset conan-emscripten-debug
 ```
 
 # Demo data

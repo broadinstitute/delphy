@@ -17,9 +17,6 @@ set(BUILD_PREV_GIT_HASH dadece1)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
 
-# Dependency management
-include(${CMAKE_BINARY_DIR}/conan_paths.cmake)
-
 # Git hash in version string (adapted from https://jonathanhamberg.com/post/cmake-embedding-git-hash/)
 include(${CMAKE_SOURCE_DIR}/CheckGit.cmake)
 CheckGitSetup()
