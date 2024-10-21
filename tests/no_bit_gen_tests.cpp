@@ -1,6 +1,8 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include <random>
+
 #include <absl/random/distributions.h>
 
 #include "no_bit_gen.h"
