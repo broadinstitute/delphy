@@ -121,5 +121,6 @@ if(EMSCRIPTEN)
     -pthread -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
     -sEXPORTED_FUNCTIONS=_malloc,_free
     -sEXPORTED_RUNTIME_METHODS=UTF8ToString
-    -sINITIAL_MEMORY=1024mb)
+    -sINITIAL_MEMORY=16mb
+    -sALLOW_MEMORY_GROWTH=1)
 endif()
