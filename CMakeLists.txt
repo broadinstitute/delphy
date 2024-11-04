@@ -121,6 +121,7 @@ if(EMSCRIPTEN)
     -pthread -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
     -sEXPORTED_FUNCTIONS=_malloc,_free
     -sEXPORTED_RUNTIME_METHODS=UTF8ToString
+    -sWASM_BIGINT             # Don't mess up 64-bit integers; see https://v8.dev/features/wasm-bigint
     -sINITIAL_MEMORY=16mb
     -sALLOW_MEMORY_GROWTH=1)
 endif()
