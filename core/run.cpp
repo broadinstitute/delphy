@@ -985,7 +985,26 @@ auto Run::gibbs_sample_all_nus() -> void {
       1.0 / (evo_.mu_l(l) * Ttwiddle_l[l] + alpha_)};
     
     auto old_nu_l = nu_[l];
-    auto new_nu_l = nu_l_dist(bitgen_);
+
+    // CAREFUL! When M_l[l] == 0 and alpha is very low, nu_l_dist is very concentrated
+    // very close to zero, to the point where random samples can come out as *exactly*
+    // zero owing to roundoff.  Those zeros then appear in logs (e.g., below), which
+    // wreaks havoc.  If nu_[l] is very close to zero, site l is effectively invariant,
+    // and no mutation will be ascribed to it.  Hence, the contribution to log_G is
+    // essentially zero, and it doesn't matter what the exact value is.  So we cop out
+    // here and put a crazy but nonzero lower bound `eps` on nu_[l].  Technically, we
+    // should then adjust the nu prior to distinguish between definite values above `eps`
+    // and "anything below `eps`".  Since the distinction has no effect on the sampled
+    // trees and remaining parameters, just on the reporting of the posterior values, we
+    // purposely keep things simple and don't make the above correction.
+    //
+    // A more consistent approach would be to allow for some sites to be honest-to-god
+    // invariant and *then* demand that the noninvariant sites have a relative site rate
+    // above eps.  One day, one day...
+    //
+    // Thanks to David Pascall at the Cambridge Infectious Diseases centre for
+    // reporting and helping debug this issue.
+    auto new_nu_l = std::max(1e-50, nu_l_dist(bitgen_));  // eps = 1e-50
     nu_[l] = new_nu_l;
     
     auto log_new_over_old_nu_l = std::log(new_nu_l / old_nu_l);
