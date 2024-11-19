@@ -90,10 +90,10 @@ static auto print_stats_line(const Run& run) -> void {
   }
 
   std::cerr << (run.alpha_move_enabled()
-                ? absl::StreamFormat("alpha = %.2f, ", run.alpha())
+                ? absl::StreamFormat("alpha = %.3g, ", run.alpha())
                 : absl::StreamFormat("alpha OFF, "))
             << (run.alpha_move_enabled()
-                ? absl::StreamFormat("nu ~ %.3f +/- %.3f, ", mean_nu, sigma_nu)
+                ? absl::StreamFormat("nu ~ %.3g +/- %.3g, ", mean_nu, sigma_nu)
                 : absl::StreamFormat("nu = 1.000, "))
             << absl::StreamFormat("Root Seq counts: [%d, %d, %d, %d], ",
                                   state_frequencies_at_root[A],
