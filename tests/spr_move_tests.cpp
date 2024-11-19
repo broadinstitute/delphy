@@ -1795,7 +1795,7 @@ TEST_F(Spr_move_simple_test, sample_mutational_history) {
   auto scratch = Scratch_space{};
 
   auto verbose = false;
-  auto num_histories = (estd::is_debug_enabled ? 1'000 : 10'000);
+  auto num_histories = (estd::is_debug_enabled ? 1'000 : 25'000);
   auto L = tree.num_sites();
   
   auto target_start_seq = Real_sequence{rT, rG, rC, rA};
