@@ -13,7 +13,7 @@ namespace delphy {
 
 auto read_fasta(
     std::istream& is,
-    const std::function<void(int)>& progress_hook)
+    const std::function<void(int, std::size_t)>& progress_hook)
     -> std::vector<Fasta_entry> {
   
   auto in_seq = false;
@@ -22,8 +22,11 @@ auto read_fasta(
   auto cur_seq = Sequence{};
 
   auto result = std::vector<Fasta_entry>{};
+  auto bytes_so_far = std::size_t{0};
 
   for (auto line = std::string{}; getline(is, line);) {
+    bytes_so_far += std::ssize(line) + 1;  // `+ 1` from end-of-line character
+    
     if (line.empty()) {
       continue;  // ignore empty lines
     }
@@ -35,7 +38,7 @@ auto read_fasta(
     if (line[0] == '>') {
       if (in_seq) {
         result.push_back(Fasta_entry{std::move(cur_id), std::move(cur_comments), std::move(cur_seq)});
-        progress_hook(std::ssize(result));
+        progress_hook(std::ssize(result), bytes_so_far);
         cur_seq.clear();
       }
 
@@ -65,7 +68,7 @@ auto read_fasta(
   }
   if (in_seq) {
     result.push_back(Fasta_entry{std::move(cur_id), std::move(cur_comments), std::move(cur_seq)});
-    progress_hook(std::ssize(result));
+    progress_hook(std::ssize(result), bytes_so_far);
   }
 
   return result;

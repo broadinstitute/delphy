@@ -16,7 +16,7 @@ struct Fasta_entry {
 
 auto read_fasta(
     std::istream& is,
-    const std::function<void(int)>& progress_hook = [](int){})
+    const std::function<void(int, std::size_t)>& progress_hook = [](int, std::size_t){})
     -> std::vector<Fasta_entry>;
 
 struct Maple_file {

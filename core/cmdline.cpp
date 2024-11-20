@@ -206,9 +206,15 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         std::cerr << "ERROR: Could not read input FASTA file " << in_fasta_filename << "\n";
         std::exit(EXIT_FAILURE);
       }
+      in_fasta_is.seekg(0, std::ios_base::end);
+      auto total_bytes = in_fasta_is.tellg();
+      in_fasta_is.seekg(0, std::ios_base::beg);
+      
       std::cerr << "Reading fasta file " << in_fasta_filename << "\n";
-      auto in_fasta = read_fasta(in_fasta_is, [](int num_read_so_far) {
-        std::cerr << absl::StreamFormat("- read %d so far\n", num_read_so_far);
+      auto in_fasta = read_fasta(in_fasta_is, [total_bytes](int seqs_so_far, size_t bytes_so_far) {
+        std::cerr << absl::StreamFormat("- read %d so far (%d of %d bytes = %.1f%%)\n",
+                                        seqs_so_far, bytes_so_far, total_bytes,
+                                        100.0 * bytes_so_far / static_cast<double>(total_bytes));
       });
       in_fasta_is.close();
       

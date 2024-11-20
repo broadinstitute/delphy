@@ -131,7 +131,7 @@ auto delphy_parse_fasta_into_initial_tree_async(
     const char* fasta_bytes,
     size_t num_fasta_bytes,
     int stage_progress_hook_id,         // (stage: int) -> void
-    int fasta_read_progress_hook_id,    // (seqs_so_far: int) -> void
+    int fasta_read_progress_hook_id,    // (seqs_so_far: int, bytes_so_far: size_t, total_bytes: size_t) -> void
     int initial_build_progress_hook_id, // (tips_so_far: int, total_tips: int) -> void
     int warning_hook_id,                // (msg: const char*) -> void (called synchronously)
     int callback_id)   // Signature: (PhyloTree*) -> void (success), or (msg: const char*) -> void (failure)
@@ -151,8 +151,9 @@ auto delphy_parse_fasta_into_initial_tree_async(
       auto in_fasta_is = boost::iostreams::stream<boost::iostreams::array_source>{fasta_bytes, num_fasta_bytes};
       auto in_fasta = read_fasta(
           in_fasta_is,
-          [fasta_read_progress_hook_id](int seqs_so_far) {
-            MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1);}, fasta_read_progress_hook_id, seqs_so_far);
+          [fasta_read_progress_hook_id, num_fasta_bytes](int seqs_so_far, size_t bytes_so_far) {
+            MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2, $3);},
+                                     fasta_read_progress_hook_id, seqs_so_far, bytes_so_far, num_fasta_bytes);
           });
       
       // Stage 2: Initial tree build file
