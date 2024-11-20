@@ -593,7 +593,8 @@ auto randomize_tree(Phylo_tree& tree, absl::BitGenRef bitgen) -> void {
 auto build_random_tree(
     Real_sequence ref_sequence,
     std::vector<Tip_desc> tip_descs,
-    absl::BitGenRef bitgen)
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook)
     -> Phylo_tree {
   
   // Sanity-check inputs
@@ -638,6 +639,9 @@ auto build_random_tree(
     }
   }
 
+  auto num_tips = static_cast<int>(std::ssize(tip_descs));
+  progress_hook(0, num_tips);
+  
   if (tip_descs.empty()) {
     auto tree = Phylo_tree{};
     tree.ref_sequence = std::move(ref_sequence);
@@ -645,7 +649,6 @@ auto build_random_tree(
   }
   
   // Pick root time
-  auto num_tips = static_cast<int>(std::ssize(tip_descs));
   auto max_root_t = std::ranges::min(tip_descs, {}, [](const auto& tip_desc) { return tip_desc.t; });
 
   // Set up tree with tips and ensure absence of links
@@ -665,6 +668,8 @@ auto build_random_tree(
     tree.at(tip).missations = tip_desc.missations;
   }
 
+  progress_hook(1, num_tips);
+
   // Join up sequentially
   tree.root = 0;
   for (auto i = Node_index{1}; i != num_tips; ++i) {
@@ -676,6 +681,7 @@ auto build_random_tree(
     tree.at(i).parent = k;
     tree.at(j).parent = k;
     tree.root = k;
+    progress_hook(i+1, num_tips);
   }
 
   // Bubble up missations (and remove redundant mutations along the way)
@@ -706,7 +712,8 @@ auto build_random_tree(
 auto build_usher_like_tree(
     Real_sequence ref_sequence,
     std::vector<Tip_desc> tip_descs,
-    absl::BitGenRef bitgen)
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook)
     -> Phylo_tree {
   
   // Sanity-check inputs
@@ -751,6 +758,9 @@ auto build_usher_like_tree(
     }
   }
 
+  auto num_tips = static_cast<int>(std::ssize(tip_descs));
+  progress_hook(0, num_tips);
+  
   if (tip_descs.empty()) {
     auto tree = Phylo_tree{};
     tree.ref_sequence = std::move(ref_sequence);
@@ -758,7 +768,6 @@ auto build_usher_like_tree(
   }
   
   // Pick root time
-  auto num_tips = static_cast<int>(std::ssize(tip_descs));
   auto max_root_t = std::ranges::min(tip_descs, {}, [](const auto& tip_desc) { return tip_desc.t; });
 
   // Set up tree with tips and ensure absence of links
@@ -814,6 +823,8 @@ auto build_usher_like_tree(
     sort_mutations(tree.at(B).mutations);
     tree.at(B).missations = tip_descs[B].missations;
   }
+
+  progress_hook(2, num_tips);
   
   // Sequentially graft every tip where it implies the fewest additional mutations
   auto scratch = Scratch_space{};
@@ -871,7 +882,7 @@ auto build_usher_like_tree(
     CHECK_NE(chosen_region_idx, -1);
     
     const auto& chosen_region = builder.result[chosen_region_idx];
-    std::cerr << "Attaching tip " << X << " to " << chosen_region << "\n";
+    //std::cerr << "Attaching tip " << X << " to " << chosen_region << "\n";
 
     // `chosen_region` is a branch from `G` to `S`.  We'll insert a new node P in the middle of chosen_region,
     // and arrange for P's children to be S and X.
@@ -941,6 +952,8 @@ auto build_usher_like_tree(
     sort_mutations(tree.at(X).mutations);
     tree.at(X).missations = tip_desc.missations;
 
+    progress_hook(X+1, num_tips);
+    
     // Reuse scratch memory for next tip
     scratch.reset();
   }

@@ -57,7 +57,8 @@ struct Delta_from_reference {
 };
 auto calculate_delta_from_reference(
     const Sequence& seq,
-    const Real_sequence& ref_seq)
+    const Real_sequence& ref_seq,
+    const std::function<void(const std::string&)>& warning_hook = [](const std::string&) {})
     -> Delta_from_reference;
 
 }  // namespace delphy

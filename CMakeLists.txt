@@ -49,6 +49,9 @@ if(EMSCRIPTEN)
   # Enable emscripten pthreads support
   set(CMAKE_CXX_FLAGS "-pthread ${CMAKE_CXX_FLAGS}")
 
+  # And enable proper support for exceptions at compile-time
+  set(CMAKE_CXX_FLAGS "-fwasm-exceptions ${CMAKE_CXX_FLAGS}")
+  
   # The version of Clang used by Emscripten 3.1.36 on my system doesn't expose key parts of the
   # C++20 library unless -fexperimental-library is specified.
   # Hopefully, the need for this option will disappear as compiler support for C++20 continues maturing.

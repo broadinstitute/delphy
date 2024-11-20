@@ -22,12 +22,13 @@ std::vector<std::string> delphy_cli_args{};
 auto build_rough_initial_tree_from_fasta(
     const std::vector<Fasta_entry>& in_fasta,
     bool random,
-    absl::BitGenRef bitgen)
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook,
+    const std::function<void(const std::string&)>& warning_hook)
     -> Phylo_tree {
 
   if (in_fasta.empty()) {
-    std::cerr << "FASTA file has no sequences!\n";
-    std::exit(EXIT_FAILURE);
+    throw std::runtime_error("FASTA file has no sequences!");
   }
   
   // Build out "consensus" sequence from all samples, which we'll use to initially impute missing data
@@ -45,9 +46,12 @@ auto build_rough_initial_tree_from_fasta(
   for (auto& fasta_entry : in_fasta) {
     // Ignore sequences that we can't date correctly
     if (auto opt_t = extract_date_from_sequence_id(fasta_entry.id); not opt_t.has_value()) {
-      std::cerr << absl::StreamFormat("WARNING: Ignoring sequence '%s', could not determine its date\n", fasta_entry.id);
+      warning_hook(absl::StrFormat("Ignoring sequence '%s', could not determine its date\n", fasta_entry.id));
     } else {
-      auto delta = calculate_delta_from_reference(fasta_entry.sequence, resolved_ref_seq);
+      auto delta = calculate_delta_from_reference(
+          fasta_entry.sequence, resolved_ref_seq,
+          [&fasta_entry, &warning_hook](const std::string& msg) { warning_hook(
+              absl::StrFormat("In sequence '%s', %s", fasta_entry.id, msg)); });
       tip_descs.push_back({
           .name = fasta_entry.id,
           .t = opt_t.value(),
@@ -58,9 +62,9 @@ auto build_rough_initial_tree_from_fasta(
 
   // Join all the tips up in a very rough approximation to greedy parsimony
   if (random) {
-    return build_random_tree(std::move(resolved_ref_seq), std::move(tip_descs), bitgen);
+    return build_random_tree(std::move(resolved_ref_seq), std::move(tip_descs), bitgen, progress_hook);
   } else {
-    return build_usher_like_tree(std::move(resolved_ref_seq), std::move(tip_descs), bitgen);
+    return build_usher_like_tree(std::move(resolved_ref_seq), std::move(tip_descs), bitgen, progress_hook);
   }
 }
 
@@ -203,11 +207,20 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         std::exit(EXIT_FAILURE);
       }
       std::cerr << "Reading fasta file " << in_fasta_filename << "\n";
-      auto in_fasta = read_fasta(in_fasta_is);
+      auto in_fasta = read_fasta(in_fasta_is, [](int num_read_so_far) {
+        std::cerr << absl::StreamFormat("- read %d so far\n", num_read_so_far);
+      });
       in_fasta_is.close();
       
       std::cerr << (init_random ? "Building random initial tree..." : "Building rough initial tree...") << "\n";
-      tree = build_rough_initial_tree_from_fasta(in_fasta, init_random, *prng);
+      tree = build_rough_initial_tree_from_fasta(
+          in_fasta, init_random, *prng,
+          [](int tips_so_far, int total_tips) {
+            std::cerr << absl::StreamFormat("- added %d / %d tips\n", tips_so_far, total_tips);
+          },
+          [](const std::string& warning_msg) {
+            std::cerr << absl::StreamFormat("WARNING: %s\n", warning_msg);
+          });
     }
     if (opts.count("v0-in-maple") > 0) {
       auto in_maple_filename = opts["v0-in-maple"].as<std::string>();

@@ -139,7 +139,8 @@ struct Tip_desc {
 auto build_random_tree(
     Real_sequence ref_sequence,
     std::vector<Tip_desc> tip_descs,
-    absl::BitGenRef bitgen)
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook = [](int,int){})
     -> Phylo_tree;
 
 // Given a reference sequence and a vector of tip descriptions, build an UShER-like tree (equivalent to greedily
@@ -147,7 +148,8 @@ auto build_random_tree(
 auto build_usher_like_tree(
     Real_sequence ref_sequence,
     std::vector<Tip_desc> tip_descs,
-    absl::BitGenRef bitgen)
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook = [](int,int){})
     -> Phylo_tree;
 
 }  // namespace delphy

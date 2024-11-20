@@ -16,7 +16,9 @@ namespace delphy {
 auto build_rough_initial_tree_from_fasta(
     const std::vector<Fasta_entry>& in_fasta,
     bool random,
-    absl::BitGenRef bitgen)
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook = [](int,int){},
+    const std::function<void(const std::string&)>& warning_hook = [](const std::string&){})
     -> Phylo_tree;
 
 // TODO: Should live elsewhere

@@ -11,7 +11,11 @@
 
 namespace delphy {
 
-auto read_fasta(std::istream& is) -> std::vector<Fasta_entry> {
+auto read_fasta(
+    std::istream& is,
+    const std::function<void(int)>& progress_hook)
+    -> std::vector<Fasta_entry> {
+  
   auto in_seq = false;
   auto cur_id = std::string{};
   auto cur_comments = std::string{};
@@ -31,6 +35,7 @@ auto read_fasta(std::istream& is) -> std::vector<Fasta_entry> {
     if (line[0] == '>') {
       if (in_seq) {
         result.push_back(Fasta_entry{std::move(cur_id), std::move(cur_comments), std::move(cur_seq)});
+        progress_hook(std::ssize(result));
         cur_seq.clear();
       }
 
@@ -60,6 +65,7 @@ auto read_fasta(std::istream& is) -> std::vector<Fasta_entry> {
   }
   if (in_seq) {
     result.push_back(Fasta_entry{std::move(cur_id), std::move(cur_comments), std::move(cur_seq)});
+    progress_hook(std::ssize(result));
   }
 
   return result;

@@ -14,7 +14,10 @@ struct Fasta_entry {
   Sequence sequence;
 };
 
-auto read_fasta(std::istream& is) -> std::vector<Fasta_entry>;
+auto read_fasta(
+    std::istream& is,
+    const std::function<void(int)>& progress_hook = [](int){})
+    -> std::vector<Fasta_entry>;
 
 struct Maple_file {
   Real_sequence ref_sequence;

@@ -4,7 +4,8 @@ namespace delphy {
 
 auto calculate_delta_from_reference(
     const Sequence& seq,
-    const Real_sequence& ref_seq)
+    const Real_sequence& ref_seq,
+    const std::function<void(const std::string&)>& warning_hook)
     -> Delta_from_reference {
   
   if (std::ssize(seq) != std::ssize(ref_seq)) {
@@ -19,8 +20,7 @@ auto calculate_delta_from_reference(
   for (auto l = Site_index{0}; l != L; ++l) {
     if (is_ambiguous(seq[l])) {
       if (seq[l] != Seq_letters::N) {
-        std::cerr << absl::StreamFormat(
-            "Warning: ambiguous state %c at site %d changed to N\n", to_char(seq[l]), l+1);
+        warning_hook(absl::StrFormat("ambiguous state %c at site %d changed to N\n", to_char(seq[l]), l+1));
       }
       result.missations.insert(Missation{l, ref_seq[l]}, ref_seq);
     } else {

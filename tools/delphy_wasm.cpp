@@ -23,21 +23,34 @@
 #include "beasty_output.h"
 
 // We use the delphy namespace instead of entering it so that the symbols below are
-// patently placed in the global namespace, but the symbols in the delphy namespace are easy to use.
-// This is the only `using namespace` declaration of the whole project.
+// patently placed in the global namespace, but the symbols in the delphy namespace are
+// easy to use.  This is the only `using namespace` declaration of the whole project.
 using namespace delphy;
 
-// The "*_async" methods in this file take a "callback_id" that is provided from the JS side by glue code
-// in delphy_api.js.  Given that callback_id, they can complete a calculation on the JS main thread with
-// a single result with the following magic snippet:
+// The "*_async" methods in this file take a "callback_id" that is provided from the JS
+// side by glue code in delphy_api.js.  Given that callback_id, they can complete a
+// calculation on the JS main thread with a single result with the following magic
+// snippet:
 //
 //  MAIN_THREAD_ASYNC_EM_ASM({
 //      delphyRunCallback($0, {result1: $1, result2: $2});
 //    }, callback_id, result1, result2);
 //
-// The callback value can be any JS value.  We leverage some dark Emscripten magic to ferry the variables
-// inside a call intact to the main thread, where they are assembled into the result object just before the
-// promise completes.
+// The callback value can be any JS value.  We leverage some dark Emscripten magic to
+// ferry the variables inside a call intact to the main thread, where they are assembled
+// into the result object just before the promise completes.
+
+// Similarly, some functions accept hooks that can be called during the execution, e.g.,
+// to report progress and warnings while loading a file.  On the C++ side, the functions
+// take in a `hook_id` that is provided from the JS side by glue code in delphy_api.js.
+// The C++ side calls the hook with the following magic snippet:
+//
+//  MAIN_THREAD_ASYNC_EM_ASM({
+//      delphyRunHook($0, {result1: $1, result2: $2});
+//    }, hook_id, result1, result2);
+//
+// The hook parameters are entirely unconstrained.
+
 
 // A Delphy context is a set of global variables visible across all API invocations.  Separate
 // contexts are completely independent
@@ -91,11 +104,25 @@ auto delphy_get_commit_string(Delphy_context& /*ctx*/) -> const char* {
   return k_delphy_commit_string.c_str();;
 }
 
-// In principle, the JS side can take any usable input format like a FASTA file and set up an initial tree.
-// But it's easier to expose the C++ implementations for input formats that we use for the command-line version.
-// We don't stream file contents: if a file is too large to hold in memory, too bad.
+// In principle, the JS side can take any usable input format like a FASTA file and set up
+// an initial tree.  But it's easier to expose the C++ implementations for input formats
+// that we use for the command-line version.  We don't stream file contents: if a file is
+// too large to hold in memory, too bad.
 //
 // TODO: Support a more informative failure callback
+//
+// The parsing proceeds through two stages:
+// 1. Reading FASTA file
+// 2. Building the initial tree, one tip at a time
+// The `stage_progress_hook` is called with the number 1 or 2 when entering each stage
+// (completion is notified by calling `callback_id`, which will usually cause an associated
+// JS Promise to complete).
+//
+// Every time a sequence is read from the original input file, the hook
+// `fasta_read_progress_hook` is called with the number of fasta sequences read so far.
+//
+// Every time a tip is added to the initial tree, the hook `initial_build_progress_hook` is
+// called with the number of tips added so far and the total number of tips.
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
@@ -103,27 +130,55 @@ auto delphy_parse_fasta_into_initial_tree_async(
     Delphy_context& ctx,
     const char* fasta_bytes,
     size_t num_fasta_bytes,
-    int callback_id)   // Signature: (PhyloTree*) -> void
+    int stage_progress_hook_id,         // (stage: int) -> void
+    int fasta_read_progress_hook_id,    // (seqs_so_far: int) -> void
+    int initial_build_progress_hook_id, // (tips_so_far: int, total_tips: int) -> void
+    int warning_hook_id,                // (msg: const char*) -> void (called synchronously)
+    int callback_id)   // Signature: (PhyloTree*) -> void (success), or (msg: const char*) -> void (failure)
     -> void {
 
   auto subbitgen_seed = ctx.bitgen_();
-  ctx.thread_pool_.push([fasta_bytes, num_fasta_bytes, callback_id, subbitgen_seed](int /*thread_id*/) {
+  ctx.thread_pool_.push([fasta_bytes, num_fasta_bytes,
+                         stage_progress_hook_id,
+                         fasta_read_progress_hook_id,
+                         initial_build_progress_hook_id,
+                         warning_hook_id,
+                         callback_id, subbitgen_seed](int /*thread_id*/) {
     try {
+      // Stage 1: Reading FASTA file
+      MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 1);}, stage_progress_hook_id);
+      
       auto in_fasta_is = boost::iostreams::stream<boost::iostreams::array_source>{fasta_bytes, num_fasta_bytes};
-      auto in_fasta = read_fasta(in_fasta_is);
-
+      auto in_fasta = read_fasta(
+          in_fasta_is,
+          [fasta_read_progress_hook_id](int seqs_so_far) {
+            MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1);}, fasta_read_progress_hook_id, seqs_so_far);
+          });
+      
+      // Stage 2: Initial tree build file
+      MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 2);}, stage_progress_hook_id);
+      
       auto init_random = false;  // true = random, false = UShER-like
       auto bitgen = std::mt19937{subbitgen_seed};
-      auto tree = new Phylo_tree{build_rough_initial_tree_from_fasta(in_fasta, init_random, bitgen)};
+      auto tree = new Phylo_tree{
+        build_rough_initial_tree_from_fasta(
+            in_fasta, init_random, bitgen,
+            [initial_build_progress_hook_id](int tips_so_far, int total_tips) {
+              MAIN_THREAD_ASYNC_EM_ASM(
+                  {delphyRunHook($0, $1, $2);},
+                  initial_build_progress_hook_id, tips_so_far, total_tips);
+            },
+            [warning_hook_id](const std::string& str) {
+              MAIN_THREAD_EM_ASM(  // Sync!  str may be destroyed as soon as this hook call ends 
+                  {delphyRunHook($0, UTF8ToString($1));},
+                  warning_hook_id, str.c_str());
+            })
+      };
       
-      MAIN_THREAD_ASYNC_EM_ASM({
-          delphyRunCallback($0, $1);
-        }, callback_id, tree);
+      MAIN_THREAD_ASYNC_EM_ASM({delphyRunCallback($0, $1);}, callback_id, tree);
     } catch (std::exception& e) {
-      std::cerr << e.what() << std::endl;
-      MAIN_THREAD_ASYNC_EM_ASM({
-          delphyFailCallback($0);
-        }, callback_id);
+      // Sync!  e.what() may be destroyed as soon as this hook call ends 
+      MAIN_THREAD_EM_ASM({delphyFailCallback($0, UTF8ToString($1));}, callback_id, e.what());
     }
   });
 }
