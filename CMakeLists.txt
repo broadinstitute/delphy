@@ -28,7 +28,11 @@ add_library(common INTERFACE)
 target_compile_options(common INTERFACE -Wall -Wextra -Werror)  # Treat all warnings as errors
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)  # Sane stack traces
 if(NOT DEFINED EMSCRIPTEN)
-  add_compile_options(-ffast-math -msse3)
+  add_compile_options(-ffast-math)
+  #if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")  # detects macOS, but still some Intel out there
+  if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
+    add_compile_options(-msse3)
+  endif()
 endif ()
 # add_compile_options(
 #   -fsanitize=address
@@ -44,7 +48,7 @@ endif ()
 if(EMSCRIPTEN)
   # Enable emscripten pthreads support
   set(CMAKE_CXX_FLAGS "-pthread ${CMAKE_CXX_FLAGS}")
-  
+
   # The version of Clang used by Emscripten 3.1.36 on my system doesn't expose key parts of the
   # C++20 library unless -fexperimental-library is specified.
   # Hopefully, the need for this option will disappear as compiler support for C++20 continues maturing.
@@ -101,11 +105,11 @@ if(NOT DEFINED EMSCRIPTEN)
   add_executable(delphy tools/delphy.cpp)
   target_include_directories(delphy PUBLIC tools)
   target_link_libraries(delphy delphy_core)
-  
+
   add_executable(delphy_mcc tools/delphy_mcc.cpp)
   target_include_directories(delphy_mcc PUBLIC tools)
   target_link_libraries(delphy_mcc delphy_core)
-  
+
   add_executable(beast_trees_to_dphy tools/beast_trees_to_dphy.cpp)
   target_include_directories(beast_trees_to_dphy PUBLIC tools)
   target_link_libraries(beast_trees_to_dphy delphy_core)

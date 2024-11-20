@@ -2,7 +2,11 @@
 #define DELPHY_API_H_
 
 #include <cstdint>
+#ifdef __APPLE__
+#include <machine/endian.h>
+#else
 #include <endian.h>
+#endif
 #include <cstddef>
 
 #include "api_generated.h"
