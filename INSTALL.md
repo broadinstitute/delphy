@@ -53,14 +53,14 @@ First set up the build directory and install dependencies using the `wasm.profil
 conan install . --profile=wasm.profile --output-folder=build/wasm-debug --build=missing --settings=build_type=Debug
 cmake --preset conan-emscripten-debug
 
-# For Debug WASM blob
+# For Release WASM blob
 conan install . --profile=wasm.profile --output-folder=build/wasm-release --build=missing --settings=build_type=Release
 cmake --preset conan-emscripten-release
 ```
 
 Then compile as follows:
 ```
-cmake --build --preset conan-emscripten-debug
+cmake --build --preset conan-emscripten-debug     # Or conan-emscripten-release
 ```
 
 # Demo data
