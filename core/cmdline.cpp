@@ -19,17 +19,21 @@ namespace delphy {
 bool delphy_invoked_via_cli{false};
 std::vector<std::string> delphy_cli_args{};
 
-auto build_rough_initial_tree_from_fasta(
+// Repackage a set of equal-length sequences as a reference + diffs
+auto fasta_to_maple(
     const std::vector<Fasta_entry>& in_fasta,
-    bool random,
-    absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook,
     const std::function<void(const std::string&)>& warning_hook)
-    -> Phylo_tree {
-
+    -> Maple_file {
+  
+  auto result = Maple_file{};
+  
   if (in_fasta.empty()) {
-    throw std::runtime_error("FASTA file has no sequences!");
+    throw std::runtime_error("Input has no sequences!");
   }
+
+  auto total_seqs = std::ssize(in_fasta);
+  progress_hook(0, total_seqs);
   
   // Build out "consensus" sequence from all samples, which we'll use to initially impute missing data
   // (helps prevent things like a site that's missing in almost all sequences being imputed as something
@@ -38,52 +42,51 @@ auto build_rough_initial_tree_from_fasta(
       in_fasta | std::views::transform([](const auto& e) { return e.sequence; }));
 
   // Arbitrary pick the consensus sequence as a reference
-  auto resolved_ref_seq = consensus_sequence;
+  result.ref_sequence = consensus_sequence;
 
   // Set up tips by converting every sequence into a list of mutations from the reference
   // (essentially, convert the FASTA to a MAPLE file)
-  auto tip_descs = std::vector<Tip_desc>{};
+  auto seqs_so_far = 0;
   for (auto& fasta_entry : in_fasta) {
     // Ignore sequences that we can't date correctly
     if (auto opt_t = extract_date_from_sequence_id(fasta_entry.id); not opt_t.has_value()) {
-      warning_hook(absl::StrFormat("Ignoring sequence '%s', could not determine its date\n", fasta_entry.id));
+      warning_hook(absl::StrFormat("Ignoring sequence '%s', could not determine its date", fasta_entry.id));
     } else {
       auto delta = calculate_delta_from_reference(
-          fasta_entry.sequence, resolved_ref_seq,
+          fasta_entry.sequence, result.ref_sequence,
           [&fasta_entry, &warning_hook](const std::string& msg) { warning_hook(
               absl::StrFormat("In sequence '%s', %s", fasta_entry.id, msg)); });
-      tip_descs.push_back({
+      result.tip_descs.push_back({
           .name = fasta_entry.id,
           .t = opt_t.value(),
           .seq_deltas = std::move(delta.seq_deltas),
           .missations = std::move(delta.missations)});
     }
-  }
 
-  // Join all the tips up in a very rough approximation to greedy parsimony
-  if (random) {
-    return build_random_tree(std::move(resolved_ref_seq), std::move(tip_descs), bitgen, progress_hook);
-  } else {
-    return build_usher_like_tree(std::move(resolved_ref_seq), std::move(tip_descs), bitgen, progress_hook);
+    ++seqs_so_far;
+    progress_hook(seqs_so_far, total_seqs);
   }
+  
+  return result;
 }
+
 
 auto build_rough_initial_tree_from_maple(
     Maple_file&& in_maple,
     bool random,
-    absl::BitGenRef bitgen)
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook)
     -> Phylo_tree {
 
   if (in_maple.tip_descs.empty()) {
-    std::cerr << "MAPLE file has no sequences!\n";
-    std::exit(EXIT_FAILURE);
+    throw std::runtime_error("Input has no sequences!");
   }
   
   // Join all the tips up in a very rough approximation to greedy parsimony
   if (random) {
-    return build_random_tree(std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen);
+    return build_random_tree(std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen, progress_hook);
   } else {
-    return build_usher_like_tree(std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen);
+    return build_usher_like_tree(std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen, progress_hook);
   }
 }
 
@@ -199,6 +202,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       std::cerr << "ERROR: The options --v0-in-fasta and --v0-in-maple are mutually exclusive.  Pick one.\n";
       std::exit(EXIT_FAILURE);
     }
+
+    auto maple_file = Maple_file{};  // Filled in directly with a MAPLE file, or indirectly with a FASTA file
     if (opts.count("v0-in-fasta") > 0) {
       auto in_fasta_filename = opts["v0-in-fasta"].as<std::string>();
       auto in_fasta_is = std::ifstream{in_fasta_filename};
@@ -212,17 +217,16 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       
       std::cerr << "Reading fasta file " << in_fasta_filename << "\n";
       auto in_fasta = read_fasta(in_fasta_is, [total_bytes](int seqs_so_far, size_t bytes_so_far) {
-        std::cerr << absl::StreamFormat("- read %d so far (%d of %d bytes = %.1f%%)\n",
+        std::cerr << absl::StreamFormat("- read %d sequence so far (%d of %d bytes = %.1f%%)\n",
                                         seqs_so_far, bytes_so_far, total_bytes,
                                         100.0 * bytes_so_far / static_cast<double>(total_bytes));
       });
       in_fasta_is.close();
-      
-      std::cerr << (init_random ? "Building random initial tree..." : "Building rough initial tree...") << "\n";
-      tree = build_rough_initial_tree_from_fasta(
-          in_fasta, init_random, *prng,
-          [](int tips_so_far, int total_tips) {
-            std::cerr << absl::StreamFormat("- added %d / %d tips\n", tips_so_far, total_tips);
+
+      std::cerr << "Analysing fasta file " << in_fasta_filename << "\n";
+      maple_file = fasta_to_maple(in_fasta, 
+          [](int seqs_so_far, int total_seqs) {
+            std::cerr << absl::StreamFormat("- analysed %d / %d sequences\n", seqs_so_far, total_seqs);
           },
           [](const std::string& warning_msg) {
             std::cerr << absl::StreamFormat("WARNING: %s\n", warning_msg);
@@ -236,12 +240,16 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         std::exit(EXIT_FAILURE);
       }
       std::cerr << "Reading MAPLE file " << in_maple_filename << "\n";
-      auto in_maple = read_maple(in_maple_is);
+      maple_file = read_maple(in_maple_is);
       in_maple_is.close();
-      
-      std::cerr << (init_random ? "Building random initial tree..." : "Building rough initial tree...") << "\n";
-      tree = build_rough_initial_tree_from_maple(std::move(in_maple), init_random, *prng);
     }
+    
+    std::cerr << (init_random ? "Building random initial tree..." : "Building rough initial tree...") << "\n";
+    tree = build_rough_initial_tree_from_maple(
+        std::move(maple_file), init_random, *prng,
+        [](int tips_so_far, int total_tips) {
+          std::cerr << absl::StreamFormat("- added %d / %d tips\n", tips_so_far, total_tips);
+        });
     
     assert_phylo_tree_integrity(tree);
     

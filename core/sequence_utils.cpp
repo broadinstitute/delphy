@@ -20,7 +20,7 @@ auto calculate_delta_from_reference(
   for (auto l = Site_index{0}; l != L; ++l) {
     if (is_ambiguous(seq[l])) {
       if (seq[l] != Seq_letters::N) {
-        warning_hook(absl::StrFormat("ambiguous state %c at site %d changed to N\n", to_char(seq[l]), l+1));
+        warning_hook(absl::StrFormat("ambiguous state %c at site %d changed to N", to_char(seq[l]), l+1));
       }
       result.missations.insert(Missation{l, ref_seq[l]}, ref_seq);
     } else {

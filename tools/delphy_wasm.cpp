@@ -111,10 +111,11 @@ auto delphy_get_commit_string(Delphy_context& /*ctx*/) -> const char* {
 //
 // TODO: Support a more informative failure callback
 //
-// The parsing proceeds through two stages:
+// The parsing proceeds through three stages:
 // 1. Reading FASTA file
-// 2. Building the initial tree, one tip at a time
-// The `stage_progress_hook` is called with the number 1 or 2 when entering each stage
+// 2. Analyzing sequences (diffing them from consensus, mapping gaps, simplifying ambiguities)
+// 3. Building the initial tree, one tip at a time
+// The `stage_progress_hook` is called a number {1,2,3} when entering each stage
 // (completion is notified by calling `callback_id`, which will usually cause an associated
 // JS Promise to complete).
 //
@@ -132,6 +133,7 @@ auto delphy_parse_fasta_into_initial_tree_async(
     size_t num_fasta_bytes,
     int stage_progress_hook_id,         // (stage: int) -> void
     int fasta_read_progress_hook_id,    // (seqs_so_far: int, bytes_so_far: size_t, total_bytes: size_t) -> void
+    int analysis_progress_hook_id,      // (seqs_so_far: int, total_seqs: int) -> void
     int initial_build_progress_hook_id, // (tips_so_far: int, total_tips: int) -> void
     int warning_hook_id,                // (msg: const char*) -> void (called synchronously)
     int callback_id)   // Signature: (PhyloTree*) -> void (success), or (msg: const char*) -> void (failure)
@@ -141,13 +143,13 @@ auto delphy_parse_fasta_into_initial_tree_async(
   ctx.thread_pool_.push([fasta_bytes, num_fasta_bytes,
                          stage_progress_hook_id,
                          fasta_read_progress_hook_id,
+                         analysis_progress_hook_id,
                          initial_build_progress_hook_id,
                          warning_hook_id,
                          callback_id, subbitgen_seed](int /*thread_id*/) {
     try {
       // Stage 1: Reading FASTA file
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 1);}, stage_progress_hook_id);
-      
       auto in_fasta_is = boost::iostreams::stream<boost::iostreams::array_source>{fasta_bytes, num_fasta_bytes};
       auto in_fasta = read_fasta(
           in_fasta_is,
@@ -155,24 +157,33 @@ auto delphy_parse_fasta_into_initial_tree_async(
             MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2, $3);},
                                      fasta_read_progress_hook_id, seqs_so_far, bytes_so_far, num_fasta_bytes);
           });
-      
-      // Stage 2: Initial tree build file
+
+      // Stage 2: Analyse it (= transform it into a MAPLE file)
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 2);}, stage_progress_hook_id);
-      
-      auto init_random = false;  // true = random, false = UShER-like
-      auto bitgen = std::mt19937{subbitgen_seed};
-      auto tree = new Phylo_tree{
-        build_rough_initial_tree_from_fasta(
-            in_fasta, init_random, bitgen,
-            [initial_build_progress_hook_id](int tips_so_far, int total_tips) {
+      auto maple_file = fasta_to_maple(in_fasta, 
+            [analysis_progress_hook_id](int seqs_so_far, int total_seqs) {
               MAIN_THREAD_ASYNC_EM_ASM(
                   {delphyRunHook($0, $1, $2);},
-                  initial_build_progress_hook_id, tips_so_far, total_tips);
+                  analysis_progress_hook_id, seqs_so_far, total_seqs);
             },
             [warning_hook_id](const std::string& str) {
               MAIN_THREAD_EM_ASM(  // Sync!  str may be destroyed as soon as this hook call ends 
                   {delphyRunHook($0, UTF8ToString($1));},
                   warning_hook_id, str.c_str());
+            });
+      
+      // Stage 3: Initial tree build file
+      MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 3);}, stage_progress_hook_id);
+      
+      auto init_random = false;  // true = random, false = UShER-like
+      auto bitgen = std::mt19937{subbitgen_seed};
+      auto tree = new Phylo_tree{
+        build_rough_initial_tree_from_maple(
+            std::move(maple_file), init_random, bitgen,
+            [initial_build_progress_hook_id](int tips_so_far, int total_tips) {
+              MAIN_THREAD_ASYNC_EM_ASM(
+                  {delphyRunHook($0, $1, $2);},
+                  initial_build_progress_hook_id, tips_so_far, total_tips);
             })
       };
       

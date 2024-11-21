@@ -13,6 +13,14 @@
 namespace delphy {
 
 // TODO: Should live elsewhere
+// Repackage a set of equal-length sequences as a reference + diffs
+auto fasta_to_maple(
+    const std::vector<Fasta_entry>& in_fasta,
+    const std::function<void(int,int)>& progress_hook = [](int,int){},
+    const std::function<void(const std::string&)>& warning_hook = [](const std::string&){})
+    -> Maple_file;
+
+// TODO: Should live elsewhere
 auto build_rough_initial_tree_from_fasta(
     const std::vector<Fasta_entry>& in_fasta,
     bool random,
@@ -25,7 +33,8 @@ auto build_rough_initial_tree_from_fasta(
 auto build_rough_initial_tree_from_maple(
     Maple_file&& in_maple,
     bool random,
-    absl::BitGenRef bitgen)
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook = [](int,int){})
     -> Phylo_tree;
 
 struct Processed_cmd_line {
