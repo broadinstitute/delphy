@@ -91,8 +91,10 @@ if(NOT DEFINED EMSCRIPTEN)
   add_subdirectory(tests)
 endif()
 
-# Set up delphy_ui executable if we have OpenGL and GLUT
-if(OpenGL_FOUND AND GLUT_FOUND)
+# Set up delphy_ui executable if we have OpenGL and GLUT.
+# Disabling on macOS because GL is deprecated (therefore more trouble
+# than it's worth for the time being). See notes in tools/delphy_ui.cpp.
+if(OpenGL_FOUND AND GLUT_FOUND AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
   add_executable(delphy_ui tools/delphy_ui.cpp)
   target_include_directories(delphy_ui PUBLIC tools)
   target_link_libraries(delphy_ui
