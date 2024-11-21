@@ -23,7 +23,7 @@ std::vector<std::string> delphy_cli_args{};
 auto fasta_to_maple(
     const std::vector<Fasta_entry>& in_fasta,
     const std::function<void(int,int)>& progress_hook,
-    const std::function<void(const std::string&, Sequence_warning_code, const std::string)>& warning_hook)
+    const std::function<void(const std::string&, const Sequence_warning&)>& warning_hook)
     -> Maple_file {
   
   auto result = Maple_file{};
@@ -62,10 +62,7 @@ auto fasta_to_maple(
   for (auto& fasta_entry : in_fasta) {
     // Ignore sequences that we can't date correctly
     if (auto opt_t = extract_date_from_sequence_id(fasta_entry.id); not opt_t.has_value()) {
-      warning_hook(fasta_entry.id,
-                   Sequence_warning_code::no_valid_date,
-                   "Sequence ignored because its exact date could not be determined "
-                   "(no ambiguity is allowed for now, use YYYY-MM-DD format)");
+      warning_hook(fasta_entry.id, Sequence_warnings::No_valid_date{});
     } else {
       auto delta = calculate_delta_from_reference(
           fasta_entry.id, fasta_entry.sequence, result.ref_sequence, warning_hook);
@@ -249,9 +246,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
           [](int seqs_so_far, int total_seqs) {
             std::cerr << absl::StreamFormat("- analysed %d / %d sequences\n", seqs_so_far, total_seqs);
           },
-          [](const std::string& seq_id, Sequence_warning_code, const std::string& warning_msg) {
-            std::cerr << absl::StreamFormat("WARNING (sequence '%s'): %s\n", seq_id, warning_msg);
-          });
+          default_sequence_warning_hook);
     }
     if (opts.count("v0-in-maple") > 0) {
       auto in_maple_filename = opts["v0-in-maple"].as<std::string>();

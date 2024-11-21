@@ -39,6 +39,10 @@ auto to_vec(R&& range) {
 
 }  // namespace ranges
 
+// overloaded template for std::variant (from https://en.cppreference.com/w/cpp/utility/variant/visit)
+template<class... Ts>
+struct overloaded : Ts... { using Ts::operator()...; };
+
 }  // namespace estd
 
 #endif // DELPHY_ESTD_H_

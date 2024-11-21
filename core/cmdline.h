@@ -18,8 +18,8 @@ namespace delphy {
 auto fasta_to_maple(
     const std::vector<Fasta_entry>& in_fasta,
     const std::function<void(int,int)>& progress_hook = [](int,int){},
-    const std::function<void(const std::string&, Sequence_warning_code, const std::string)>& warning_hook
-    = [](const std::string&, Sequence_warning_code, const std::string&) {})
+    const std::function<void(const std::string&, const Sequence_warning&)>& warning_hook
+    = default_sequence_warning_hook)
     -> Maple_file;
 
 // TODO: Should live elsewhere

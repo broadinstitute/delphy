@@ -128,8 +128,8 @@ auto delphy_get_commit_string(Delphy_context& /*ctx*/) -> const char* {
 // is called with the number of tips added so far and the total number of tips.
 //
 // Warnings throughout result in a callback to the `warning_hook`, with a sequence ID (or
-// an empty string if not a sequence-specific warning), a detail code (see
-// Sequence_warning_code in sequence_utils.h) and a human-readable detail message.
+// an empty string if not a sequence-specific warning), a detail code
+// and a JS object with details, if any (see below).
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
@@ -141,7 +141,7 @@ auto delphy_parse_fasta_into_initial_tree_async(
     int fasta_read_progress_hook_id,    // (seqs_so_far: int, bytes_so_far: size_t, total_bytes: size_t) -> void
     int analysis_progress_hook_id,      // (seqs_so_far: int, total_seqs: int) -> void
     int initial_build_progress_hook_id, // (tips_so_far: int, total_tips: int) -> void
-    int warning_hook_id,                // (seq_id: const char*, int warning_code, detail: const char*) -> void
+    int warning_hook_id,                // (seq_id: const char*, warning_code: int, detail: object) -> void
     //                                         (called synchronously)
     int callback_id)   // Signature: (PhyloTree*) -> void (success), or (msg: const char*) -> void (failure)
     -> void {
@@ -175,11 +175,20 @@ auto delphy_parse_fasta_into_initial_tree_async(
                 analysis_progress_hook_id, seqs_so_far, total_seqs);
           },
           [warning_hook_id](const std::string& seq_id,
-                            Sequence_warning_code warning_code,
-                            const std::string& detail) {
-            MAIN_THREAD_EM_ASM(  // Sync!  str may be destroyed as soon as this hook call ends 
-                {delphyRunHook($0, UTF8ToString($1), $2, UTF8ToString($3));},
-                warning_hook_id, seq_id.c_str(), warning_code, detail.c_str());
+                            const Sequence_warning& warning) {
+            // JS calls are synchronous!  seq_id may be destroyed as soon as this hook call ends 
+            std::visit(estd::overloaded{
+              [warning_hook_id, &seq_id](const Sequence_warnings::No_valid_date&) {
+                MAIN_THREAD_EM_ASM(  
+                    {delphyRunHook($0, UTF8ToString($1), 1, {});},
+                    warning_hook_id, seq_id.c_str());
+              },
+              [warning_hook_id, &seq_id](const Sequence_warnings::Ambiguity_precision_loss& w) {
+                MAIN_THREAD_EM_ASM(  
+                    {delphyRunHook($0, UTF8ToString($1), 2, {originalState: String.fromCharCode($2), site: $3});},
+                    warning_hook_id, seq_id.c_str(), to_char(w.original_state), w.site);
+              }
+            }, warning);
           });
       
       // Stage 3: Initial tree build file

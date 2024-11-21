@@ -3,11 +3,26 @@
 
 namespace delphy {
 
+auto default_sequence_warning_hook(const std::string& seq_id, const Sequence_warning& warning) -> void {
+  auto msg = std::string{
+    std::visit(estd::overloaded{
+      [](const Sequence_warnings::No_valid_date&) -> std::string {
+        return "Sequence ignored because its exact date could not be determined "
+            "(no ambiguity is allowed for now, use YYYY-MM-DD format)";
+      },
+      [](const Sequence_warnings::Ambiguity_precision_loss& w) -> std::string {
+        return absl::StrFormat("ambiguous state %c at site %d changed to N", to_char(w.original_state), w.site+1);
+      }
+    }, warning)
+  };
+  std::cerr << absl::StreamFormat("WARNING (sequence '%s'): %s\n", seq_id, msg);
+}
+
 auto calculate_delta_from_reference(
     const std::string& seq_id,
     const Sequence& seq,
     const Real_sequence& ref_seq,
-    const std::function<void(const std::string&, Sequence_warning_code, const std::string&)>& warning_hook)
+    const std::function<void(const std::string&, const Sequence_warning&)>& warning_hook)
     -> Delta_from_reference {
   
   if (std::ssize(seq) != std::ssize(ref_seq)) {
@@ -23,8 +38,10 @@ auto calculate_delta_from_reference(
     if (is_ambiguous(seq[l])) {
       if (seq[l] != Seq_letters::N) {
         warning_hook(seq_id,  // No sequence ID known
-                     Sequence_warning_code::ambiguity_precision_loss,
-                     absl::StrFormat("ambiguous state %c at site %d changed to N", to_char(seq[l]), l+1));
+                     Sequence_warnings::Ambiguity_precision_loss{
+                       .original_state = seq[l],
+                       .site = l
+                     });
       }
       result.missations.insert(Missation{l, ref_seq[l]}, ref_seq);
     } else {
@@ -51,7 +68,7 @@ auto extract_date_from_sequence_id(const std::string_view id) -> std::optional<d
   }
   auto date_plus_bar = id.substr(id.length() - (1 + 4 + 1 + 2 + 1 + 2));
   if (date_plus_bar[0] != '|' && date_plus_bar[0] != '-') {
-    // No separator befor date
+    // No separator before date
     return {};
   }
   auto date_str = date_plus_bar.substr(1);
