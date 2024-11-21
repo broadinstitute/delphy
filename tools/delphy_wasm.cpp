@@ -109,21 +109,27 @@ auto delphy_get_commit_string(Delphy_context& /*ctx*/) -> const char* {
 // that we use for the command-line version.  We don't stream file contents: if a file is
 // too large to hold in memory, too bad.
 //
-// TODO: Support a more informative failure callback
-//
 // The parsing proceeds through three stages:
 // 1. Reading FASTA file
 // 2. Analyzing sequences (diffing them from consensus, mapping gaps, simplifying ambiguities)
 // 3. Building the initial tree, one tip at a time
+//
 // The `stage_progress_hook` is called a number {1,2,3} when entering each stage
-// (completion is notified by calling `callback_id`, which will usually cause an associated
-// JS Promise to complete).
+// (completion is notified by calling `callback_id`, which will usually cause an
+// associated JS Promise to complete).
 //
 // Every time a sequence is read from the original input file, the hook
 // `fasta_read_progress_hook` is called with the number of fasta sequences read so far.
 //
-// Every time a tip is added to the initial tree, the hook `initial_build_progress_hook` is
-// called with the number of tips added so far and the total number of tips.
+// Every time a sequence is analyzed, the hook `analysis_progress_hook` is called with the
+// number of sequences analyzed so far and the total number of sequences.
+//
+// Every time a tip is added to the initial tree, the hook `initial_build_progress_hook`
+// is called with the number of tips added so far and the total number of tips.
+//
+// Warnings throughout result in a callback to the `warning_hook`, with a sequence ID (or
+// an empty string if not a sequence-specific warning), a detail code (see
+// Sequence_warning_code in sequence_utils.h) and a human-readable detail message.
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
@@ -135,7 +141,8 @@ auto delphy_parse_fasta_into_initial_tree_async(
     int fasta_read_progress_hook_id,    // (seqs_so_far: int, bytes_so_far: size_t, total_bytes: size_t) -> void
     int analysis_progress_hook_id,      // (seqs_so_far: int, total_seqs: int) -> void
     int initial_build_progress_hook_id, // (tips_so_far: int, total_tips: int) -> void
-    int warning_hook_id,                // (msg: const char*) -> void (called synchronously)
+    int warning_hook_id,                // (seq_id: const char*, int warning_code, detail: const char*) -> void
+    //                                         (called synchronously)
     int callback_id)   // Signature: (PhyloTree*) -> void (success), or (msg: const char*) -> void (failure)
     -> void {
 
@@ -160,17 +167,20 @@ auto delphy_parse_fasta_into_initial_tree_async(
 
       // Stage 2: Analyse it (= transform it into a MAPLE file)
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 2);}, stage_progress_hook_id);
-      auto maple_file = fasta_to_maple(in_fasta, 
-            [analysis_progress_hook_id](int seqs_so_far, int total_seqs) {
-              MAIN_THREAD_ASYNC_EM_ASM(
-                  {delphyRunHook($0, $1, $2);},
-                  analysis_progress_hook_id, seqs_so_far, total_seqs);
-            },
-            [warning_hook_id](const std::string& str) {
-              MAIN_THREAD_EM_ASM(  // Sync!  str may be destroyed as soon as this hook call ends 
-                  {delphyRunHook($0, UTF8ToString($1));},
-                  warning_hook_id, str.c_str());
-            });
+      auto maple_file = fasta_to_maple(
+          in_fasta, 
+          [analysis_progress_hook_id](int seqs_so_far, int total_seqs) {
+            MAIN_THREAD_ASYNC_EM_ASM(
+                {delphyRunHook($0, $1, $2);},
+                analysis_progress_hook_id, seqs_so_far, total_seqs);
+          },
+          [warning_hook_id](const std::string& seq_id,
+                            Sequence_warning_code warning_code,
+                            const std::string& detail) {
+            MAIN_THREAD_EM_ASM(  // Sync!  str may be destroyed as soon as this hook call ends 
+                {delphyRunHook($0, UTF8ToString($1), $2, UTF8ToString($3));},
+                warning_hook_id, seq_id.c_str(), warning_code, detail.c_str());
+          });
       
       // Stage 3: Initial tree build file
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 3);}, stage_progress_hook_id);

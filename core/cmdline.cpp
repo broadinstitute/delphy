@@ -23,13 +23,25 @@ std::vector<std::string> delphy_cli_args{};
 auto fasta_to_maple(
     const std::vector<Fasta_entry>& in_fasta,
     const std::function<void(int,int)>& progress_hook,
-    const std::function<void(const std::string&)>& warning_hook)
+    const std::function<void(const std::string&, Sequence_warning_code, const std::string)>& warning_hook)
     -> Maple_file {
   
   auto result = Maple_file{};
   
   if (in_fasta.empty()) {
     throw std::runtime_error("Input has no sequences!");
+  }
+  if (std::ssize(in_fasta) == 1) {
+    throw std::runtime_error("Input has only 1 sequence!");
+  }
+  auto L = std::ssize(in_fasta[0].sequence);
+  for (auto i = 0; i != std::ssize(in_fasta); ++i) {
+    if (std::ssize(in_fasta[i].sequence) != L) {
+      throw std::runtime_error(absl::StrFormat(
+          "Sequences have different lengths: '%s' has %d sites, while '%s' has %d.  Are these sequences aligned?",
+          in_fasta[i].id, std::ssize(in_fasta[i].sequence),
+          in_fasta[0].id, std::ssize(in_fasta[0].sequence)));
+    }
   }
 
   auto total_seqs = std::ssize(in_fasta);
@@ -50,12 +62,13 @@ auto fasta_to_maple(
   for (auto& fasta_entry : in_fasta) {
     // Ignore sequences that we can't date correctly
     if (auto opt_t = extract_date_from_sequence_id(fasta_entry.id); not opt_t.has_value()) {
-      warning_hook(absl::StrFormat("Ignoring sequence '%s', could not determine its date", fasta_entry.id));
+      warning_hook(fasta_entry.id,
+                   Sequence_warning_code::no_valid_date,
+                   "Sequence ignored because its exact date could not be determined "
+                   "(no ambiguity is allowed for now, use YYYY-MM-DD format)");
     } else {
       auto delta = calculate_delta_from_reference(
-          fasta_entry.sequence, result.ref_sequence,
-          [&fasta_entry, &warning_hook](const std::string& msg) { warning_hook(
-              absl::StrFormat("In sequence '%s', %s", fasta_entry.id, msg)); });
+          fasta_entry.id, fasta_entry.sequence, result.ref_sequence, warning_hook);
       result.tip_descs.push_back({
           .name = fasta_entry.id,
           .t = opt_t.value(),
@@ -65,6 +78,13 @@ auto fasta_to_maple(
 
     ++seqs_so_far;
     progress_hook(seqs_so_far, total_seqs);
+  }
+  
+  if (result.tip_descs.empty()) {
+    throw std::runtime_error("Input has no sequences left after discarding those with unknown or imprecise dates!");
+  }
+  if (std::ssize(in_fasta) == 1) {
+    throw std::runtime_error("Input has only 1 sequence left after discarding those with unknown or imprecise dates!");
   }
   
   return result;
@@ -224,12 +244,13 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       in_fasta_is.close();
 
       std::cerr << "Analysing fasta file " << in_fasta_filename << "\n";
-      maple_file = fasta_to_maple(in_fasta, 
+      maple_file = fasta_to_maple(
+          in_fasta, 
           [](int seqs_so_far, int total_seqs) {
             std::cerr << absl::StreamFormat("- analysed %d / %d sequences\n", seqs_so_far, total_seqs);
           },
-          [](const std::string& warning_msg) {
-            std::cerr << absl::StreamFormat("WARNING: %s\n", warning_msg);
+          [](const std::string& seq_id, Sequence_warning_code, const std::string& warning_msg) {
+            std::cerr << absl::StreamFormat("WARNING (sequence '%s'): %s\n", seq_id, warning_msg);
           });
     }
     if (opts.count("v0-in-maple") > 0) {

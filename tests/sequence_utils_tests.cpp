@@ -74,7 +74,7 @@ TEST(Sequence_utils_test, calculate_delta_from_reference_empty) {
   auto ref_seq = Real_sequence{};
   auto seq = Sequence{};
 
-  const auto delta = calculate_delta_from_reference(seq, ref_seq);
+  const auto delta = calculate_delta_from_reference("SEQ_123", seq, ref_seq);
 
   EXPECT_THAT(delta.seq_deltas, testing::IsEmpty());
   EXPECT_THAT(delta.missations, testing::IsEmpty());
@@ -84,14 +84,14 @@ TEST(Sequence_utils_test, calculate_delta_from_reference_invalid) {
   auto ref_seq = Real_sequence{rA};
   auto seq = Sequence{sC, sG};
 
-  EXPECT_THROW(calculate_delta_from_reference(seq, ref_seq), std::invalid_argument);
+  EXPECT_THROW(calculate_delta_from_reference("SEQ_123", seq, ref_seq), std::invalid_argument);
 }
 
 TEST(Sequence_utils_test, calculate_delta_from_reference_partially_ambiguous) {
   auto ref_seq = Real_sequence{rA};
   auto seq = Sequence{sA | sC};
 
-  const auto delta = calculate_delta_from_reference(seq, ref_seq);
+  const auto delta = calculate_delta_from_reference("SEQ_123", seq, ref_seq);
 
   EXPECT_THAT(delta.seq_deltas, testing::IsEmpty());
   EXPECT_THAT(estd::ranges::to_vec(delta.missations.slow_elements(ref_seq)),
@@ -102,7 +102,7 @@ TEST(Sequence_utils_test, calculate_delta_from_reference_muts) {
   auto ref_seq = Real_sequence{rA, rA, rA};
   auto seq = Sequence{sA, sC, sG};
 
-  const auto delta = calculate_delta_from_reference(seq, ref_seq);
+  const auto delta = calculate_delta_from_reference("SEQ_123", seq, ref_seq);
 
   EXPECT_THAT(delta.seq_deltas,
               testing::ElementsAre(Seq_delta{1, rA, rC},
@@ -114,7 +114,7 @@ TEST(Sequence_utils_test, calculate_delta_from_reference_muts_with_compatible_am
   auto ref_seq = Real_sequence{rA, rC, rG};
   auto seq = Sequence{sG, sN, sN};
 
-  const auto delta = calculate_delta_from_reference(seq, ref_seq);
+  const auto delta = calculate_delta_from_reference("SEQ_123", seq, ref_seq);
 
   EXPECT_THAT(delta.seq_deltas,
               testing::ElementsAre(Seq_delta{0, rA, rG}));
@@ -127,7 +127,7 @@ TEST(Sequence_utils_test, calculate_delta_from_reference_muts_with_incompatible_
   auto ref_seq = Real_sequence{rA, rC, rG};
   auto seq = Sequence{sG, sG | sT, sA | sT};
 
-  const auto delta = calculate_delta_from_reference(seq, ref_seq);
+  const auto delta = calculate_delta_from_reference("SEQ_123", seq, ref_seq);
 
   EXPECT_THAT(delta.seq_deltas,
               testing::ElementsAre(Seq_delta{0, rA, rG}));

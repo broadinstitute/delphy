@@ -4,7 +4,6 @@
 
 #include <boost/algorithm/string/replace.hpp>
 
-#include "dates.h"
 #include "version.h"
 #include "cmdline.h"
 #include "phylo_tree_calc.h"
@@ -115,7 +114,7 @@ auto read_maple(std::istream& is) -> Maple_file {
   while (is) {
     if (line.empty() || line[0] != '>') {
       throw std::runtime_error(absl::StrFormat(
-          "ERROR: Expected sequence id line to start with '>', but saw this instead: %s",
+          "Expected sequence id line to start with '>', but saw this instead: %s",
           line));
     }
 
@@ -163,37 +162,6 @@ auto read_maple(std::istream& is) -> Maple_file {
   }
 
   return result;
-}
-
-auto extract_date_from_sequence_id(const std::string_view id) -> std::optional<double> {
-  // We assume that sequence IDs look like this (these are real examples):
-  //
-  //   hCoV-19/England/PLYM-3258B175/2022|EPI_ISL_15330011|2022-10-01
-  //   hRSV-A-England-160340212-2016-EPI_ISL_11428309-2016-01-19
-  //
-  // So we check that there's something date-like at the end of the string, and parse that.
-  // Bork badly if the date isn't there
-  if (id.length() < (1 + 4 + 1 + 2 + 1 + 2)) {
-    std::cerr << absl::StrFormat("FASTA ID `%s` not long enough to contain a date.  IGNORING IT.\n", id);
-    return {};
-  }
-  auto date_plus_bar = id.substr(id.length() - (1 + 4 + 1 + 2 + 1 + 2));
-  if (date_plus_bar[0] != '|' && date_plus_bar[0] != '-') {
-    std::cerr << absl::StrFormat("Sequence ID `%s` missing date separator '|' or '-' at end.  IGNORING IT.\n", id);
-    return {};
-  }
-  auto date_str = date_plus_bar.substr(1);
-  auto valid =
-      std::ranges::all_of(date_str.substr(0, 4), isdigit) &&
-          date_str[4] == '-' &&
-          std::ranges::all_of(date_str.substr(5, 2), isdigit) &&
-          date_str[7] == '-' &&
-          std::ranges::all_of(date_str.substr(8, 2), isdigit);
-  if (not valid) {
-    std::cerr << absl::StrFormat("Sequence ID `%s` has invalid date at end.  IGNORING IT.\n", id);
-    return {};
-  }
-  return parse_iso_date(date_str);
 }
 
 auto operator<<(std::ostream& os, stamp_version_into_log_file) -> std::ostream& {

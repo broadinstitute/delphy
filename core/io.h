@@ -26,9 +26,6 @@ struct Maple_file {
 
 auto read_maple(std::istream& is) -> Maple_file;
 
-auto extract_date_from_sequence_id(const std::string_view id) -> std::optional<double>;
-
-
 struct stamp_version_into_log_file{};  // dummy type for stream command
 auto operator<<(std::ostream& os, stamp_version_into_log_file) -> std::ostream&;
 

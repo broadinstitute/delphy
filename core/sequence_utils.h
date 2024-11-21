@@ -8,6 +8,11 @@
 
 namespace delphy {
 
+enum class Sequence_warning_code {
+  no_valid_date = 1,
+  ambiguity_precision_loss = 2
+};
+
 // Deduces an unambiguous consensus sequence among a range of (possibly ambiguous) base sequences.
 // At a site l, the consensus state is the most common unambiguous state at l (ties are broken in favor
 // of A, then C, then G, then T).  If the state is always ambiguous, choose A arbtrarily.
@@ -56,10 +61,14 @@ struct Delta_from_reference {
   Missation_map<> missations;
 };
 auto calculate_delta_from_reference(
+    const std::string& seq_id,
     const Sequence& seq,
     const Real_sequence& ref_seq,
-    const std::function<void(const std::string&)>& warning_hook = [](const std::string&) {})
+    const std::function<void(const std::string&, Sequence_warning_code, const std::string&)>& warning_hook
+    = [](const std::string&, Sequence_warning_code, const std::string&) {})
     -> Delta_from_reference;
+
+auto extract_date_from_sequence_id(const std::string_view id) -> std::optional<double>;
 
 }  // namespace delphy
 

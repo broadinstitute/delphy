@@ -9,6 +9,7 @@
 #include "io.h"
 #include "phylo_tree.h"
 #include "run.h"
+#include "sequence_utils.h"
 
 namespace delphy {
 
@@ -17,17 +18,9 @@ namespace delphy {
 auto fasta_to_maple(
     const std::vector<Fasta_entry>& in_fasta,
     const std::function<void(int,int)>& progress_hook = [](int,int){},
-    const std::function<void(const std::string&)>& warning_hook = [](const std::string&){})
+    const std::function<void(const std::string&, Sequence_warning_code, const std::string)>& warning_hook
+    = [](const std::string&, Sequence_warning_code, const std::string&) {})
     -> Maple_file;
-
-// TODO: Should live elsewhere
-auto build_rough_initial_tree_from_fasta(
-    const std::vector<Fasta_entry>& in_fasta,
-    bool random,
-    absl::BitGenRef bitgen,
-    const std::function<void(int,int)>& progress_hook = [](int,int){},
-    const std::function<void(const std::string&)>& warning_hook = [](const std::string&){})
-    -> Phylo_tree;
 
 // TODO: Should live elsewhere
 auto build_rough_initial_tree_from_maple(
