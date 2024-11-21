@@ -1,7 +1,18 @@
 #include <chrono>
 #include <iostream>
+
+#ifdef __APPLE__
+// Apple deprecated OpenGL and GLUT when macOS 10.14 was released in 2018.
+#define GL_SILENCE_DEPRECATION
+#include <GLUT/glut.h>
+// Would need to add freeglut to the build process to make this
+// work properly. Possible to do this with Homebrew, but that's another
+// dependency, so how to handle cleanly? Instead, just removing from
+// CMakeLists.txt for now. Fixes/contributions welcome! [fry 241121]
+#else
 #include <GL/glut.h>
 #include <GL/freeglut.h>  // For glutMainLoopEvent()
+#endif
 
 #include "absl/log/initialize.h"
 
@@ -50,7 +61,7 @@ static auto rescale_axes() {
   const auto& tree = ui_run->tree();
   t_min_scale_bar = std::numeric_limits<double>::max();
   t_max_scale_bar = -std::numeric_limits<double>::max();
-  
+
   for (const auto& node : index_order_traversal(tree)) {
     auto t = tree.at(node).t;
     t_min_x_axis = std::min(t, t_min_x_axis);
@@ -137,7 +148,7 @@ static auto render_tree() -> void {
   glClear(GL_COLOR_BUFFER_BIT);
 
   auto& tree = ui_run->tree();
-  
+
   // Define coordinates so (0,0) is bottom-left and (1,1) is top-right
   glMatrixMode(GL_PROJECTION);
   glLoadIdentity();
@@ -146,7 +157,7 @@ static auto render_tree() -> void {
   glColor3d(0.0, 0.0, 0.0);  // black lines
 
   rescale_axes();
-  
+
   glBegin(GL_LINES);
   glVertex2d(x_for(t_min_scale_bar), 0.03);
   glVertex2d(x_for(t_max_scale_bar), 0.03);
@@ -257,18 +268,18 @@ static auto render_tree() -> void {
   // glVertex2d(x_for(ui_run->coalescent_prior_.t_ref_), y_min);
   // glVertex2d(x_for(ui_run->coalescent_prior_.t_ref_), 0.05);
   // glEnd();
-  
+
   // for (auto p = 0; p != std::ssize(ui_run->partition().parts()); ++p) {
   //   const auto& vscp = ui_run->coalescent_prior_parts_.at(p);
   //   auto num_cells = std::ssize(vscp.num_active_parts_);
-    
+
   //   auto color_index = p % std::ssize(partition_colors);
   //   auto [r,g,b] = partition_colors[color_index];
   //   glColor3d(r, g, b);
 
   //   glBegin(GL_LINE_STRIP);
   //   glVertex2d(x_for(vscp.t_ref_), y_min);
-    
+
   //   for (auto cell = 0; cell != num_cells; ++cell) {
   //     auto t_max = vscp.t_ref_ - cell*vscp.t_step_;
   //     auto t_min = t_max - vscp.t_step_;
@@ -355,7 +366,7 @@ static auto render_mcc() -> void {
   auto t_for = [&](const auto& node) -> double {
     return mcc_nodes_are_mrcas ? mcc_tree.at(node).t_mrca() : mcc_tree.at(node).t();
   };
-  
+
   // Draw current tree
   for (const auto& node : index_order_traversal(mcc_tree)) {
 
@@ -407,7 +418,7 @@ static auto print_stats_line() -> void {
   using enum Real_seq_letter;
 
   const auto& tree = ui_run->tree();
-  
+
   auto M_ts = [&M_ab = ui_run->num_muts_ab()]() {
     return M_ab[A][G] + M_ab[G][A] + M_ab[C][T] + M_ab[T][C];
   }();
@@ -421,7 +432,7 @@ static auto print_stats_line() -> void {
   auto mean_nu = sum_nu / tree.num_sites();
   auto mean_nu2 = sum_nu2 / tree.num_sites();
   auto sigma_nu = std::sqrt(mean_nu2 - mean_nu*mean_nu);
-  
+
   auto steps_per_s = 0.0;
   if (timestamps.size() > 1) {
     const auto& earliest_timestamp = timestamps.front();
@@ -430,7 +441,7 @@ static auto print_stats_line() -> void {
         / (1e-9 * static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(
             latest_timestamp.time - earliest_timestamp.time).count()));
   }
-  
+
   auto state_frequencies_at_root = ui_run->state_frequencies_of_ref_sequence();
   for (const auto& m : tree.at_root().mutations) {
     --state_frequencies_at_root[m.from];
@@ -439,7 +450,7 @@ static auto print_stats_line() -> void {
   for (const auto& [mi_site, mi_from] : tree.at_root().missations.slow_elements(tree.ref_sequence)) {
     --state_frequencies_at_root[mi_from];
   }
-  
+
   std::cerr << absl::StreamFormat("Step %12d, ", ui_run->step())
             << absl::StreamFormat("%.1f M steps/s, ", steps_per_s / 1e6)
             << absl::StreamFormat("%2d trees in MCC, ", tree_snapshots.size())
@@ -483,7 +494,7 @@ static auto print_stats_line() -> void {
 
     std::cerr << absl::StreamFormat("M_apobec = %d of %d, ", M_apobec, ui_run->num_muts());
   }
-  
+
   std::cerr << (ui_run->alpha_move_enabled()
                 ? absl::StreamFormat("alpha = %.3g, ", ui_run->alpha())
                 : absl::StreamFormat("alpha OFF, "))
@@ -527,7 +538,7 @@ static auto idle_func() -> void {
     step_granularity = std::gcd(step_granularity, cmd->tree_every);
   }
   auto target_step = ((ui_run->step()/steps_per_refresh)+1)*steps_per_refresh;
-  
+
   while (ui_run->step() < target_step) {
     auto steps_to_next_grain = ((ui_run->step()/step_granularity)+1)*step_granularity - ui_run->step();
     ui_run->do_mcmc_steps(steps_to_next_grain);
@@ -548,18 +559,18 @@ static auto idle_func() -> void {
       }
     }
   }
-  
+
   timestamps.push_back(Timestamp{ui_run->step(), std::chrono::high_resolution_clock::now()});
   if (timestamps.size() > k_max_timestamps) {
     timestamps.pop_front();
   }
-  
+
   tree_snapshots.push_back(std::make_shared<Phylo_tree>(ui_run->tree()));
   while (tree_snapshots.size() > max_tree_snapshots) {
     tree_snapshots.pop_front();
   }
   //incremental_mcc_tree->add_base_tree(ui_run->tree());
-  
+
   static auto i = 0;
   if (++i % mcc_refresh_freq == 0) {
     trees_in_mcc.assign(begin(tree_snapshots), end(tree_snapshots));  // Destroys any dangling snapshots
@@ -570,7 +581,7 @@ static auto idle_func() -> void {
     mcc_tree = derive_mcc_tree(std::move(trees_in_mcc_ptrs), ui_run->bitgen());
     //mcc_tree = incremental_mcc_tree->derive_mcc_tree();
   }
-  
+
   glutPostRedisplay();
   print_stats_line();
 }
@@ -918,7 +929,7 @@ auto ui_main_loop(Processed_cmd_line& c) -> int {
   stop_trees_output();
 
   ui_run = nullptr;
-  
+
   return 1;
 }
 
