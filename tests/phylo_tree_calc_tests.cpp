@@ -467,7 +467,7 @@ TEST_F(Phylo_tree_calc_complex_test, calc_num_muts_beta_ab) {
 TEST_F(Phylo_tree_calc_complex_test, calc_num_muts_l) {
   auto result = calc_num_muts_l(tree);
 
-  auto expected = Node_vector{
+  auto expected = Node_vector<int>{
     4,  // A0T on r->x branch, T0C on x->a branch, A0T and T0G on r->c branch
     1,  // A1G on x->b branch
     0,  // (C2A above root is not a real mutation)
@@ -511,7 +511,7 @@ TEST_F(Phylo_tree_calc_complex_test, recalc_num_sites_missing_upstream) {
       
       if (not descends_from(tree, node, ancestor) || node == ancestor) { continue; }
 
-      auto result = Node_vector(std::ssize(tree), -100);
+      auto result = Node_vector<int>(std::ssize(tree), -100);
       result[node] = reconstruct_missing_sites_at(tree, node).num_sites();
 
       recalc_num_sites_missing_upstream(tree, node, ancestor, result);
@@ -612,7 +612,7 @@ TEST_F(Phylo_tree_calc_complex_test, recalc_lambda_i_upstream) {
       
       if (not descends_from(tree, node, ancestor) || node == ancestor) { continue; }
 
-      auto result = Node_vector(std::ssize(tree), 1.23456);
+      auto result = Node_vector<double>(std::ssize(tree), 1.23456);
       result[node] = calc_lambda_at_node(tree, node, evo);
 
       recalc_lambda_i_upstream(tree, node, ancestor, evo, result, ref_cum_Q_l);

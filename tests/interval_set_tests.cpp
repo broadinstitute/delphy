@@ -57,7 +57,7 @@ TEST(Interval_set_test, copy_assign_from_different_allocator) {
   auto scratch = Scratch_space{};
   auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}, scratch};
 
-  auto s2 = Interval_set{};  // Not a Scratch_interval_set!
+  auto s2 = Interval_set<>{};  // Not a Scratch_interval_set!
   
   s2 = s;
 

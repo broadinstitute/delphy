@@ -70,26 +70,25 @@ find_package(GLUT)
 # Core library
 add_subdirectory(core)
 
-# Tests (only in non-WASM builds)
-if(NOT DEFINED EMSCRIPTEN)
-  cmake_policy(SET CMP0135 NEW)
-  include(FetchContent)
-  # To update to latest GoogleTest release:
-  # 1. Lookup latest commit SHA, e.g., at the top of https://github.com/google/googletest/commits/main
-  # 2. Adapt the url below to use the commit SHA & bump timestamp in comment
-  # 3. Recalculate and update the SHA256 of the artifact by running:
-  #      curl -sL --output - https://github.com/google/googletest/archive/<COMMIT_SHA>.zip | sha256sum -
-  FetchContent_Declare(
-    googletest
-    URL https://github.com/google/googletest/archive/d25e625364a2078c940da2cb1fcf098aa184fd9f.zip # 2022-04-18
-    URL_HASH SHA256=45085e7a631f9da804723b8c71a07a32b2ea2da6b699a4bf85039d4b6e1fb7dc
-    )
-  # For Windows: Prevent overriding the parent project's compiler/linker settings
-  set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
-  FetchContent_MakeAvailable(googletest)
+# Tests (only useful in non-WASM builds, but we build them for WASM anyway to
+# ensure that no test code trips up Clang [the default compiler on Mac])
+cmake_policy(SET CMP0135 NEW)
+include(FetchContent)
+# To update to latest GoogleTest release:
+# 1. Lookup latest commit SHA, e.g., at the top of https://github.com/google/googletest/commits/main
+# 2. Adapt the url below to use the commit SHA & bump timestamp in comment
+# 3. Recalculate and update the SHA256 of the artifact by running:
+#      curl -sL --output - https://github.com/google/googletest/archive/<COMMIT_SHA>.zip | sha256sum -
+FetchContent_Declare(
+  googletest
+  URL https://github.com/google/googletest/archive/d25e625364a2078c940da2cb1fcf098aa184fd9f.zip # 2022-04-18
+  URL_HASH SHA256=45085e7a631f9da804723b8c71a07a32b2ea2da6b699a4bf85039d4b6e1fb7dc
+  )
+# For Windows: Prevent overriding the parent project's compiler/linker settings
+set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
+FetchContent_MakeAvailable(googletest)
 
-  add_subdirectory(tests)
-endif()
+add_subdirectory(tests)
 
 # Set up delphy_ui executable if we have OpenGL and GLUT.
 # Disabling on macOS because GL is deprecated (therefore more trouble

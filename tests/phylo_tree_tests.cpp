@@ -275,6 +275,7 @@ TEST_F(Phylo_tree_complex_test, assert_mutation_consistency_ok) {
   assert_mutation_consistency(tree);  // should be fine
 }
 
+#ifndef __EMSCRIPTEN__  // We want tests to be compiled to exercise clang, but EXPECT_DEBUG_DEATH doesn't exist in Emscripten
 TEST_F(Phylo_tree_complex_test, assert_mutation_consistency_different_from_root) {
   // Mutation from != to
   EXPECT_DEBUG_DEATH(({
@@ -312,11 +313,13 @@ TEST_F(Phylo_tree_complex_test, assert_mutation_consistency_different_from_root)
         assert_mutation_consistency(tree);
       }), "C vs. A");
 }
+#endif
 
 TEST_F(Phylo_tree_complex_test, assert_missation_consistency_ok) {
   assert_missation_consistency(tree);
 }
 
+#ifndef __EMSCRIPTEN__  // We want tests to be compiled to exercise clang, but EXPECT_DEBUG_DEATH doesn't exist in Emscripten
 TEST_F(Phylo_tree_complex_test, assert_missation_consistency_bad) {
   // Missation below another missation
   EXPECT_DEBUG_DEATH(({
@@ -344,6 +347,7 @@ TEST_F(Phylo_tree_complex_test, assert_missation_consistency_bad) {
         assert_missation_consistency(tree);
       }), "common_sites.empty()");
 }
+#endif
 
 TEST_F(Phylo_tree_complex_test, find_MRCA_of_nodes) {
   EXPECT_THAT(find_MRCA_of(tree, a, a), testing::Eq(a));
