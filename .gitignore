@@ -5,3 +5,7 @@
 TAGS
 /CMakeUserPresets.json
 scratch
+*~
+/.vscode
+
+
