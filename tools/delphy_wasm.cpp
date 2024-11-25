@@ -737,21 +737,17 @@ auto delphy_run_steps_async(
     Delphy_context& ctx,
     Run& run,
     uint32_t num_steps,
-    int callback_id)    // Signature () -> void
+    int callback_id)    // Signature () -> void (success), or (msg: const char*) -> void (failure)
     -> void {
   
   ctx.thread_pool_.push([&run, num_steps, callback_id](int /*thread_id*/) {
     try {
       run.do_mcmc_steps(num_steps);
       
-      MAIN_THREAD_ASYNC_EM_ASM({
-          delphyRunCallback($0);
-        }, callback_id);
+      MAIN_THREAD_ASYNC_EM_ASM({delphyRunCallback($0);}, callback_id);
     } catch (std::exception& e) {
-      std::cerr << e.what() << std::endl;
-      MAIN_THREAD_ASYNC_EM_ASM({
-          delphyFailCallback($0);
-        }, callback_id);
+      // Sync!  e.what() may be destroyed as soon as this hook call ends 
+      MAIN_THREAD_EM_ASM({delphyFailCallback($0, UTF8ToString($1));}, callback_id, e.what());
     }
   });
 }
@@ -1132,7 +1128,7 @@ auto delphy_derive_mcc_tree_async(
     Delphy_context& ctx,
     Phylo_tree** trees,
     size_t num_trees,
-    int callback_id)   // Signature: (MccTree*) -> void
+    int callback_id)   // Signature: (MccTree*) -> void (success), or (msg: const char*) -> void (failure)
     -> void {
 
   auto seed = absl::Uniform<std::mt19937::result_type>(ctx.bitgen_);
@@ -1141,14 +1137,10 @@ auto delphy_derive_mcc_tree_async(
       auto bitgen = std::mt19937{seed};
       auto tree = new Mcc_tree{derive_mcc_tree(std::vector<Phylo_tree*>{trees, trees + num_trees}, bitgen)};
       
-      MAIN_THREAD_ASYNC_EM_ASM({
-          delphyRunCallback($0, $1);
-        }, callback_id, tree);
+      MAIN_THREAD_ASYNC_EM_ASM({delphyRunCallback($0, $1);}, callback_id, tree);
     } catch (std::exception& e) {
-      std::cerr << e.what() << std::endl;
-      MAIN_THREAD_ASYNC_EM_ASM({
-          delphyFailCallback($0);
-        }, callback_id);
+      // Sync!  e.what() may be destroyed as soon as this hook call ends 
+      MAIN_THREAD_EM_ASM({delphyFailCallback($0, UTF8ToString($1));}, callback_id, e.what());
     }
   });
 }

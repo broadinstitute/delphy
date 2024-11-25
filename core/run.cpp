@@ -76,7 +76,7 @@ auto Run::refresh_partition_stencils() -> void {
     return;
   }
 
-  std::cerr << "\n\n*****\nREFRESHING PARTITION STENCILS\n*****\n\n";
+  //std::cerr << "\n\n*****\nREFRESHING PARTITION STENCILS\n*****\n\n";
 
   partition_stencils_.clear();
   for (auto i = 0; i != 10; ++i) {
