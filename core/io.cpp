@@ -68,6 +68,10 @@ auto read_fasta(
 
     if (not ignore_this_seq) {
       for (auto c : line) {
+        if (isspace(c)) {
+          continue;  // Ignore spaces and Unix/Mac/DOS line termination nonsense
+        }
+        
         if (is_valid_seq_letter(c)) {
           cur_seq.push_back(to_seq_letter(c));
         } else {
@@ -128,14 +132,16 @@ auto read_maple(
     }
     
     for (auto c : line) {
-      if (not std::isspace(c)) {
-        if (is_valid_real_seq_letter(c)) {
-          auto s = char_to_real_seq_letter(c);
-          result.ref_sequence.push_back(s);
-        } else {
-          throw std::runtime_error(absl::StrFormat("Reference sequence has invalid state '%c' at site %d",
-                                                   c, std::ssize(result.ref_sequence) + 1));
-        }
+      if (std::isspace(c)) {
+          continue;  // Ignore spaces and Unix/Mac/DOS line termination nonsense
+      }
+      
+      if (is_valid_real_seq_letter(c)) {
+        auto s = char_to_real_seq_letter(c);
+        result.ref_sequence.push_back(s);
+      } else {
+        throw std::runtime_error(absl::StrFormat("Reference sequence has invalid state '%c' at site %d",
+                                                 c, std::ssize(result.ref_sequence) + 1));
       }
     }
   } while (getline(is, line));
