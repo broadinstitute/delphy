@@ -74,6 +74,44 @@ inline auto operator<<(std::ostream& os, Seq_letter s) -> std::ostream& {
   }
 }
 
+inline auto is_valid_seq_letter(char c) -> bool {
+  // See https://en.wikipedia.org/wiki/FASTA_format#Sequence_representation
+  // and https://www.bioinformatics.org/sms/iupac.html
+  switch (std::toupper(c)) {
+    // One base
+    case 'A':
+    case 'C':
+    case 'G':
+    case 'T':
+    case 'U':
+      
+      // One of two bases
+    case 'R':
+    case 'Y':
+    case 'S':
+    case 'W':
+    case 'K':
+    case 'M':
+      
+      // One of three bases
+    case 'B':
+    case 'D':
+    case 'H':
+    case 'V':
+      
+      // Gaps/anything
+    case 'N': // Any base
+    case '-': // Any base
+    case '?': // Any base
+    case '.': // Gap
+
+      return true;
+
+    default:
+      return false;
+  }
+}
+
 inline auto to_seq_letter(char c) -> Seq_letter {
   using namespace Seq_letters;
   
@@ -101,14 +139,16 @@ inline auto to_seq_letter(char c) -> Seq_letter {
     case 'D': return A | _ | G | T;
     case 'H': return A | C | _ | T;
     case 'V': return A | C | G | _;
-      
+
+      // Gaps/anything
     case 'N': // Any base
     case '-': // Any base
     case '?': // Any base
     case '.': // Gap
       return A | C | G | T;
       
-    default: return _;
+    default:
+      throw std::invalid_argument(absl::StrFormat("Unrecognized nucleotide state '%c'", c));
   }
 }
 
@@ -144,6 +184,19 @@ inline auto operator<<(std::ostream& os, Real_seq_letter s) -> std::ostream& {
   }
 }
 
+inline auto is_valid_real_seq_letter(char c) -> bool {
+  switch (std::toupper(c)) {
+    case 'A':
+    case 'C':
+    case 'G':
+    case 'T':
+    case 'U':
+      return true;
+    default:
+      return false;
+  }
+}
+
 inline auto char_to_real_seq_letter(char c) -> Real_seq_letter {
   using enum Real_seq_letter;
   switch (std::toupper(c)) {
@@ -151,6 +204,7 @@ inline auto char_to_real_seq_letter(char c) -> Real_seq_letter {
     case 'C': return C;
     case 'G': return G;
     case 'T': return T;
+    case 'U': return T;
     default:
       throw std::runtime_error(
           absl::StrFormat("Cannot convert character '%c' to Real_seq_letter", c));

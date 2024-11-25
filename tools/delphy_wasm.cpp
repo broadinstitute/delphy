@@ -119,7 +119,7 @@ auto delphy_get_commit_string(Delphy_context& /*ctx*/) -> const char* {
 // associated JS Promise to complete).
 //
 // Every time a sequence is read from the original input file, the hook
-// `fasta_read_progress_hook` is called with the number of fasta sequences read so far.
+// `read_progress_hook` is called with the number of sequences read so far.
 //
 // Every time a sequence is analyzed, the hook `analysis_progress_hook` is called with the
 // number of sequences analyzed so far and the total number of sequences.
@@ -131,6 +131,41 @@ auto delphy_get_commit_string(Delphy_context& /*ctx*/) -> const char* {
 // an empty string if not a sequence-specific warning), a detail code
 // and a JS object with details, if any (see below).
 
+struct Sequence_warning_hook_bridge {
+  int warning_hook_id;
+  auto operator()(const std::string& seq_id, const Sequence_warning& warning) -> void {
+    // JS calls are synchronous!  seq_id may be destroyed as soon as this hook call ends
+    auto whid = warning_hook_id;
+    std::visit(estd::overloaded{
+        [whid, &seq_id](const Sequence_warnings::No_valid_date&) {
+          MAIN_THREAD_EM_ASM(  
+              {delphyRunHook($0, UTF8ToString($1), 1, {});},
+              whid, seq_id.c_str());
+        },
+        [whid, &seq_id](const Sequence_warnings::Ambiguity_precision_loss& w) {
+          MAIN_THREAD_EM_ASM(  
+              {delphyRunHook($0, UTF8ToString($1), 2, {originalState: String.fromCharCode($2), site: $3});},
+              whid, seq_id.c_str(), to_char(w.original_state), w.site);
+        },
+        [whid, &seq_id](const Sequence_warnings::Invalid_state& w) {
+          MAIN_THREAD_EM_ASM(  
+              {delphyRunHook($0, UTF8ToString($1), 3, {state: String.fromCharCode($2)});},
+              whid, seq_id.c_str(), w.state_letter);
+        },
+        [whid, &seq_id](const Sequence_warnings::Invalid_gap& w) {
+          MAIN_THREAD_EM_ASM(  
+              {delphyRunHook($0, UTF8ToString($1), 4, {startSite: $2, endSite: $3});},
+              whid, seq_id.c_str(), w.start_site, w.end_site);
+        },
+        [whid, &seq_id](const Sequence_warnings::Invalid_mutation& w) {
+          MAIN_THREAD_EM_ASM(  
+              {delphyRunHook($0, UTF8ToString($1), 5, {from: String.fromCharCode($2), site: $3, to: String.fromCharCode($4)});},
+              whid, seq_id.c_str(), to_char(w.from), w.site, to_char(w.to));
+        }
+      }, warning);
+  }
+};
+
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_parse_fasta_into_initial_tree_async(
@@ -138,7 +173,7 @@ auto delphy_parse_fasta_into_initial_tree_async(
     const char* fasta_bytes,
     size_t num_fasta_bytes,
     int stage_progress_hook_id,         // (stage: int) -> void
-    int fasta_read_progress_hook_id,    // (seqs_so_far: int, bytes_so_far: size_t, total_bytes: size_t) -> void
+    int read_progress_hook_id,          // (seqs_so_far: int, bytes_so_far: size_t, total_bytes: size_t) -> void
     int analysis_progress_hook_id,      // (seqs_so_far: int, total_seqs: int) -> void
     int initial_build_progress_hook_id, // (tips_so_far: int, total_tips: int) -> void
     int warning_hook_id,                // (seq_id: const char*, warning_code: int, detail: object) -> void
@@ -149,7 +184,7 @@ auto delphy_parse_fasta_into_initial_tree_async(
   auto subbitgen_seed = ctx.bitgen_();
   ctx.thread_pool_.push([fasta_bytes, num_fasta_bytes,
                          stage_progress_hook_id,
-                         fasta_read_progress_hook_id,
+                         read_progress_hook_id,
                          analysis_progress_hook_id,
                          initial_build_progress_hook_id,
                          warning_hook_id,
@@ -160,10 +195,11 @@ auto delphy_parse_fasta_into_initial_tree_async(
       auto in_fasta_is = boost::iostreams::stream<boost::iostreams::array_source>{fasta_bytes, num_fasta_bytes};
       auto in_fasta = read_fasta(
           in_fasta_is,
-          [fasta_read_progress_hook_id, num_fasta_bytes](int seqs_so_far, size_t bytes_so_far) {
+          [read_progress_hook_id, num_fasta_bytes](int seqs_so_far, size_t bytes_so_far) {
             MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2, $3);},
-                                     fasta_read_progress_hook_id, seqs_so_far, bytes_so_far, num_fasta_bytes);
-          });
+                                     read_progress_hook_id, seqs_so_far, bytes_so_far, num_fasta_bytes);
+          },
+          Sequence_warning_hook_bridge{warning_hook_id});
 
       // Stage 2: Analyse it (= transform it into a MAPLE file)
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 2);}, stage_progress_hook_id);
@@ -174,26 +210,10 @@ auto delphy_parse_fasta_into_initial_tree_async(
                 {delphyRunHook($0, $1, $2);},
                 analysis_progress_hook_id, seqs_so_far, total_seqs);
           },
-          [warning_hook_id](const std::string& seq_id,
-                            const Sequence_warning& warning) {
-            // JS calls are synchronous!  seq_id may be destroyed as soon as this hook call ends 
-            std::visit(estd::overloaded{
-              [warning_hook_id, &seq_id](const Sequence_warnings::No_valid_date&) {
-                MAIN_THREAD_EM_ASM(  
-                    {delphyRunHook($0, UTF8ToString($1), 1, {});},
-                    warning_hook_id, seq_id.c_str());
-              },
-              [warning_hook_id, &seq_id](const Sequence_warnings::Ambiguity_precision_loss& w) {
-                MAIN_THREAD_EM_ASM(  
-                    {delphyRunHook($0, UTF8ToString($1), 2, {originalState: String.fromCharCode($2), site: $3});},
-                    warning_hook_id, seq_id.c_str(), to_char(w.original_state), w.site);
-              }
-            }, warning);
-          });
+          Sequence_warning_hook_bridge{warning_hook_id});
       
       // Stage 3: Initial tree build file
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 3);}, stage_progress_hook_id);
-      
       auto init_random = false;  // true = random, false = UShER-like
       auto bitgen = std::mt19937{subbitgen_seed};
       auto tree = new Phylo_tree{
@@ -214,33 +234,76 @@ auto delphy_parse_fasta_into_initial_tree_async(
   });
 }
 
+// For MAPLE files, the parsing proceeds through two stages (the analysis stage of FASTA
+// file loading is essentially a FASTA -> MAPLE conversion):
+// 1. Reading MAPLE file
+// 2. Building the initial tree, one tip at a time
+//
+// The `stage_progress_hook` is called a number {1,2,3} when entering each stage
+// (completion is notified by calling `callback_id`, which will usually cause an
+// associated JS Promise to complete).
+//
+// Every time a sequence is read from the original input file, the hook
+// `read_progress_hook` is called with the number of sequences read so far.
+//
+// Every time a tip is added to the initial tree, the hook `initial_build_progress_hook`
+// is called with the number of tips added so far and the total number of tips.
+//
+// Warnings throughout result in a callback to the `warning_hook`, with a sequence ID (or
+// an empty string if not a sequence-specific warning), a detail code
+// and a JS object with details, if any (see below).
+
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_parse_maple_into_initial_tree_async(
     Delphy_context& ctx,
     const char* maple_bytes,
     size_t num_maple_bytes,
-    int callback_id)   // Signature: (PhyloTree*) -> void
+    int stage_progress_hook_id,         // (stage: int) -> void
+    int read_progress_hook_id,          // (seqs_so_far: int, bytes_so_far: size_t, total_bytes: size_t) -> void
+    int initial_build_progress_hook_id, // (tips_so_far: int, total_tips: int) -> void
+    int warning_hook_id,                // (seq_id: const char*, warning_code: int, detail: object) -> void
+    //                                         (called synchronously)
+    int callback_id)   // Signature: (PhyloTree*) -> void (success), or (msg: const char*) -> void (failure)
     -> void {
 
   auto subbitgen_seed = ctx.bitgen_();
-  ctx.thread_pool_.push([maple_bytes, num_maple_bytes, callback_id, subbitgen_seed](int /*thread_id*/) {
+  ctx.thread_pool_.push([maple_bytes, num_maple_bytes,
+                         stage_progress_hook_id,
+                         read_progress_hook_id,
+                         initial_build_progress_hook_id,
+                         warning_hook_id,
+                         callback_id, subbitgen_seed](int /*thread_id*/) {
     try {
+      // Stage 1: Reading MAPLE file
+      MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 1);}, stage_progress_hook_id);
       auto in_maple_is = boost::iostreams::stream<boost::iostreams::array_source>{maple_bytes, num_maple_bytes};
-      auto in_maple = read_maple(in_maple_is);
+      auto in_maple = read_maple(
+          in_maple_is,
+          [read_progress_hook_id, num_maple_bytes](int seqs_so_far, size_t bytes_so_far) {
+            MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2, $3);},
+                                     read_progress_hook_id, seqs_so_far, bytes_so_far, num_maple_bytes);
+          },
+          Sequence_warning_hook_bridge{warning_hook_id});
 
+      // Stage 2: Initial tree build file
+      MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 2);}, stage_progress_hook_id);
       auto init_random = false;  // true = random, false = UShER-like
       auto bitgen = std::mt19937{subbitgen_seed};
-      auto tree = new Phylo_tree{build_rough_initial_tree_from_maple(std::move(in_maple), init_random, bitgen)};
+      auto tree = new Phylo_tree{
+        build_rough_initial_tree_from_maple(
+            std::move(in_maple), init_random, bitgen,
+            [initial_build_progress_hook_id](int tips_so_far, int total_tips) {
+              MAIN_THREAD_ASYNC_EM_ASM(
+                  {delphyRunHook($0, $1, $2);},
+                  initial_build_progress_hook_id, tips_so_far, total_tips);
+            })
+      };
       
-      MAIN_THREAD_ASYNC_EM_ASM({
-          delphyRunCallback($0, $1);
-        }, callback_id, tree);
+      MAIN_THREAD_ASYNC_EM_ASM({delphyRunCallback($0, $1);}, callback_id, tree);
     } catch (std::exception& e) {
-      std::cerr << e.what() << std::endl;
-      MAIN_THREAD_ASYNC_EM_ASM({
-          delphyFailCallback($0);
-        }, callback_id);
+      // Sync!  e.what() may be destroyed as soon as this hook call ends 
+      MAIN_THREAD_EM_ASM({delphyFailCallback($0, UTF8ToString($1));}, callback_id, e.what());
     }
   });
 }

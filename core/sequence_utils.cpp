@@ -12,6 +12,15 @@ auto default_sequence_warning_hook(const std::string& seq_id, const Sequence_war
       },
       [](const Sequence_warnings::Ambiguity_precision_loss& w) -> std::string {
         return absl::StrFormat("ambiguous state %c at site %d changed to N", to_char(w.original_state), w.site+1);
+      },
+      [](const Sequence_warnings::Invalid_state& w) -> std::string {
+        return absl::StrFormat("invalid state '%c'", w.state_letter);
+      },
+      [](const Sequence_warnings::Invalid_gap& w) -> std::string {
+        return absl::StrFormat("invalid gap from %d to %d", w.start_site+1, w.end_site+1);
+      },
+      [](const Sequence_warnings::Invalid_mutation& w) -> std::string {
+        return absl::StrFormat("invalid mutation from %c to %c at site %d", to_char(w.from), to_char(w.to), w.site+1);
       }
     }, warning)
   };

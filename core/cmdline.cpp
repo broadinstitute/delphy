@@ -31,9 +31,6 @@ auto fasta_to_maple(
   if (in_fasta.empty()) {
     throw std::runtime_error("Input has no sequences!");
   }
-  if (std::ssize(in_fasta) == 1) {
-    throw std::runtime_error("Input has only 1 sequence!");
-  }
   auto L = std::ssize(in_fasta[0].sequence);
   for (auto i = 0; i != std::ssize(in_fasta); ++i) {
     if (std::ssize(in_fasta[i].sequence) != L) {
@@ -77,13 +74,6 @@ auto fasta_to_maple(
     progress_hook(seqs_so_far, total_seqs);
   }
   
-  if (result.tip_descs.empty()) {
-    throw std::runtime_error("Input has no sequences left after discarding those with unknown or imprecise dates!");
-  }
-  if (std::ssize(in_fasta) == 1) {
-    throw std::runtime_error("Input has only 1 sequence left after discarding those with unknown or imprecise dates!");
-  }
-  
   return result;
 }
 
@@ -96,7 +86,10 @@ auto build_rough_initial_tree_from_maple(
     -> Phylo_tree {
 
   if (in_maple.tip_descs.empty()) {
-    throw std::runtime_error("Input has no sequences!");
+    throw std::runtime_error("Input has no sequences (after discarding those with warnings)!");
+  }
+  if (std::ssize(in_maple.tip_descs) == 1) {
+    throw std::runtime_error("Input has only 1 sequence (after discarding those with warnings)!");
   }
   
   // Join all the tips up in a very rough approximation to greedy parsimony
@@ -233,11 +226,14 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       in_fasta_is.seekg(0, std::ios_base::beg);
       
       std::cerr << "Reading fasta file " << in_fasta_filename << "\n";
-      auto in_fasta = read_fasta(in_fasta_is, [total_bytes](int seqs_so_far, size_t bytes_so_far) {
-        std::cerr << absl::StreamFormat("- read %d sequence so far (%d of %d bytes = %.1f%%)\n",
-                                        seqs_so_far, bytes_so_far, total_bytes,
-                                        100.0 * bytes_so_far / static_cast<double>(total_bytes));
-      });
+      auto in_fasta = read_fasta(
+          in_fasta_is,
+          [total_bytes](int seqs_so_far, size_t bytes_so_far) {
+            std::cerr << absl::StreamFormat("- read %d sequence so far (%d of %d bytes = %.1f%%)\n",
+                                            seqs_so_far, bytes_so_far, total_bytes,
+                                            100.0 * bytes_so_far / static_cast<double>(total_bytes));
+          },
+          default_sequence_warning_hook);
       in_fasta_is.close();
 
       std::cerr << "Analysing fasta file " << in_fasta_filename << "\n";
@@ -255,8 +251,19 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         std::cerr << "ERROR: Could not read input MAPLE file " << in_maple_filename << "\n";
         std::exit(EXIT_FAILURE);
       }
+      in_maple_is.seekg(0, std::ios_base::end);
+      auto total_bytes = in_maple_is.tellg();
+      in_maple_is.seekg(0, std::ios_base::beg);
+      
       std::cerr << "Reading MAPLE file " << in_maple_filename << "\n";
-      maple_file = read_maple(in_maple_is);
+      maple_file = read_maple(
+          in_maple_is,
+          [total_bytes](int seqs_so_far, size_t bytes_so_far) {
+            std::cerr << absl::StreamFormat("- read %d sequence so far (%d of %d bytes = %.1f%%)\n",
+                                            seqs_so_far, bytes_so_far, total_bytes,
+                                            100.0 * bytes_so_far / static_cast<double>(total_bytes));
+          },
+          default_sequence_warning_hook);
       in_maple_is.close();
     }
     

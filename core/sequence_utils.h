@@ -15,10 +15,25 @@ struct Ambiguity_precision_loss {
   Seq_letter original_state;
   Site_index site;
 };
+struct Invalid_state {
+  char state_letter;
+};
+struct Invalid_gap {
+  Site_index start_site;
+  Site_index end_site;
+};
+struct Invalid_mutation {
+  Real_seq_letter from;
+  Site_index site;
+  Real_seq_letter to;
+};
 }
 using Sequence_warning = std::variant<
   Sequence_warnings::No_valid_date,
-  Sequence_warnings::Ambiguity_precision_loss
+  Sequence_warnings::Ambiguity_precision_loss,
+  Sequence_warnings::Invalid_state,
+  Sequence_warnings::Invalid_gap,
+  Sequence_warnings::Invalid_mutation
 >;
 
 auto default_sequence_warning_hook(const std::string& seq_id, const Sequence_warning& warning) -> void;
