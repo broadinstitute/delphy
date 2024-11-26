@@ -229,7 +229,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       auto in_fasta = read_fasta(
           in_fasta_is,
           [total_bytes](int seqs_so_far, size_t bytes_so_far) {
-            std::cerr << absl::StreamFormat("- read %d sequence so far (%d of %d bytes = %.1f%%)\n",
+            std::cerr << absl::StreamFormat("- read %d sequences so far (%d of %d bytes = %.1f%%)\n",
                                             seqs_so_far, bytes_so_far, total_bytes,
                                             100.0 * bytes_so_far / static_cast<double>(total_bytes));
           },
@@ -259,7 +259,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       maple_file = read_maple(
           in_maple_is,
           [total_bytes](int seqs_so_far, size_t bytes_so_far) {
-            std::cerr << absl::StreamFormat("- read %d sequence so far (%d of %d bytes = %.1f%%)\n",
+            std::cerr << absl::StreamFormat("- read %d sequences so far (%d of %d bytes = %.1f%%)\n",
                                             seqs_so_far, bytes_so_far, total_bytes,
                                             100.0 * bytes_so_far / static_cast<double>(total_bytes));
           },

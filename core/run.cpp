@@ -263,7 +263,7 @@ auto Run::reset_very_scalable_coalescent_parts() -> void {
 }
 
 auto Run::set_coalescent_prior_t_step(double t_step) -> void {
-  std::cerr << absl::StreamFormat("\n\n*****\n\nResetting coalescent prior resolution to %g days\n\n*******\n\n", t_step);
+  //std::cerr << absl::StreamFormat("\n\n*****\n\nResetting coalescent prior resolution to %g days\n\n*******\n\n", t_step);
   coalescent_prior_.reset(t_step);
   log_coalescent_prior_ = calc_cur_log_coalescent_prior();
   // Very scalable coalescent should pick up new t_step in reset_very_scalable_coalescent_parts()
