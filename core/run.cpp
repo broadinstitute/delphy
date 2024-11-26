@@ -8,7 +8,7 @@
 
 namespace delphy {
 
-Run::Run(ctpl::thread_pool& thread_pool, absl::BitGenRef bitgen, Phylo_tree tree)
+Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
     : thread_pool_{&thread_pool},
       bitgen_{bitgen},
       tree_{std::move(tree)},

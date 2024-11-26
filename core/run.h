@@ -17,7 +17,7 @@ namespace delphy {
 
 class Run {
  public:
-  Run(ctpl::thread_pool& thread_pool, absl::BitGenRef bitgen, Phylo_tree tree);
+  Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree);
 
   auto bitgen() -> absl::BitGenRef { return bitgen_; }
   auto tree() -> Phylo_tree& { return tree_; }
@@ -173,7 +173,7 @@ class Run {
 
  private:
   ctpl::thread_pool* thread_pool_;
-  absl::BitGenRef bitgen_;
+  std::mt19937 bitgen_;
   Phylo_tree tree_;
 
   int64_t step_;
