@@ -34,16 +34,21 @@ if(NOT DEFINED EMSCRIPTEN)
     add_compile_options(-msse3)
   endif()
 endif ()
-# add_compile_options(
-#   -fsanitize=address
-#   -fno-optimize-sibling-calls
-#   -fsanitize-address-use-after-scope
-#   -fsanitize=undefined)
-# add_link_options(
-#   -fsanitize=address
-#   -fno-optimize-sibling-calls
-#   -fsanitize-address-use-after-scope
-#   -fsanitize=undefined)
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+  add_compile_options(
+    -fsanitize=address
+    -fno-optimize-sibling-calls
+    -fsanitize-address-use-after-scope
+    #-fsanitize=undefined
+    )
+  add_link_options(
+    -fsanitize=address
+    -fno-optimize-sibling-calls
+    -fsanitize-address-use-after-scope
+    #-fsanitize=undefined
+    )
+endif ()
 
 if(EMSCRIPTEN)
   # Enable emscripten pthreads support
