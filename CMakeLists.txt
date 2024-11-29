@@ -72,8 +72,8 @@ set(ABSL_PROPAGATE_CXX_STD ON)
 add_subdirectory(third-party/abseil-cpp EXCLUDE_FROM_ALL)
 
 # Optional UI libraries
-find_package(OpenGL)
-find_package(GLUT)
+find_package(SDL2)
+find_package(SDL2_ttf)
 
 # Core library
 add_subdirectory(core)
@@ -99,14 +99,12 @@ FetchContent_MakeAvailable(googletest)
 add_subdirectory(tests)
 
 # Set up delphy_ui executable if we have OpenGL and GLUT.
-# Disabling on macOS because GL is deprecated (therefore more trouble
-# than it's worth for the time being). See notes in tools/delphy_ui.cpp.
-if(OpenGL_FOUND AND GLUT_FOUND AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")
+if(SDL2_FOUND AND SDL2_ttf_FOUND)
   add_executable(delphy_ui tools/delphy_ui.cpp)
   target_include_directories(delphy_ui PUBLIC tools)
   target_link_libraries(delphy_ui
     delphy_core
-    OpenGL::GL OpenGL::GLU GLUT::GLUT)
+    SDL2::SDL2 SDL2_ttf::SDL2_ttf)
 endif()
 
 # delphy cli executables (only in non-WASM builds)
