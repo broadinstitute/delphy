@@ -1,20 +1,9 @@
-/*#include <chrono>
+#include <chrono>
 #include <iostream>
 
-#ifdef __APPLE__
-// Apple deprecated OpenGL and GLUT when macOS 10.14 was released in 2018.
-#define GL_SILENCE_DEPRECATION
-#include <GLUT/glut.h>
-// Would need to add freeglut to the build process to make this
-// work properly. Possible to do this with Homebrew, but that's another
-// dependency, so how to handle cleanly? Instead, just removing from
-// CMakeLists.txt for now. Fixes/contributions welcome! [fry 241121]
-#else
-#include <GL/glut.h>
-#include <GL/freeglut.h>  // For glutMainLoopEvent()
-#endif
-
 #include "absl/log/initialize.h"
+#include "SDL.h"
+#include "SDL_ttf.h"
 
 #include "mcc_tree.h"
 #include "incremental_mcc_tree.h"
@@ -26,6 +15,17 @@
 #include "cmdline.h"
 #include "api.h"
 #include "run.h"
+
+// Useful snippet from https://stackoverflow.com/a/42060129
+#ifndef defer
+struct defer_dummy {};
+template <class F> struct deferrer { F f; ~deferrer() { f(); } };
+template <class F> deferrer<F> operator*(defer_dummy, F f) { return {f}; }
+#define DEFER_(LINE) zz_defer##LINE
+#define DEFER(LINE) DEFER_(LINE)
+#define defer auto DEFER(__LINE__) = defer_dummy{} *[&]()
+#endif // defer
+
 
 namespace delphy {
 
@@ -57,6 +57,86 @@ static Beasty_trees_output *ui_trees_output = nullptr;
 static double t_min_x_axis = std::numeric_limits<double>::max();
 static double t_max_x_axis = -std::numeric_limits<double>::max();
 static double t_min_scale_bar, t_max_scale_bar;
+
+static SDL_Window* sdl_window = nullptr;
+static SDL_Renderer* sdl_renderer = nullptr;
+static TTF_Font* ttf_font = nullptr;
+static bool sdl_running = true;
+
+// Coordinate transformations
+//  Pixel coordinates for (x,y) are (round(ox + x*dx), round(oy + y*dy))
+static int sdl_w;
+static int sdl_h;
+static float ox;
+static float oy;
+static float dx;
+static float dy;
+static auto px(double x) -> int { return static_cast<int>(std::round(ox + x*dx)); }
+static auto py(double y) -> int { return static_cast<int>(std::round(oy + y*dy)); }
+
+// Thin shim around SDL2 Renderer API for drawing using internal coordinates instead of pixels
+auto color_3d(double r, double g, double b) -> void {
+  SDL_SetRenderDrawColor(sdl_renderer,
+                         static_cast<int>(std::round(r * 255.0)),
+                         static_cast<int>(std::round(g * 255.0)),
+                         static_cast<int>(std::round(b * 255.0)),
+                         SDL_ALPHA_OPAQUE);
+}
+
+auto draw_line(double x1, double y1, double x2, double y2) -> void {
+  SDL_RenderDrawLine(sdl_renderer, px(x1), py(y1), px(x2), py(y2));
+}
+
+auto draw_rect(double x1, double y1, double x2, double y2) -> void {
+  auto r = SDL_Rect{
+    .x = px(x1),
+    .y = py(y1),
+    .w = px(x2) - px(x1),
+    .h = py(y2) - py(y1)
+  };
+  SDL_RenderDrawRect(sdl_renderer, &r);
+}
+
+auto fill_rect(double x1, double y1, double x2, double y2) -> void {
+  auto r = SDL_Rect{
+    .x = px(x1),
+    .y = py(y1),
+    .w = px(x2) - px(x1),
+    .h = py(y2) - py(y1)
+  };
+  SDL_RenderFillRect(sdl_renderer, &r);
+}
+
+auto draw_text(const char* text, int x_in_px, int y_in_px) -> void {
+  if (ttf_font == nullptr) { return; }
+
+  auto color = SDL_Color{};
+  SDL_GetRenderDrawColor(sdl_renderer, &color.r, &color.g, &color.b, &color.a);
+  
+  auto surface = TTF_RenderText_Solid(ttf_font, text, color);
+  if (surface == nullptr) {
+    std::cerr << absl::StreamFormat("Failed to render text: %s\n", TTF_GetError());
+    return;
+  }
+  defer { SDL_FreeSurface(surface); };
+
+  auto texture = SDL_CreateTextureFromSurface(sdl_renderer, surface);
+  if (texture == nullptr) {
+    std::cerr << absl::StreamFormat("Failed to convert text surface to texture: %s\n", SDL_GetError());
+    return;
+  }
+  defer { SDL_DestroyTexture(texture); };
+
+  auto r = SDL_Rect{
+    .x = x_in_px,
+    .y = y_in_px,
+    .w = surface->w,
+    .h = surface->h
+  };
+  
+  SDL_RenderCopy(sdl_renderer, texture, NULL, &r);
+}
+
 static auto rescale_axes() {
   const auto& tree = ui_run->tree();
   t_min_scale_bar = std::numeric_limits<double>::max();
@@ -144,24 +224,18 @@ static auto x_for(double t) -> double {
 }
 
 static auto render_tree() -> void {
-  glClearColor(1.0f, 1.0f, 1.0f, 1.0f); // white background
-  glClear(GL_COLOR_BUFFER_BIT);
-
   auto& tree = ui_run->tree();
 
-  // Define coordinates so (0,0) is bottom-left and (1,1) is top-right
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluOrtho2D(0.0, 2.0, 0.0, 1.0);
+  // Temporarily use only left half of screen
+  dx *= 0.5;
+  defer { dx *= 2.0; };
 
-  glColor3d(0.0, 0.0, 0.0);  // black lines
+  color_3d(0.0, 0.0, 0.0);  // black lines
 
   rescale_axes();
 
-  glBegin(GL_LINES);
-  glVertex2d(x_for(t_min_scale_bar), 0.03);
-  glVertex2d(x_for(t_max_scale_bar), 0.03);
-  glEnd();
+  draw_line(x_for(t_min_scale_bar), 0.03,
+            x_for(t_max_scale_bar), 0.03);
 
   canonicalize_tree(tree);
   auto node_ys = position_tree_nodes(tree);
@@ -178,18 +252,16 @@ static auto render_tree() -> void {
     auto partition_index = ui_run->partition().tree_index_to_partition_index()[node];
     auto color_index = partition_index % std::ssize(partition_colors);
     auto [r,g,b] = partition_colors[color_index];
-    glColor3d(r, g, b);
+    color_3d(r, g, b);
 
-    glBegin(GL_LINES);
     if (node != tree.root) {
-      glVertex2d(x_for(tree.at(node).t), node_ys[node]);
-      glVertex2d(x_for(tree.at_parent_of(node).t), node_ys[node]);
+      draw_line(x_for(tree.at(node).t), node_ys[node],
+                x_for(tree.at_parent_of(node).t), node_ys[node]);
     }
     if (tree.at(node).is_inner_node()) {
-      glVertex2d(x_for(tree.at(node).t), node_ys[tree.at(node).left_child()]);
-      glVertex2d(x_for(tree.at(node).t), node_ys[tree.at(node).right_child()]);
+      draw_line(x_for(tree.at(node).t), node_ys[tree.at(node).left_child()],
+                x_for(tree.at(node).t), node_ys[tree.at(node).right_child()]);
     }
-    glEnd();
   }
 
   // Draw tips
@@ -202,14 +274,10 @@ static auto render_tree() -> void {
 
       auto N = max_leaf_index;
       auto c = static_cast<double>(leaf_index[node]) / N;
-      glColor3d(0.0, 1.0 * (1 - c), 1.0 * c);
+      color_3d(0.0, 1.0 * (1 - c), 1.0 * c);
 
-      glBegin(GL_QUADS);
-      glVertex2d(cx - half_side, cy - half_side);
-      glVertex2d(cx - half_side, cy + half_side);
-      glVertex2d(cx + half_side, cy + half_side);
-      glVertex2d(cx + half_side, cy - half_side);
-      glEnd();
+      fill_rect(cx - half_side, cy - half_side,
+                cx + half_side, cy + half_side);
     }
   }
 
@@ -222,40 +290,27 @@ static auto render_tree() -> void {
       auto beta = evo.partition_for_site[m.site];
       auto mut_radius = 0.001;
       if (beta == 0) {
-        glColor3d(1.0, 0.0, 0.0);  // mutations in red
+        color_3d(1.0, 0.0, 0.0);  // mutations in red
       } else {
-        glColor3d(0.0, 0.0, 1.0);  // mutations in partitions other than 0 in blue
+        color_3d(0.0, 0.0, 1.0);  // mutations in partitions other than 0 in blue
         mut_radius *= 5;
       }
-      glBegin(GL_TRIANGLE_FAN);
-      glVertex2d(cx, cy);
-      for (auto i = 0; i <= 10; ++i) {
-        glVertex2d(
-            cx + mut_radius * std::cos(2 * M_PI * i / 10.0),
-            cy + mut_radius * std::sin(2 * M_PI * i / 10.0)
-        );
-      }
-      glEnd();
+      fill_rect(cx - mut_radius, cy - mut_radius,
+                cx + mut_radius, cy + mut_radius);
     }
   }
 
   // Draw missations
   auto missation_radius = 0.002;
-  glColor3d(0.0, 1.0, 0.0);  // missations in green
+  color_3d(0.0, 1.0, 0.0);  // missations in green
   for (const auto& node : index_order_traversal(tree)) {
     if (not tree.at(node).missations.empty()) {
       auto t = (node == tree.root ? tree.at(node).t : tree.at_parent_of(node).t);
       auto cx = x_for(t);
       auto cy = node_ys[node];
-      glBegin(GL_TRIANGLE_FAN);
-      glVertex2d(cx, cy);
-      for (auto i = 0; i <= 10; ++i) {
-        glVertex2d(
-            cx + missation_radius * std::cos(2 * M_PI * i / 10.0),
-            cy + missation_radius * std::sin(2 * M_PI * i / 10.0)
-        );
-      }
-      glEnd();
+
+      fill_rect(cx - missation_radius, cy - missation_radius,
+                cx + missation_radius, cy + missation_radius);
     }
   }
 
@@ -296,10 +351,13 @@ static auto render_tree() -> void {
 
 
 static auto render_mcc() -> void {
-  // Define coordinates so (0,0) is bottom-left and (1,1) is top-right
-  glMatrixMode(GL_PROJECTION);
-  glLoadIdentity();
-  gluOrtho2D(-1.0, 1.0, 0.0, 1.0);
+  // Temporarily use only right half of screen
+  ox += 0.5*dx;
+  dx *= 0.5;
+  defer {
+    dx *= 2.0;
+    ox -= 0.5*dx;
+  };
 
   canonicalize_tree(mcc_tree);
   auto node_ys = position_tree_nodes(mcc_tree);
@@ -344,23 +402,17 @@ static auto render_mcc() -> void {
       auto bin_left = x_for(min_bin + bin * bin_width);
       auto bin_right = x_for(min_bin + (bin+1) * bin_width);
 
-      glColor3d(0.5, 0.5, 0.5);
-      glBegin(GL_QUADS);
-      glVertex2d(bin_left, 0.04);
-      glVertex2d(bin_left, 0.04 + 3 * bin_freqs[bin] / bin_width);
-      glVertex2d(bin_right, 0.04 + 3 * bin_freqs[bin] / bin_width);
-      glVertex2d(bin_right, 0.04);
-      glEnd();
+      color_3d(0.5, 0.5, 0.5);
+      fill_rect(bin_left, 0.04,
+                bin_right, 0.04 + 3 * bin_freqs[bin] / bin_width);
     }
   }
 
   // Axis
-  glColor3d(0.0, 0.0, 0.0);  // black lines
+  color_3d(0.0, 0.0, 0.0);  // black lines
 
-  glBegin(GL_LINES);
-  glVertex2d(x_for(t_min_scale_bar), 0.03);
-  glVertex2d(x_for(t_max_scale_bar), 0.03);
-  glEnd();
+  draw_line(x_for(t_min_scale_bar), 0.03,
+            x_for(t_max_scale_bar), 0.03);
 
   // Pick time to display
   auto t_for = [&](const auto& node) -> double {
@@ -369,17 +421,14 @@ static auto render_mcc() -> void {
 
   // Draw current tree
   for (const auto& node : index_order_traversal(mcc_tree)) {
-
-    glBegin(GL_LINES);
     if (node != mcc_tree.root) {
-      glVertex2d(x_for(t_for(node)), node_ys[node]);
-      glVertex2d(x_for(t_for(mcc_tree.at(node).parent)), node_ys[node]);
+      draw_line(x_for(t_for(node)), node_ys[node],
+                x_for(t_for(mcc_tree.at(node).parent)), node_ys[node]);
     }
     if (mcc_tree.at(node).is_inner_node()) {
-      glVertex2d(x_for(t_for(node)), node_ys[mcc_tree.at(node).left_child()]);
-      glVertex2d(x_for(t_for(node)), node_ys[mcc_tree.at(node).right_child()]);
+      draw_line(x_for(t_for(node)), node_ys[mcc_tree.at(node).left_child()],
+                x_for(t_for(node)), node_ys[mcc_tree.at(node).right_child()]);
     }
-    glEnd();
   }
 
   // Draw tips
@@ -392,26 +441,38 @@ static auto render_mcc() -> void {
 
       auto N = max_leaf_index;
       auto c = static_cast<double>(leaf_index[node]) / N;
-      glColor3d(0.0, 1.0 * (1 - c), 1.0 * c);
+      color_3d(0.0, 1.0 * (1 - c), 1.0 * c);
 
-      glBegin(GL_QUADS);
-      glVertex2d(cx - half_side, cy - half_side);
-      glVertex2d(cx - half_side, cy + half_side);
-      glVertex2d(cx + half_side, cy + half_side);
-      glVertex2d(cx + half_side, cy - half_side);
-      glEnd();
+      fill_rect(cx - half_side, cy - half_side,
+                cx + half_side, cy + half_side);
     }
   }
 }
 
 static auto render_all() -> void {
-  glClearColor(1.0f, 1.0f, 1.0f, 1.0f); // white background
-  glClear(GL_COLOR_BUFFER_BIT);
+  color_3d(1.0, 1.0, 1.0); // white background
+  SDL_RenderClear(sdl_renderer);
+
+  // Text
+  color_3d(0.0, 0.0, 0.0);
+  draw_text(absl::StrFormat("Step: %d", ui_run->step()).c_str(), 10, 10);
+  
+  // Define coordinates so (0,0) is bottom-left and (1,1) is top-right
+  if (SDL_GetRendererOutputSize(sdl_renderer, &sdl_w, &sdl_h) != 0) {
+    std::cerr << "Failed to get renderer output size\n";
+    std::exit(EXIT_FAILURE);
+  }
+
+  // Coordinate system: (0,0) is bottom left, (1,1) is top-right
+  ox = 0.0;
+  oy = sdl_h;
+  dx = sdl_w;
+  dy = -sdl_h;
 
   render_tree();
   render_mcc();
 
-  glutSwapBuffers();
+  SDL_RenderPresent(sdl_renderer);
 }
 
 static auto print_stats_line() -> void {
@@ -528,7 +589,10 @@ static auto print_stats_line() -> void {
 
 static auto idle_func() -> void {
 
-  if (steps_per_refresh <= 0) { return; }
+  if (steps_per_refresh <= 0) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    return;
+  }
 
   auto step_granularity = steps_per_refresh;
   if (ui_log_output) {
@@ -582,7 +646,6 @@ static auto idle_func() -> void {
     //mcc_tree = incremental_mcc_tree->derive_mcc_tree();
   }
 
-  glutPostRedisplay();
   print_stats_line();
 }
 
@@ -634,7 +697,7 @@ auto stop_trees_output() -> void {
   }
 }
 
-auto keyboard_func(unsigned char key, int, int) -> void {
+auto keyboard_func(char key) -> void {
   switch (key) {
     case 's':
     case 'S': {
@@ -782,7 +845,7 @@ auto keyboard_func(unsigned char key, int, int) -> void {
       return;  // idle_func has already refreshed the display and printed a stats line
     }
     case 'q': {
-      glutLeaveMainLoop();
+      sdl_running = false;
       return;
     }
     case '1':
@@ -880,16 +943,78 @@ auto keyboard_func(unsigned char key, int, int) -> void {
       break;
     }
   }
-  glutPostRedisplay();
   print_stats_line();
 }
 
-auto ui_init(int *argc, char **argv) -> void {
-  glutInit(argc, argv);
-  glutInitDisplayMode(GLUT_RGB | GLUT_DOUBLE);
-  glutInitWindowPosition(100, 20);
-  glutInitWindowSize(1800, 1800);
-  glutCreateWindow("Delphy");
+auto ui_init([[maybe_unused]] int *argc, [[maybe_unused]] char **argv) -> void {
+  if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
+    std::cerr << absl::StreamFormat("error initializing SDL: %s\n", SDL_GetError());
+    std::exit(EXIT_FAILURE);
+  }
+  
+  sdl_window = SDL_CreateWindow("Delphy", // creates a window
+                                SDL_WINDOWPOS_CENTERED,
+                                SDL_WINDOWPOS_CENTERED,
+                                1800, 1800,
+                                SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI);
+  // PV: Note from docs for mac:
+  // "On Apple's macOS, you must set the NSHighResolutionCapable Info.plist property to YES, otherwise you will not receive a High-DPI OpenGL canvas."
+  if (sdl_window == nullptr) {
+    std::cerr << absl::StreamFormat("error creating SDL window: %s\n", SDL_GetError());
+    std::exit(EXIT_FAILURE);
+  }
+  
+  sdl_renderer = SDL_CreateRenderer(sdl_window, -1, SDL_RENDERER_ACCELERATED);
+  
+  if (TTF_Init() != 0) {
+    std::cerr << absl::StreamFormat("error initializing SDL_ttf: %s\n", TTF_GetError());
+    std::exit(EXIT_FAILURE);
+  }
+
+  for (auto maybe_font_path : {
+      "/Library/Fonts/Arial.ttf",  // FIXME: Not sure about this path?
+      "/usr/share/fonts/truetype/freefont/FreeSans.ttf"}) {
+    ttf_font = TTF_OpenFont(maybe_font_path, 24);
+    if (ttf_font != nullptr) {
+      break;
+    }
+  }
+  if (ttf_font == nullptr) {
+    std::cerr << absl::StreamFormat("WARNING, could not load any font, will not draw text on screen: %s\n",
+                                    TTF_GetError());
+  }
+}
+
+auto ui_finalize() -> void {
+  if (ttf_font != nullptr) {
+    TTF_CloseFont(ttf_font);
+  }
+  TTF_Quit();
+  SDL_DestroyRenderer(sdl_renderer);
+  SDL_DestroyWindow(sdl_window);
+  SDL_Quit();
+}
+
+auto ui_sdl_loop() -> void {
+  sdl_running = true;
+  while (sdl_running) {
+    auto e = SDL_Event{};
+    while (SDL_PollEvent(&e) != 0) {
+      switch (e.type) {
+        
+        case SDL_QUIT:
+          return;
+          
+        case SDL_TEXTINPUT:
+          keyboard_func(e.text.text[0]);
+          break;
+          
+      }
+    }
+
+    render_all();
+    idle_func();
+  }
 }
 
 auto ui_main_loop(Processed_cmd_line& c) -> int {
@@ -918,12 +1043,8 @@ auto ui_main_loop(Processed_cmd_line& c) -> int {
 
   print_stats_line();
 
-  glutDisplayFunc(render_all);
-  glutIdleFunc(idle_func);
-  glutKeyboardFunc(keyboard_func);
-  glutSetOption(GLUT_ACTION_ON_WINDOW_CLOSE, GLUT_ACTION_GLUTMAINLOOP_RETURNS);
-
-  glutMainLoop();
+  // Main SDL event loop
+  ui_sdl_loop();
 
   stop_log_output();
   stop_trees_output();
@@ -935,7 +1056,7 @@ auto ui_main_loop(Processed_cmd_line& c) -> int {
 
 }  // namespace delphy
 
-auto main2(int argc, char** argv) -> int {
+auto main(int argc, char** argv) -> int {
   using namespace delphy;
 
   absl::InitializeLog();
@@ -944,144 +1065,4 @@ auto main2(int argc, char** argv) -> int {
   auto c = process_args(argc, argv);
 
   return ui_main_loop(c);
-} */
-
-#include "SDL.h"
-#include "SDL_ttf.h"
-
-void render_text(
-    SDL_Renderer *renderer,
-    int x,
-    int y,
-    const char *text,
-    TTF_Font *font,
-    SDL_Rect *rect,
-    SDL_Color *color
-) {
-    SDL_Surface *surface;
-    SDL_Texture *texture;
-
-    surface = TTF_RenderText_Solid(font, text, *color);
-    texture = SDL_CreateTextureFromSurface(renderer, surface);
-    rect->x = x;
-    rect->y = y;
-    rect->w = surface->w;
-    rect->h = surface->h;
-    SDL_FreeSurface(surface);
-    SDL_RenderCopy(renderer, texture, NULL, rect);
-    SDL_DestroyTexture(texture);
-}
-
-int main(int /*argc*/, [[maybe_unused]] char *argv[])
-{
-    // returns zero on success else non-zero
-    if (SDL_Init(SDL_INIT_EVERYTHING) != 0) {
-        printf("error initializing SDL: %s\n", SDL_GetError());
-        return 1;
-    }
-    SDL_Window* win = SDL_CreateWindow("GAME", // creates a window
-                                    SDL_WINDOWPOS_CENTERED,
-                                    SDL_WINDOWPOS_CENTERED,
-                                    1000, 1000, 0);
-
-    // triggers the program that controls
-    // your graphics hardware and sets flags
-    Uint32 render_flags = SDL_RENDERER_ACCELERATED;
-
-    // creates a renderer to render our images
-    SDL_Renderer* rend = SDL_CreateRenderer(win, -1, render_flags);
-
-    ///
-    /// Section 2: SDL image loader
-    ///
-
-    ///
-    /// Section 4: SDL ttf and rendering text
-    ///
-    TTF_Init();
-    TTF_Font *font = TTF_OpenFont("/usr/share/fonts/truetype/freefont/FreeSans.ttf", 24);
-    if (font == NULL) {
-        printf("error initializing TTF: %s\n", TTF_GetError());
-        return 1;
-    }
-
-    // controls animation loop
-    int close = 0;
-    
-    // animation loop
-    while (!close) {
-        SDL_Event event;
-
-        // Events management
-        while (SDL_PollEvent(&event)) {
-            switch (event.type) {
-
-            case SDL_QUIT:
-                // handling of close button
-                close = 1;
-                break;
-
-            case SDL_KEYDOWN:
-                // keyboard API for key pressed
-                switch (event.key.keysym.scancode) {
-                case SDL_SCANCODE_ESCAPE:
-                    close = 1;
-                    break;
-                default:
-                    break;
-                }
-            }
-        }
-
-        // clears the screen
-        SDL_RenderClear(rend);
-
-       ///
-       /// Section 4: SDL ttf and rendering text
-       ///
-        // create a rectangle to update with the size of the rendered text
-        SDL_Rect text_rect;
-
-        // The color for the text we will be displaying
-        SDL_Color white = {255, 255, 255, 0};
-
-        // so we can have nice text, two lines one above the next
-        render_text(rend, 10, 10, "Hello World!", font, &text_rect, &white);
-        render_text(rend, 10, text_rect.y + text_rect.h, "Conan demo by JFrog", font, &text_rect, &white);
-        
-        // triggers the double buffers
-        // for multiple rendering
-        SDL_RenderPresent(rend);
-
-        // calculates to 60 fps
-        SDL_Delay(1000 / 60);
-    }
-
-    ///
-    /// Section 3: Game Loop and Basic Controls
-    ///
-
-    ///
-    /// Section 5: Freeing resources
-    ///
-
-    // close font handle
-    TTF_CloseFont(font);
-
-    // close TTF
-    TTF_Quit();
-
-    // destroy renderer
-    SDL_DestroyRenderer(rend);
-
-    // We destroy our window. We are passing in the pointer
-    // that points to the memory allocated by the 
-    // 'SDL_CreateWindow' function. Remember, this is
-    // a 'C-style' API, we don't have destructors.
-    SDL_DestroyWindow(win);
-    
-    // We safely uninitialize SDL2, that is, we are
-    // taking down the subsystems here before we exit
-    // our program.
-    SDL_Quit();
 }

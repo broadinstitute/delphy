@@ -72,8 +72,8 @@ set(ABSL_PROPAGATE_CXX_STD ON)
 add_subdirectory(third-party/abseil-cpp EXCLUDE_FROM_ALL)
 
 # Optional UI libraries
-find_package(SDL2)
-find_package(SDL2_ttf)
+find_package(SDL2 QUIET)  # QUIET == no warning if not found
+find_package(SDL2_ttf QUIET)
 
 # Core library
 add_subdirectory(core)
