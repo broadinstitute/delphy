@@ -565,7 +565,7 @@ auto write_delphy_file(
     std::map<int64_t, Phylo_tree>& trees,
     std::string_view out_filename,
     int every,
-    absl::BitGenRef bitgen)
+    std::mt19937& bitgen)
     -> void {
 
   const auto APP_MAGIC_NUMBER = "DPHY";
@@ -733,7 +733,7 @@ auto main(int argc, char** argv) -> int {
     auto trees = read_beasty_trees(trees_is, 0, every);
     trees_is.close();
 
-    auto bitgen = absl::BitGen{};
+    auto bitgen = std::mt19937{std::random_device{}()};
     std::cerr << "Renumbering tree nodes\n";
     renumber_trees(trees, fasta);
     
