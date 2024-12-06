@@ -774,4 +774,10 @@ TEST_F(Phylo_tree_calc_complex_test, calc_max_tip_time) {
   EXPECT_THAT(calc_max_tip_time(tree), testing::Eq(tree.at(c).t));
 }
 
+TEST_F(Phylo_tree_calc_complex_test, calc_max_tip_time_with_uncertainty) {
+  tree.at(c).t_max = tree.at(c).t + 10.0;
+  EXPECT_THAT(calc_max_tip_time(tree), testing::Ne(tree.at(c).t));
+  EXPECT_THAT(calc_max_tip_time(tree), testing::Eq(tree.at(c).t_max));
+}
+
 }  // namespace delphy

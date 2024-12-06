@@ -620,10 +620,7 @@ auto Run::run_global_moves() -> void {
 
   // 4-pre. Adjust resolution of staircases used in coalescent prior if they're really out of whack
   auto min_t = tree_.at_root().t;
-  auto max_t = min_t;
-  for (const auto& node : index_order_traversal(tree_)) {
-    max_t = std::max(max_t, tree_.at(node).t);
-  }
+  auto max_t = calc_max_tip_time(tree_);
   auto cur_t_step = coalescent_prior_.t_step();
   auto target_t_step = (max_t - min_t) / target_coal_prior_cells_;
   auto min_t_step = (1.0) / target_coal_prior_cells_;  // Avoid degenerate cases when tree collapses

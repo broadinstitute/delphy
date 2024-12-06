@@ -610,8 +610,8 @@ auto calc_num_muts_l_ab(const Phylo_tree& tree) -> Node_vector<Seq_matrix<int>> 
 auto calc_max_tip_time(const Phylo_tree& tree) -> double {
   auto t_max = -std::numeric_limits<double>::infinity();
   for (const auto& node : index_order_traversal(tree)) {
-    if (tree.at(node).is_tip() && (tree.at(node).t > t_max)) {
-      t_max = tree.at(node).t;
+    if (tree.at(node).is_tip() && (tree.at(node).t_max > t_max)) {
+      t_max = tree.at(node).t_max;
     }
   }
   return t_max;
