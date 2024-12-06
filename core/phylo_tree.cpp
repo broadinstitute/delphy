@@ -119,8 +119,8 @@ auto assert_phylo_tree_integrity(const Phylo_tree& tree, bool force) -> void {
     
     for (const auto& node : pre_order_traversal(tree)) {
       
-      CHECK_LE(tree.at(node).t_min, tree.at(node).t);
-      CHECK_LE(tree.at(node).t, tree.at(node).t_max);
+      CHECK_LE(tree.at(node).t_min - 1e-2, tree.at(node).t + 1e-2);  // +/- 1e-2 = allow for roundoff (float<->double)
+      CHECK_LE(tree.at(node).t - 1e-2, tree.at(node).t_max + 1e-2);
       if (tree.at(node).is_inner_node()) {
         CHECK_EQ(tree.at(node).t_min, -std::numeric_limits<float>::max());
         CHECK_EQ(tree.at(node).t_max, +std::numeric_limits<float>::max());
@@ -128,7 +128,7 @@ auto assert_phylo_tree_integrity(const Phylo_tree& tree, bool force) -> void {
       
       if (tree.at(node).is_inner_node()) {
         for (const auto& child : tree.at(node).children) {
-          CHECK_LE(tree.at(node).t, tree.at(child).t);
+          CHECK_LE(tree.at(node).t - 1e-2, tree.at(child).t + 1e-2);  // +/- 1e-2 = allow for roundoff (float<->double)
         }
       }
     }
@@ -794,6 +794,8 @@ auto build_usher_like_tree(
     auto& tip_desc = tip_descs[tip];
     tree.at(tip).name = std::move(tip_desc.name);
     CHECK_LE(tip_desc.t_min, tip_desc.t_max);
+    tree.at(tip).t_min = tip_desc.t_min;
+    tree.at(tip).t_max = tip_desc.t_max;
     tree.at(tip).t = absl::Uniform(absl::IntervalClosedClosed, bitgen, tip_desc.t_min, tip_desc.t_max);
   }
 
@@ -945,7 +947,7 @@ auto build_usher_like_tree(
       tree.at(S).mutations.assign(G_S_muts_G_P_end, G_S_muts_end);
       tree.at(P).mutations.erase(G_S_muts_G_P_end, G_S_muts_end);
     }
-    tree.at(P).t_min = -std::numeric_limits<float>::min();
+    tree.at(P).t_min = -std::numeric_limits<float>::max();
     tree.at(P).t_max = +std::numeric_limits<float>::max();
     tree.at(P).t = t_P;
     tree.at(P).children = {X, S};
