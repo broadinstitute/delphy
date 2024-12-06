@@ -144,6 +144,14 @@ auto Run::repartition() -> void {
       const auto& missation_map = (node == subroot) ? root_missation_map : tree_.at(node).missations;
       subtree.at(subtree_node).name = tree_.at(node).name;
       subtree.at(subtree_node).t = tree_.at(node).t;
+      if (subtree.at(subtree_node).is_tip() && not tree_.at(node).is_tip()) {
+        // "tip" in subtree is really just a frozen inner node, which we shouldn't move
+        subtree.at(subtree_node).t_min = tree_.at(node).t;
+        subtree.at(subtree_node).t_max = tree_.at(node).t;
+      } else {
+        subtree.at(subtree_node).t_min = tree_.at(node).t_min;
+        subtree.at(subtree_node).t_max = tree_.at(node).t_max;
+      }
       subtree.at(subtree_node).mutations = mutation_list;
       subtree.at(subtree_node).missations = missation_map;
       if (estd::is_debug_enabled) {
@@ -183,6 +191,8 @@ auto Run::reassemble() -> void {
       tree_.at(node).t = subtree.at(subnode).t;
       if (tree_.at(node).is_inner_node()) {
         coalescent_prior_.displace_coalescence(node, tree_.at(node).t);
+      } else {
+        coalescent_prior_.displace_tip(node, tree_.at(node).t);
       }
       if (subnode != subtree.root) {
         tree_.at(node).mutations = subtree.at(subnode).mutations;
