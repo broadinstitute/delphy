@@ -116,14 +116,22 @@ auto assert_phylo_tree_integrity(const Phylo_tree& tree, bool force) -> void {
 
     assert_mutation_consistency(tree, force);
     assert_missation_consistency(tree, force);
-    // FIXME: Commented out for node since some tests still have zero-length branches in them
-    // for (const auto& node : pre_order_traversal(tree)) {
-    //   if (tree.at(node).is_inner_node()) {
-    //     for (const auto& child : tree.at(node).children) {
-    //       CHECK_LT(tree.at(node).t, tree.at(child).t);  // Note: Forbid zero-length branches!
-    //     }
-    //   }
-    // }
+    
+    for (const auto& node : pre_order_traversal(tree)) {
+      
+      CHECK_LE(tree.at(node).t_min, tree.at(node).t);
+      CHECK_LE(tree.at(node).t, tree.at(node).t_max);
+      if (tree.at(node).is_inner_node()) {
+        CHECK_EQ(tree.at(node).t_min, -std::numeric_limits<float>::max());
+        CHECK_EQ(tree.at(node).t_max, +std::numeric_limits<float>::max());
+      }
+      
+      if (tree.at(node).is_inner_node()) {
+        for (const auto& child : tree.at(node).children) {
+          CHECK_LE(tree.at(node).t, tree.at(child).t);
+        }
+      }
+    }
   }
 }
 
@@ -576,6 +584,16 @@ auto randomize_tree(Phylo_tree& tree, absl::BitGenRef bitgen) -> void {
   auto [tips, inner_nodes] = extract_nodes(tree);
   std::ranges::shuffle(tips, bitgen);
 
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip()) {
+      if (tree.at(node).t_min == tree.at(node).t_max) {
+        tree.at(node).t = tree.at(node).t_min;
+      } else {
+        tree.at(node).t = absl::Uniform(absl::IntervalClosedClosed, bitgen, tree.at(node).t_min, tree.at(node).t_max);
+      }
+    }
+  }
+
   auto num_inner_nodes = (std::ssize(tree) - 1) / 2;
   auto inner_node_offset = 50.0 / num_inner_nodes;
   rewire_tree_through_sequential_accretion(tree, tips, inner_node_offset);
@@ -648,9 +666,6 @@ auto build_random_tree(
     return tree;
   }
   
-  // Pick root time
-  auto max_root_t = std::ranges::min(tip_descs, {}, [](const auto& tip_desc) { return tip_desc.t; });
-
   // Set up tree with tips and ensure absence of links
   // Initial mutations are all at tip end
   auto tree = Phylo_tree{2*num_tips - 1};
@@ -660,7 +675,8 @@ auto build_random_tree(
     tree.at(tip).parent = k_no_node;
     tree.at(tip).children = {};
     tree.at(tip).name = std::move(tip_desc.name);
-    tree.at(tip).t = tip_desc.t;
+    CHECK_LE(tip_desc.t_min, tip_desc.t_max);
+    tree.at(tip).t = absl::Uniform(absl::IntervalClosedClosed, bitgen, tip_desc.t_min, tip_desc.t_max);
     for (const auto& m : tip_desc.seq_deltas) {
       tree.at(tip).mutations.push_back(m.place_at(tip_desc.t));
     }
@@ -692,6 +708,8 @@ auto build_random_tree(
     if (tree.at(node).is_inner_node()) {
       auto L = tree.at(node).left_child();
       auto R = tree.at(node).right_child();
+      tree.at(node).t_min = -std::numeric_limits<float>::max();
+      tree.at(node).t_max = +std::numeric_limits<float>::max();
       tree.at(node).t = std::min(tree.at(L).t, tree.at(R).t) - 1.0;
     }
   }
@@ -767,9 +785,6 @@ auto build_usher_like_tree(
     return tree;
   }
   
-  // Pick root time
-  auto max_root_t = std::ranges::min(tip_descs, {}, [](const auto& tip_desc) { return tip_desc.t; });
-
   // Set up tree with tips and ensure absence of links
   // Initial mutations are all at tip end, and missations are all piled up near the tips
   // (a call to fix_up_missations at the end fixes this)
@@ -778,7 +793,8 @@ auto build_usher_like_tree(
   for (auto tip = 0; tip != std::ssize(tip_descs); ++tip) {
     auto& tip_desc = tip_descs[tip];
     tree.at(tip).name = std::move(tip_desc.name);
-    tree.at(tip).t = tip_desc.t;
+    CHECK_LE(tip_desc.t_min, tip_desc.t_max);
+    tree.at(tip).t = absl::Uniform(absl::IntervalClosedClosed, bitgen, tip_desc.t_min, tip_desc.t_max);
   }
 
   // Setting up the first two sequences is tricky (since we want the root sequence to be the ref_sequence)
@@ -805,6 +821,8 @@ auto build_usher_like_tree(
         t_B - std::ssize(tip_descs[B].seq_deltas) * 13.0)
         - 1.0;
 
+    tree.at(P).t_min = -std::numeric_limits<float>::max();
+    tree.at(P).t_max = +std::numeric_limits<float>::max();
     tree.at(P).t = t_P;
 
     for (const auto& m : tip_descs[A].seq_deltas) {
@@ -832,7 +850,7 @@ auto build_usher_like_tree(
     
     // Study SPR possibilities for attaching X to the budding tree
     auto& tip_desc = tip_descs[X];
-    auto t_X = tip_desc.t;
+    auto t_X = tree.at(X).t;
     auto deltas_root_to_X = Site_deltas{scratch};
     for (const auto& delta : tip_desc.seq_deltas) {
       push_back_site_deltas(delta, deltas_root_to_X);
@@ -927,6 +945,8 @@ auto build_usher_like_tree(
       tree.at(S).mutations.assign(G_S_muts_G_P_end, G_S_muts_end);
       tree.at(P).mutations.erase(G_S_muts_G_P_end, G_S_muts_end);
     }
+    tree.at(P).t_min = -std::numeric_limits<float>::min();
+    tree.at(P).t_max = +std::numeric_limits<float>::max();
     tree.at(P).t = t_P;
     tree.at(P).children = {X, S};
     tree.at(X).parent = P;

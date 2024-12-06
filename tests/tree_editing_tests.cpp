@@ -85,12 +85,16 @@ class Tree_editing_simple_test : public Tree_editing_test_base {
     tree.at(r).parent = k_no_node;
     tree.at(r).children = {x, c};
     tree.at(r).name = "r";
+    tree.at(r).t_min = -std::numeric_limits<float>::max();
+    tree.at(r).t_max = +std::numeric_limits<float>::max();
     tree.at(r).t = -1.0;
     tree.at(r).mutations = {Mutation{rC, 1, rA, -std::numeric_limits<double>::max()}};
 
     tree.at(x).parent = r;
     tree.at(x).children = {a, b};
     tree.at(x).name = "x";
+    tree.at(x).t_min = -std::numeric_limits<float>::max();
+    tree.at(x).t_max = +std::numeric_limits<float>::max();
     tree.at(x).t = 0.0;
     tree.at(x).mutations = {Mutation{rA, 0, rT, -0.5}};
     tree.at(x).missations = {{Missation{2, rA}}, ref_sequence};
@@ -98,19 +102,19 @@ class Tree_editing_simple_test : public Tree_editing_test_base {
     tree.at(a).parent = x;
     tree.at(a).children = {};
     tree.at(a).name = "a";
-    tree.at(a).t = 1.0;
+    tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 1.0;
     tree.at(a).mutations = {Mutation{rT, 0, rC, 0.5}};
 
     tree.at(b).parent = x;
     tree.at(b).children = {};
     tree.at(b).name = "b";
-    tree.at(b).t = 2.0;
+    tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 2.0;
     tree.at(b).mutations = {Mutation{rA, 1, rG, 1.0}};
 
     tree.at(c).parent = r;
     tree.at(c).children = {};
     tree.at(c).name = "c";
-    tree.at(c).t = 3.0;
+    tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 3.0;
     tree.at(c).mutations = {Mutation{rA, 0, rG, 1.0}};
     tree.at(c).missations = {{Missation{1, rA}}, ref_sequence};
 
@@ -301,43 +305,49 @@ class Tree_editing_hop_flip_test : public Tree_editing_test_base {
     tree.at(r).parent = k_no_node;
     tree.at(r).children = {y, d};
     tree.at(r).name = "r";
+    tree.at(r).t_min = -std::numeric_limits<float>::max();
+    tree.at(r).t_max = +std::numeric_limits<float>::max();
     tree.at(r).t = -1.0;
 
     tree.at(y).parent = r;
     tree.at(y).children = {x, c};
     tree.at(y).name = "y";
+    tree.at(y).t_min = -std::numeric_limits<float>::max();
+    tree.at(y).t_max = +std::numeric_limits<float>::max();
     tree.at(y).t = 0.0;
     tree.at(y).mutations = {Mutation{rA, 2, rG, -0.75}, Mutation{rT, 3, rA, -0.25}};
 
     tree.at(x).parent = y;
     tree.at(x).children = {a, b};
     tree.at(x).name = "x";
+    tree.at(x).t_min = -std::numeric_limits<float>::max();
+    tree.at(x).t_max = +std::numeric_limits<float>::max();
     tree.at(x).t = 0.0;
     tree.at(x).missations = {{Missation{2, rG}}, ref_sequence};
 
     tree.at(a).parent = x;
     tree.at(a).children = {};
     tree.at(a).name = "a";
-    tree.at(a).t = 2.0;
+    tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 2.0;
     tree.at(a).missations = {{Missation{0, rA}}, ref_sequence};
 
     tree.at(b).parent = x;
     tree.at(b).children = {};
     tree.at(b).name = "b";
-    tree.at(b).t = 3.0;
+    tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 3.0;
     tree.at(b).mutations = {Mutation{rA, 3, rC, 2.0}};
     tree.at(b).missations = {{Missation{1, rC}}, ref_sequence};
 
     tree.at(c).parent = y;
     tree.at(c).children = {};
     tree.at(c).name = "c";
-    tree.at(c).t = 1.0;
+    tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 1.0;
     tree.at(c).missations = {{Missation{1, rC}}, ref_sequence};
 
     tree.at(d).parent = r;
     tree.at(d).children = {};
     tree.at(d).name = "d";
-    tree.at(d).t = -0.5;
+    tree.at(d).t = tree.at(d).t_min = tree.at(d).t_max = -0.5;
 
     assert_phylo_tree_integrity(tree);
 
@@ -658,31 +668,35 @@ class Tree_editing_slide_down_test : public Tree_editing_test_base {
     tree.at(r).parent = k_no_node;
     tree.at(r).children = {x, c};
     tree.at(r).name = "r";
+    tree.at(r).t_min = -std::numeric_limits<float>::max();
+    tree.at(r).t_max = +std::numeric_limits<float>::max();
     tree.at(r).t = 0.0;
 
     tree.at(x).parent = r;
     tree.at(x).children = {a, b};
     tree.at(x).name = "x";
+    tree.at(x).t_min = -std::numeric_limits<float>::max();
+    tree.at(x).t_max = +std::numeric_limits<float>::max();
     tree.at(x).t = 1.0;
     tree.at(x).mutations = {Mutation{rA, 0, rT, 0.5}};
 
     tree.at(a).parent = x;
     tree.at(a).children = {};
     tree.at(a).name = "a";
-    tree.at(a).t = 4.0;
+    tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 4.0;
     tree.at(a).missations = {{Missation{0, rT}}, ref_sequence};
     tree.at(a).mutations = {Mutation{rA, 1, rG, 4.0}};
 
     tree.at(b).parent = x;
     tree.at(b).children = {};
     tree.at(b).name = "b";
-    tree.at(b).t = 3.0;
+    tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 3.0;
     tree.at(b).mutations = {Mutation{rA, 1, rC, 1.5}, Mutation{rT, 0, rG, 2.5}};
 
     tree.at(c).parent = r;
     tree.at(c).children = {};
     tree.at(c).name = "c";
-    tree.at(c).t = 0.5;
+    tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 0.5;
 
     assert_phylo_tree_integrity(tree);
 
@@ -801,43 +815,49 @@ class Tree_editing_spr_test : public Tree_editing_test_base {
     tree.at(r).parent = k_no_node;
     tree.at(r).children = {y, d};
     tree.at(r).name = "r";
+    tree.at(r).t_min = -std::numeric_limits<float>::max();
+    tree.at(r).t_max = +std::numeric_limits<float>::max();
     tree.at(r).t = -1.0;
 
     tree.at(y).parent = r;
     tree.at(y).children = {x, c};
     tree.at(y).name = "y";
+    tree.at(y).t_min = -std::numeric_limits<float>::max();
+    tree.at(y).t_max = +std::numeric_limits<float>::max();
     tree.at(y).t = 0.0;
     tree.at(y).mutations = {Mutation{rA, 2, rG, -0.75}, Mutation{rT, 3, rA, -0.25}};
 
     tree.at(x).parent = y;
     tree.at(x).children = {a, b};
     tree.at(x).name = "x";
+    tree.at(x).t_min = -std::numeric_limits<float>::max();
+    tree.at(x).t_max = +std::numeric_limits<float>::max();
     tree.at(x).t = 1.0;
     tree.at(x).missations = {{Missation{2, rG}}, ref_sequence};
 
     tree.at(a).parent = x;
     tree.at(a).children = {};
     tree.at(a).name = "a";
-    tree.at(a).t = 2.0;
+    tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 2.0;
     tree.at(a).missations = {{Missation{0, rA}}, ref_sequence};
 
     tree.at(b).parent = x;
     tree.at(b).children = {};
     tree.at(b).name = "b";
-    tree.at(b).t = 3.0;
+    tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 3.0;
     tree.at(b).mutations = {Mutation{rA, 3, rC, 2.0}};
     tree.at(b).missations = {{Missation{1, rC}}, ref_sequence};
 
     tree.at(c).parent = y;
     tree.at(c).children = {};
     tree.at(c).name = "c";
-    tree.at(c).t = 1.0;
+    tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 1.0;
     tree.at(c).missations = {{Missation{1, rC}}, ref_sequence};
 
     tree.at(d).parent = r;
     tree.at(d).children = {};
     tree.at(d).name = "d";
-    tree.at(d).t = -0.5;
+    tree.at(d).t = tree.at(d).t_min = tree.at(d).t_max = -0.5;
 
     assert_phylo_tree_integrity(tree);
 
@@ -1087,7 +1107,7 @@ TEST_F(Tree_editing_slide_down_test, slide_down_root) {
   //                  +------- c (TAGA)
   //
 
-  tree.at(c).t = 0.9;
+  tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 0.9;
   tree.at(x).mutations = {Mutation{rC, 1, rA, 0.5}};
   tree.at(r).mutations = {
     Mutation{rA, 0, rT, -std::numeric_limits<double>::max()},

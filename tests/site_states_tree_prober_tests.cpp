@@ -84,26 +84,30 @@ static auto site_states_tree_prober_test_body(const Pop_model& pop_model) -> voi
   
   tree.at(r).parent = k_no_node;
   tree.at(r).children = {x, c};
+  tree.at(r).t_min = -std::numeric_limits<float>::max();
+  tree.at(r).t_max = +std::numeric_limits<float>::max();
   tree.at(r).t = -1.0;
 
   tree.at(x).parent = r;
   tree.at(x).children = {a, b};
+  tree.at(x).t_min = -std::numeric_limits<float>::max();
+  tree.at(x).t_max = +std::numeric_limits<float>::max();
   tree.at(x).t = 0.0;
   tree.at(x).mutations = {Mutation{rA, 0, rT, 0.5}};
 
   tree.at(a).parent = x;
   tree.at(a).children = {};
-  tree.at(a).t = 1.0;
+  tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 1.0;
   tree.at(a).mutations = {Mutation{rT, 0, rC, 0.5}};
 
   tree.at(b).parent = x;
   tree.at(b).children = {};
-  tree.at(b).t = 2.0;
+  tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 2.0;
   tree.at(b).mutations = {Mutation{rT, 0, rG, 1.0}};
 
   tree.at(c).parent = r;
   tree.at(c).children = {};
-  tree.at(c).t = 3.0;
+  tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 3.0;
   tree.at(c).mutations = {Mutation{rA, 0, rG, 1.0}};
 
   // We'd like to sample every 0.1 time units from the root to the end

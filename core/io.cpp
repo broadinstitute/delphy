@@ -6,6 +6,7 @@
 
 #include "version.h"
 #include "cmdline.h"
+#include "dates.h"
 #include "phylo_tree_calc.h"
 
 namespace delphy {
@@ -170,6 +171,10 @@ auto read_maple(
       ignore_this_tip = true;
     } else {
       tip_desc.t = maybe_t.value();
+      
+      // FIXME: Add 1 month uncertainty to every tip
+      tip_desc.t_min = tip_desc.t - 15.0;
+      tip_desc.t_max = tip_desc.t + 15.0;
     }
 
     while(getline(is, line)) {
@@ -252,7 +257,7 @@ auto output_resolved_fasta(const Phylo_tree& tree, std::ostream& os) -> void {
   for (const auto& node : index_order_traversal(tree)) {
     if (tree.at(node).is_tip()) {
       
-      os << '>' << tree.at(node).name << '\n';
+      os << '>' << tree.at(node).name << '|' << to_iso_date(tree.at(node).t) << '\n';
       
       auto seq = view_of_sequence_at(tree, node);  // Missing sites resolved by inheriting from state at missations
       for (auto l = Site_index{0}; l != tree.num_sites(); ++l) {

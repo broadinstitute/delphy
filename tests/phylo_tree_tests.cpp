@@ -17,6 +17,9 @@ TEST(Phylo_tree_test, push_all_mutations_and_missations_to_tips_trivial) {
   auto tree = Phylo_tree{1};
   tree.ref_sequence = Real_sequence{rA, rA, rA, rA};
   tree.root = 0;
+  tree.at(0).t_min = -std::numeric_limits<float>::max();
+  tree.at(0).t_max = +std::numeric_limits<float>::max();
+  tree.at(0).t = 0.0;
 
   push_all_mutations_and_missations_to_tips(tree);
 
@@ -28,6 +31,10 @@ TEST(Phylo_tree_test, push_all_mutations_and_missations_to_tips_accept_muts_abov
   auto tree = Phylo_tree{1};
   tree.ref_sequence = Real_sequence{rC, rA, rA, rA};
   tree.root = 0;
+  tree.at(0).t_min = -std::numeric_limits<float>::max();
+  tree.at(0).t_max = +std::numeric_limits<float>::max();
+  tree.at(0).t = 0.0;
+  
   tree.at(0).mutations = {Mutation{rC, 0, rA, -1.0}};
 
   push_all_mutations_and_missations_to_tips(tree);  // Should not throw
@@ -59,17 +66,19 @@ TEST(Phylo_tree_test, push_all_mutations_and_missations_to_tips_simple) {
   
   tree.at(r).parent = k_no_node;
   tree.at(r).children = {a, b};
+  tree.at(r).t_min = -std::numeric_limits<float>::max();
+  tree.at(r).t_max = +std::numeric_limits<float>::max();
   tree.at(r).t = 0.0;
   tree.at(r).mutations = {Mutation{rA, 0, rT, -0.5}};
 
   tree.at(a).parent = r;
   tree.at(a).children = {};
-  tree.at(a).t = 1.0;
+  tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 1.0;
   tree.at(a).mutations = {Mutation{rT, 0, rC, 0.5}};
 
   tree.at(b).parent = r;
   tree.at(b).children = {};
-  tree.at(b).t = 2.0;
+  tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 2.0;
   tree.at(b).mutations = {Mutation{rT, 0, rG, 1.0}};
   tree.at(b).missations = {{Missation{1, rT}}, ref_sequence};
 
@@ -117,6 +126,8 @@ class Phylo_tree_complex_test : public testing::Test {
     tree.at(r).parent = k_no_node;
     tree.at(r).children = {x, c};
     tree.at(r).name = "r";
+    tree.at(r).t_min = -std::numeric_limits<float>::max();
+    tree.at(r).t_max = +std::numeric_limits<float>::max();
     tree.at(r).t = -1.0;
     tree.at(r).mutations = {Mutation{rC, 2, rA, -std::numeric_limits<double>::max()}};
     tree.at(r).missations = {{Missation{3, rA}}, ref_sequence};
@@ -124,6 +135,8 @@ class Phylo_tree_complex_test : public testing::Test {
     tree.at(x).parent = r;
     tree.at(x).children = {a, b};
     tree.at(x).name = "x";
+    tree.at(x).t_min = -std::numeric_limits<float>::max();
+    tree.at(x).t_max = +std::numeric_limits<float>::max();
     tree.at(x).t = 0.0;
     tree.at(x).mutations = {Mutation{rA, 0, rT, -0.5}};
     tree.at(x).missations = {{Missation{2, rA}}, ref_sequence};
@@ -131,19 +144,19 @@ class Phylo_tree_complex_test : public testing::Test {
     tree.at(a).parent = x;
     tree.at(a).children = {};
     tree.at(a).name = "a";
-    tree.at(a).t = 1.0;
+    tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 1.0;
     tree.at(a).mutations = {Mutation{rT, 0, rC, 0.5}};
 
     tree.at(b).parent = x;
     tree.at(b).children = {};
     tree.at(b).name = "b";
-    tree.at(b).t = 2.0;
+    tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 2.0;
     tree.at(b).mutations = {Mutation{rA, 1, rG, 1.0}};
 
     tree.at(c).parent = r;
     tree.at(c).children = {};
     tree.at(c).name = "c";
-    tree.at(c).t = 3.0;
+    tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 3.0;
     tree.at(c).mutations = {Mutation{rA, 0, rG, 1.0}};
     tree.at(c).missations = {{Missation{1, rA}}, ref_sequence};
 
@@ -407,6 +420,9 @@ TEST_F(Phylo_tree_complex_test, find_MRCA_of_tree_locs) {
 TEST_F(Phylo_tree_complex_test, find_MRCA_of_nodes_all_times_equal) {
   for (const auto& node : index_order_traversal(tree)) {
     tree.at(node).t = 0.0;
+    if (tree.at(node).is_tip()) {
+      tree.at(node).t_min = tree.at(node).t_max = 0.0;
+    }
   }
   
   EXPECT_THAT(find_MRCA_of(tree, a, a), testing::Eq(a));
@@ -558,16 +574,18 @@ TEST(Phylo_tree_test, fix_up_missation_redundant_downstream_missations) {
   
   tree.at(r).parent = k_no_node;
   tree.at(r).children = {a, b};
+  tree.at(r).t_min = -std::numeric_limits<float>::max();
+  tree.at(r).t_max = +std::numeric_limits<float>::max();
   tree.at(r).t = 0.0;
   tree.at(r).missations = {{Missation{0, rT}}, ref_sequence};
 
   tree.at(a).parent = r;
   tree.at(a).children = {};
-  tree.at(a).t = 1.0;
+  tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 1.0;
 
   tree.at(b).parent = r;
   tree.at(b).children = {};
-  tree.at(b).t = 2.0;
+  tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 2.0;
   tree.at(b).missations = {{Missation{0, rT}}, ref_sequence};
 
   fix_up_missations(tree);
@@ -605,17 +623,19 @@ TEST(Phylo_tree_test, fix_up_missations_mutations_below_missations) {
   
   tree.at(r).parent = k_no_node;
   tree.at(r).children = {a, b};
+  tree.at(r).t_min = -std::numeric_limits<float>::max();
+  tree.at(r).t_max = +std::numeric_limits<float>::max();
   tree.at(r).t = 0.0;
   tree.at(r).missations = {{Missation{0, rA}}, ref_sequence};
 
   tree.at(a).parent = r;
   tree.at(a).children = {};
-  tree.at(a).t = 1.0;
+  tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 1.0;
   tree.at(a).mutations = {Mutation{rA, 0, rT, 0.5}};
 
   tree.at(b).parent = r;
   tree.at(b).children = {};
-  tree.at(b).t = 2.0;
+  tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 2.0;
   tree.at(b).mutations = {Mutation{rA, 1, rC, 1.0}};
 
   fix_up_missations(tree);
@@ -656,16 +676,18 @@ TEST(Phylo_tree_test, fix_up_missations_merge_up_once) {
   
   tree.at(r).parent = k_no_node;
   tree.at(r).children = {a, b};
+  tree.at(r).t_min = -std::numeric_limits<float>::max();
+  tree.at(r).t_max = +std::numeric_limits<float>::max();
   tree.at(r).t = 0.0;
 
   tree.at(a).parent = r;
   tree.at(a).children = {};
-  tree.at(a).t = 1.0;
+  tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 1.0;
   tree.at(a).missations = {{Missation{0, rA}}, ref_sequence};
 
   tree.at(b).parent = r;
   tree.at(b).children = {};
-  tree.at(b).t = 2.0;
+  tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 2.0;
   tree.at(b).missations = {{Missation{0, rA}}, ref_sequence};
 
   fix_up_missations(tree);

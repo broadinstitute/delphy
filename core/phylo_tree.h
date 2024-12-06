@@ -7,8 +7,14 @@
 
 namespace delphy {
 
+// t_min <= t <= t_max.  t_min and t_max are floats because we don't need fantastic
+// precision and we never update these values incrementally.
+// Initialized to patently illegal values by default to help spot places where
+// they're not being properly initialized
 struct Phylo_node : public Binary_node {
   std::string name;
+  float t_min = +42.0;
+  float t_max = -42.0;
   double t;
   Mutation_list<> mutations;
   Missation_map<> missations;
@@ -17,9 +23,11 @@ struct Phylo_node : public Binary_node {
 };
 inline auto operator<<(std::ostream& os, const Phylo_node& node) -> std::ostream& {
   return os << absl::StreamFormat(
-      "Phylo_node{name=\"%s\", t=%f, mutations=[%s], missations=%s; parent=%d, children=[%s]}",
+      "Phylo_node{name=\"%s\", t=%f (%f->%f), mutations=[%s], missations=%s; parent=%d, children=[%s]}",
       node.name,
       node.t,
+      node.t_min,
+      node.t_max,
       absl::StrJoin(node.mutations, ", ", absl::StreamFormatter()),
       absl::FormatStreamed(node.missations),
       node.parent,
@@ -129,6 +137,8 @@ auto randomize_branch_mutation_times(
 
 struct Tip_desc {
   std::string name;
+  float t_min = +42.0;  // See comments in Phylo_node
+  float t_max = -42.0;
   double t;
   std::vector<Seq_delta> seq_deltas;
   Missation_map<> missations;

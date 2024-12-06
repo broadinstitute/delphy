@@ -101,6 +101,8 @@ class Spr_move_simple_test : public Spr_move_test_base {
     tree.at(r).parent = k_no_node;
     tree.at(r).children = {x, c};
     tree.at(r).name = "r";
+    tree.at(r).t_min = -std::numeric_limits<float>::max();
+    tree.at(r).t_max = +std::numeric_limits<float>::max();
     tree.at(r).t = -1.0;
     tree.at(r).mutations = {Mutation{rC, 1, rA, -std::numeric_limits<double>::max()}};
     tree.at(r).missations = {{Missation{3, rA}}, ref_sequence};
@@ -108,6 +110,8 @@ class Spr_move_simple_test : public Spr_move_test_base {
     tree.at(x).parent = r;
     tree.at(x).children = {a, b};
     tree.at(x).name = "x";
+    tree.at(x).t_min = -std::numeric_limits<float>::max();
+    tree.at(x).t_max = +std::numeric_limits<float>::max();
     tree.at(x).t = 0.0;
     tree.at(x).mutations = {Mutation{rA, 0, rT, -0.5}};
     tree.at(x).missations = {{Missation{2, rA}}, ref_sequence};
@@ -115,19 +119,19 @@ class Spr_move_simple_test : public Spr_move_test_base {
     tree.at(a).parent = x;
     tree.at(a).children = {};
     tree.at(a).name = "a";
-    tree.at(a).t = 1.0;
+    tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 1.0;
     tree.at(a).mutations = {Mutation{rT, 0, rC, 0.5}};
 
     tree.at(b).parent = x;
     tree.at(b).children = {};
     tree.at(b).name = "b";
-    tree.at(b).t = 2.0;
+    tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 2.0;
     tree.at(b).mutations = {Mutation{rA, 1, rG, 1.0}};
 
     tree.at(c).parent = r;
     tree.at(c).children = {};
     tree.at(c).name = "c";
-    tree.at(c).t = 3.0;
+    tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 3.0;
     tree.at(c).mutations = {Mutation{rA, 0, rT, 0.0}, Mutation{rT, 0, rG, 1.0}};
     tree.at(c).missations = {{Missation{1, rA}}, ref_sequence};
 
@@ -593,6 +597,8 @@ class Spr_move_superfluous_mutation_at_root_test : public Spr_move_test_base {
     tree.at(r).parent = k_no_node;
     tree.at(r).children = {x, s};
     tree.at(r).name = "r";
+    tree.at(r).t_min = -std::numeric_limits<float>::max();
+    tree.at(r).t_max = +std::numeric_limits<float>::max();
     tree.at(r).t = -1.0;
     tree.at(r).missations = {{Missation{2, rA}, Missation{3, rA}}, ref_sequence};
     tree.at(r).mutations = {Mutation{rC, 1, rA, -std::numeric_limits<double>::max()}};
@@ -600,13 +606,13 @@ class Spr_move_superfluous_mutation_at_root_test : public Spr_move_test_base {
     tree.at(x).parent = r;
     tree.at(x).children = {};
     tree.at(x).name = "x";
-    tree.at(x).t = 0.0;
+    tree.at(x).t = tree.at(x).t_min = tree.at(x).t_max = 0.0;
     tree.at(x).mutations = {Mutation{rA, 0, rT, -0.5}};
 
     tree.at(s).parent = r;
     tree.at(s).children = {};
     tree.at(s).name = "s";
-    tree.at(s).t = 3.0;
+    tree.at(s).t = tree.at(s).t_min = tree.at(s).t_max = 3.0;
     tree.at(s).mutations = {Mutation{rA, 0, rT, 1.0}};
   
     assert_phylo_tree_integrity(tree);
@@ -747,6 +753,8 @@ class Spr_move_superfluous_mutation_not_at_root_test : public Spr_move_test_base
     tree.at(r).parent = k_no_node;
     tree.at(r).children = {x, c};
     tree.at(r).name = "r";
+    tree.at(r).t_min = -std::numeric_limits<float>::max();
+    tree.at(r).t_max = +std::numeric_limits<float>::max();
     tree.at(r).t = -1.0;
     tree.at(r).missations = {{Missation{2, rA}, Missation{3, rA}}, ref_sequence};
     tree.at(r).mutations = {Mutation{rC, 1, rA, -std::numeric_limits<double>::max()}};
@@ -754,25 +762,27 @@ class Spr_move_superfluous_mutation_not_at_root_test : public Spr_move_test_base
     tree.at(x).parent = r;
     tree.at(x).children = {a, b};
     tree.at(x).name = "x";
+    tree.at(x).t_min = -std::numeric_limits<float>::max();
+    tree.at(x).t_max = +std::numeric_limits<float>::max();
     tree.at(x).t = 0.0;
     tree.at(x).mutations = {Mutation{rA, 0, rT, -0.5}};
   
     tree.at(a).parent = x;
     tree.at(a).children = {};
     tree.at(a).name = "a";
-    tree.at(a).t = 1.0;
+    tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 1.0;
     tree.at(a).mutations = {Mutation{rT, 0, rA, 0.5}};
   
     tree.at(b).parent = x;
     tree.at(b).children = {};
     tree.at(b).name = "b";
-    tree.at(b).t = 2.0;
+    tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 2.0;
     tree.at(b).mutations = {Mutation{rT, 0, rA, 1.0}};
   
     tree.at(c).parent = r;
     tree.at(c).children = {};
     tree.at(c).name = "c";
-    tree.at(c).t = 3.0;
+    tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 3.0;
   
     assert_phylo_tree_integrity(tree);
   }
@@ -877,6 +887,8 @@ class Spr_move_precarious_path_without_root_test : public Spr_move_test_base {
     tree.at(r).parent = k_no_node;
     tree.at(r).children = {x, d};
     tree.at(r).name = "r";
+    tree.at(r).t_min = -std::numeric_limits<float>::max();
+    tree.at(r).t_max = +std::numeric_limits<float>::max();
     tree.at(r).t = -1.0;
     tree.at(r).missations = {{Missation{2, rA}, Missation{3, rA}}, ref_sequence};
     tree.at(r).mutations = {Mutation{rC, 1, rA, -std::numeric_limits<double>::max()}};
@@ -884,36 +896,40 @@ class Spr_move_precarious_path_without_root_test : public Spr_move_test_base {
     tree.at(x).parent = r;
     tree.at(x).children = {y, c};
     tree.at(x).name = "x";
+    tree.at(x).t_min = -std::numeric_limits<float>::max();
+    tree.at(x).t_max = +std::numeric_limits<float>::max();
     tree.at(x).t = 0.0;
     tree.at(x).mutations = {Mutation{rA, 1, rC, -0.5}};
   
     tree.at(y).parent = x;
     tree.at(y).children = {a, b};
     tree.at(y).name = "y";
+    tree.at(y).t_min = -std::numeric_limits<float>::max();
+    tree.at(y).t_max = +std::numeric_limits<float>::max();
     tree.at(y).t = 1.0;
   
     tree.at(a).parent = y;
     tree.at(a).children = {};
     tree.at(a).name = "a";
-    tree.at(a).t = 3.0;
+    tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 3.0;
     tree.at(a).mutations = {Mutation{rC, 1, rT, 2.0}};
   
     tree.at(b).parent = y;
     tree.at(b).children = {};
     tree.at(b).name = "b";
-    tree.at(b).t = 3.0;
+    tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 3.0;
     tree.at(b).missations = {{Missation{1, rC}}, ref_sequence};
   
     tree.at(c).parent = x;
     tree.at(c).children = {};
     tree.at(c).name = "c";
-    tree.at(c).t = 3.0;
+    tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 3.0;
     tree.at(c).missations = {{Missation{1, rC}}, ref_sequence};
   
     tree.at(d).parent = r;
     tree.at(d).children = {};
     tree.at(d).name = "d";
-    tree.at(d).t = 3.0;
+    tree.at(d).t = tree.at(d).t_min = tree.at(d).t_max = 3.0;
   
     assert_phylo_tree_integrity(tree);
   }
@@ -1061,6 +1077,8 @@ class Spr_move_precarious_path_with_root_test : public Spr_move_test_base {
     tree.at(r).parent = k_no_node;
     tree.at(r).children = {x, c};
     tree.at(r).name = "r";
+    tree.at(r).t_min = -std::numeric_limits<float>::max();
+    tree.at(r).t_max = +std::numeric_limits<float>::max();
     tree.at(r).t = -1.0;
     tree.at(r).missations = {{Missation{2, rA}, Missation{3, rA}}, ref_sequence};
     tree.at(r).mutations = {Mutation{rC, 1, rA, -std::numeric_limits<double>::max()}};
@@ -1068,24 +1086,26 @@ class Spr_move_precarious_path_with_root_test : public Spr_move_test_base {
     tree.at(x).parent = r;
     tree.at(x).children = {a, b};
     tree.at(x).name = "x";
+    tree.at(x).t_min = -std::numeric_limits<float>::max();
+    tree.at(x).t_max = +std::numeric_limits<float>::max();
     tree.at(x).t = 0.0;
     tree.at(x).mutations = {Mutation{rA, 1, rC, -0.5}};
   
     tree.at(a).parent = x;
     tree.at(a).children = {};
     tree.at(a).name = "a";
-    tree.at(a).t = 1.0;
+    tree.at(a).t = tree.at(a).t_min = tree.at(a).t_max = 1.0;
   
     tree.at(b).parent = x;
     tree.at(b).children = {};
     tree.at(b).name = "b";
-    tree.at(b).t = 1.0;
+    tree.at(b).t = tree.at(b).t_min = tree.at(b).t_max = 1.0;
     tree.at(b).missations = {{Missation{1, rC}}, ref_sequence};
   
     tree.at(c).parent = r;
     tree.at(c).children = {};
     tree.at(c).name = "c";
-    tree.at(c).t = 1.0;
+    tree.at(c).t = tree.at(c).t_min = tree.at(c).t_max = 1.0;
     tree.at(c).missations = {{Missation{1, rA}}, ref_sequence};
   
     assert_phylo_tree_integrity(tree);
@@ -1223,6 +1243,8 @@ class Spr_move_tricky_rooty_graft_test : public Spr_move_test_base {
     tree.at(P).parent = k_no_node;
     tree.at(P).children = {X, S};
     tree.at(P).name = "P";
+    tree.at(P).t_min = -std::numeric_limits<float>::max();
+    tree.at(P).t_max = +std::numeric_limits<float>::max();
     tree.at(P).t = 0.0;
     tree.at(P).missations = {{Missation{7, rT}}, ref_sequence};
     tree.at(P).mutations = {Mutation{rT, 8, rA, -std::numeric_limits<double>::max()}};
@@ -1230,14 +1252,14 @@ class Spr_move_tricky_rooty_graft_test : public Spr_move_test_base {
     tree.at(X).parent = P;
     tree.at(X).children = {};
     tree.at(X).name = "X";
-    tree.at(X).t = 3.0;
+    tree.at(X).t = tree.at(X).t_min = tree.at(X).t_max = 3.0;
     tree.at(X).missations = {{Missation{3, rC}, Missation{4, rC}}, ref_sequence};
     tree.at(X).mutations = {Mutation{rA, 1, rC, 1.0}, Mutation{rA, 5, rC, 2.0}};
   
     tree.at(S).parent = P;
     tree.at(S).children = {};
     tree.at(S).name = "S";
-    tree.at(S).t = 4.0;
+    tree.at(S).t = tree.at(S).t_min = tree.at(S).t_max = 4.0;
     tree.at(S).missations = {{Missation{1, rA}, Missation{2, rA}}, ref_sequence};
     tree.at(S).mutations = {Mutation{rC, 3, rG, 1.0}, Mutation{rC, 6, rG, 2.0}};
   

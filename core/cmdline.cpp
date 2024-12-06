@@ -63,9 +63,17 @@ auto fasta_to_maple(
     } else {
       auto delta = calculate_delta_from_reference(
           fasta_entry.id, fasta_entry.sequence, result.ref_sequence, warning_hook);
+
+      // FIXME: Add 1-month uncertainty to every tip
+      auto t = opt_t.value();
+      auto t_min = t - 15.0;
+      auto t_max = t + 15.0;
+      
       result.tip_descs.push_back({
           .name = fasta_entry.id,
-          .t = opt_t.value(),
+          .t_min = static_cast<float>(t_min),
+          .t_max = static_cast<float>(t_max),
+          .t = t,
           .seq_deltas = std::move(delta.seq_deltas),
           .missations = std::move(delta.missations)});
     }
