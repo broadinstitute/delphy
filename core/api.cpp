@@ -104,7 +104,17 @@ auto phylo_tree_to_api_tree_info(const Phylo_tree& tree) -> flatbuffers::Detache
 
   for (const auto& node : index_order_traversal(tree)) {
     auto api_name = fbb.CreateString(tree.at(node).name);
-    node_infos.push_back(api::CreateNodeInfo(fbb, api_name));
+
+    auto builder = api::NodeInfoBuilder{fbb};
+    builder.add_name(api_name);
+    if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+      builder.add_has_uncertain_t(true);
+      builder.add_t_min(tree.at(node).t_min);
+      builder.add_t_max(tree.at(node).t_max);
+    }
+    auto node_info = builder.Finish();
+    
+    node_infos.push_back(node_info);
   }
 
   auto api_node_infos = fbb.CreateVector(node_infos);
@@ -139,6 +149,18 @@ auto api_tree_and_tree_info_to_phylo_tree(const uint8_t* tree_fb, const uint8_t*
       tree.at(node).children = {api_node->left_child(), api_node->right_child()};
     }
     tree.at(node).t = api_node->t();
+    if (tree.at(node).is_tip()) {
+      if (api_node_info->has_uncertain_t()) {
+        tree.at(node).t_min = api_node_info->t_min();
+        tree.at(node).t_max = api_node_info->t_max();
+      } else {
+        tree.at(node).t_min = tree.at(node).t;
+        tree.at(node).t_max = tree.at(node).t;
+      }
+    } else {
+      tree.at(node).t_min = -std::numeric_limits<float>::max();
+      tree.at(node).t_max = +std::numeric_limits<float>::max();
+    }
   }
 
   for (const auto& api_mutation : *api_tree->mutations()) {

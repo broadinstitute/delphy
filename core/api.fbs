@@ -48,7 +48,12 @@ table Tree {
 }
 
 table NodeInfo {
-  name: string;               // From input data, e.g., FASTA IDs
+  // Next free id: 4
+  
+  name: string                  (id: 0);  // From input data, e.g., FASTA IDs
+  has_uncertain_t: bool = false (id: 1);  // Tip with uncertain time
+  t_min: float32                (id: 2);  // Minimum tip time (only if has_uncertain_t == true)
+  t_max: float32                (id: 3);  // Minimum tip time (only if has_uncertain_t == true)
 }
 
 table TreeInfo {
