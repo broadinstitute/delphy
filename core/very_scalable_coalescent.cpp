@@ -106,8 +106,9 @@ auto make_very_scalable_coalescent_prior_parts(
   // Find t_min and t_max of every partition
   for (auto& info : infos) {
     for (const auto& node : index_order_traversal(*info.subtree)) {
-      info.t_min = std::min(info.t_min, info.subtree->at(node).t);
-      info.t_max = std::max(info.t_max, info.subtree->at(node).t);
+      auto is_tip = info.subtree->at(node).is_tip();
+      info.t_min = std::min(info.t_min, is_tip ? info.subtree->at(node).t_min : info.subtree->at(node).t);
+      info.t_max = std::max(info.t_max, is_tip ? info.subtree->at(node).t_max : info.subtree->at(node).t);
     }
   }
 
@@ -283,6 +284,51 @@ auto Very_scalable_coalescent_prior_part::coalescence_displaced(double old_t, do
   }
 }
 
+auto Very_scalable_coalescent_prior_part::calc_delta_partial_log_prior_after_displace_coalescence(
+    double old_t,
+    double new_t)
+    -> double {
+  
+  auto delta_log_prior = 0.0;
+  if (old_t <= new_t) {
+    delta_log_prior = calc_delta_partial_log_prior_on_add_interval(old_t, new_t, -1.0);
+  } else {
+    delta_log_prior = calc_delta_partial_log_prior_on_add_interval(new_t, old_t, +1.0);
+  }
+  
+  // Add factor from 1/N(tree)
+  delta_log_prior -= std::log(pop_model_->pop_at_time(new_t) / pop_model_->pop_at_time(old_t));
+
+  return delta_log_prior;
+}
+
+auto Very_scalable_coalescent_prior_part::tip_displaced(double old_t, double new_t) -> void {
+  ensure_space(new_t);
+  if (old_t <= new_t) {
+    add_interval(old_t, new_t, +1.0, k_bar_p_, t_ref_, t_step_);
+  } else {
+    add_interval(old_t, new_t, -1.0, k_bar_p_, t_ref_, t_step_);
+  }
+}
+
+auto Very_scalable_coalescent_prior_part::calc_delta_partial_log_prior_after_displace_tip(
+    double old_t,
+    double new_t)
+    -> double {
+
+  // Note flip in +1.0 vs -1.0 here vs in calc_delta_partial_log_prior_after_displace_coalescence
+  auto delta_log_prior = 0.0;
+  if (old_t <= new_t) {
+    delta_log_prior = calc_delta_partial_log_prior_on_add_interval(old_t, new_t, +1.0);
+  } else {
+    delta_log_prior = calc_delta_partial_log_prior_on_add_interval(new_t, old_t, -1.0);
+  }
+  
+  // No factor from 1/N(tree)
+
+  return delta_log_prior;
+}
+
 auto Very_scalable_coalescent_prior_part::calc_partial_log_prior() const -> double {
   // - int dt [(k_twiddle_bar_p(tree) - mu_bar_p(tree))^2 / (2 sigma_bar_p(tree)^2)
   //           + (k_twiddle_bar(tree) - 1/2) * k_bar_p(tree) / N_bar(tree)
@@ -316,22 +362,20 @@ auto Very_scalable_coalescent_prior_part::calc_partial_log_prior() const -> doub
   return result;
 }
 
-auto Very_scalable_coalescent_prior_part::calc_delta_partial_log_prior_after_displace_coalescence(
-    double old_t,
-    double new_t)
+auto Very_scalable_coalescent_prior_part::calc_delta_partial_log_prior_on_add_interval(
+    double min_t,
+    double max_t,
+    double delta_k)
     -> double {
   
-  // Gist: recap the loop from calc_partial_log_prior, but only run from min(old_t, new_t) to max(old_t, new_t)
-  assert_space(old_t, t_ref_, t_step_, k_bar_p_);
-  ensure_space(new_t);  // This may change the number of cells, which offsets the log-prior
+  // Gist: recap the loop from calc_partial_log_prior, but only run from min_t to max_t
+  assert_space(max_t, t_ref_, t_step_, k_bar_p_);
+  ensure_space(min_t);  // This may change the number of cells, which offsets the log-prior
 
   auto delta_log_prior = 0.0;
 
-  if (old_t == new_t) { return 0.0; }
-  auto adding_lineages = new_t < old_t;
-
-  auto min_t = std::min(old_t, new_t);
-  auto max_t = std::max(old_t, new_t);
+  if (min_t == max_t) { return 0.0; }
+  CHECK_LT(min_t, max_t);
 
   auto cell_start = cell_for(max_t, t_ref_, t_step_);
   auto cell_end = cell_for(min_t, t_ref_, t_step_);
@@ -343,11 +387,11 @@ auto Very_scalable_coalescent_prior_part::calc_delta_partial_log_prior_after_dis
   if (cell_start == cell_end) {
     auto i = cell_start;
     auto old_k_bar_p_i = k_bar_p_[i];
-    auto delta_k_bar_p_i = (adding_lineages ? +1.0 : -1.0) * (max_t - min_t) / t_step_;
+    auto delta_k_bar_p_i = delta_k * (max_t - min_t) / t_step_;
     auto new_k_bar_p_i = old_k_bar_p_i + delta_k_bar_p_i;
 
     delta_log_prior -= t_step_ / popsize_bar_[i] * (
-        0.5 * (square(new_k_bar_p_i) - square(old_k_bar_p_i)) * num_active_parts_[i]
+        + 0.5 * (square(new_k_bar_p_i) - square(old_k_bar_p_i)) * num_active_parts_[i]
         - (k_twiddle_bar_p_[i] * num_active_parts_[i] - k_twiddle_bar_[i] + 0.5) * (new_k_bar_p_i - old_k_bar_p_i));
 
   } else {
@@ -360,36 +404,33 @@ auto Very_scalable_coalescent_prior_part::calc_delta_partial_log_prior_after_dis
     CHECK_GE(dt_cell_end, 0.0);
 
     auto old_k_bar_p_i = k_bar_p_[i];
-    auto delta_k_bar_p_i = (adding_lineages ? +1.0 : -1.0) * dt_cell_start / t_step_;
+    auto delta_k_bar_p_i = delta_k * dt_cell_start / t_step_;
     auto new_k_bar_p_i = old_k_bar_p_i + delta_k_bar_p_i;
 
     delta_log_prior -= t_step_ / popsize_bar_[i] * (
-        0.5 * (square(new_k_bar_p_i) - square(old_k_bar_p_i)) * num_active_parts_[i]
+        + 0.5 * (square(new_k_bar_p_i) - square(old_k_bar_p_i)) * num_active_parts_[i]
         - (k_twiddle_bar_p_[i] * num_active_parts_[i] - k_twiddle_bar_[i] + 0.5) * (new_k_bar_p_i - old_k_bar_p_i));
 
     for(++i; i < cell_end; ++i) {
       old_k_bar_p_i = k_bar_p_[i];
-      delta_k_bar_p_i = (adding_lineages ? +1.0 : -1.0);
+      delta_k_bar_p_i = delta_k;
       new_k_bar_p_i = old_k_bar_p_i + delta_k_bar_p_i;
 
       delta_log_prior -= t_step_ / popsize_bar_[i] * (
-          0.5 * (square(new_k_bar_p_i) - square(old_k_bar_p_i)) * num_active_parts_[i]
+          + 0.5 * (square(new_k_bar_p_i) - square(old_k_bar_p_i)) * num_active_parts_[i]
           - (k_twiddle_bar_p_[i] * num_active_parts_[i] - k_twiddle_bar_[i] + 0.5) * (new_k_bar_p_i - old_k_bar_p_i));
     }
     
     CHECK_EQ(i, cell_end);
 
     old_k_bar_p_i = k_bar_p_[i];
-    delta_k_bar_p_i = (adding_lineages ? +1.0 : -1.0) * dt_cell_end / t_step_;
+    delta_k_bar_p_i = delta_k * dt_cell_end / t_step_;
     new_k_bar_p_i = old_k_bar_p_i + delta_k_bar_p_i;
     
     delta_log_prior -= t_step_ / popsize_bar_[i] * (
-        0.5 * (square(new_k_bar_p_i) - square(old_k_bar_p_i)) * num_active_parts_[i]
+        + 0.5 * (square(new_k_bar_p_i) - square(old_k_bar_p_i)) * num_active_parts_[i]
         - (k_twiddle_bar_p_[i] * num_active_parts_[i] - k_twiddle_bar_[i] + 0.5) * (new_k_bar_p_i - old_k_bar_p_i));
   }
-
-  // Add factor from 1/N(tree)
-  delta_log_prior -= std::log(pop_model_->pop_at_time(new_t) / pop_model_->pop_at_time(old_t));
 
   return delta_log_prior;
 }

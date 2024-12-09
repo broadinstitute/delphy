@@ -114,9 +114,11 @@ class Subrun {
   // Move support
   auto pick_random_node() -> Node_index;
   auto pick_random_inner_node() -> Node_index;
+  auto pick_random_tip() -> Node_index;
 
   // Moves
   auto inner_node_displace_move() -> void;
+  auto tip_displace_move() -> void;
   auto branch_reform_move() -> void;
   auto subtree_slide_move() -> void;
   auto wilson_balding_move() -> void;

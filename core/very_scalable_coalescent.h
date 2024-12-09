@@ -36,8 +36,10 @@ class Very_scalable_coalescent_prior_part {
       std::vector<int> num_active_parts);
 
   auto coalescence_displaced(double old_t, double new_t) -> void;
+  auto tip_displaced(double old_t, double new_t) -> void;
   auto calc_partial_log_prior() const -> double;
   auto calc_delta_partial_log_prior_after_displace_coalescence(double old_t, double new_t) -> double;
+  auto calc_delta_partial_log_prior_after_displace_tip(double old_t, double new_t) -> double;
 
  private:
   const Pop_model* pop_model_;
@@ -53,6 +55,7 @@ class Very_scalable_coalescent_prior_part {
   double t_step_;
 
   void ensure_space(double t);
+  auto calc_delta_partial_log_prior_on_add_interval(double min_t, double max_t, double delta_k) -> double;
 };
 
 auto make_very_scalable_coalescent_prior_parts(

@@ -109,7 +109,8 @@ auto Subrun::mcmc_sub_iteration() -> void {
     auto total_weight = 15.0 + 15.0;
     if (topology_moves_enabled()) { total_weight += 1.0 + 1.0; }
     auto r = absl::Uniform(bitgen_, 0.0, total_weight);
-    if (r < 15.0) { inner_node_displace_move(); }    // Weight 15.0
+    if (r < 7.5) { inner_node_displace_move(); }     // Weight 7.5
+    else if (r < 15.0) { tip_displace_move(); }      // Weight 7.5
     else if (r < 30.0) { branch_reform_move(); }     // Weight 15.0
     else if (topology_moves_enabled()) {
       if (r < 31.0) { subtree_slide_move(); }        // Weight 1.0
@@ -132,6 +133,16 @@ auto Subrun::pick_random_inner_node() -> Node_index {
   while (true) {
     auto result = pick_random_node();
     if (tree_.at(result).is_inner_node()) {
+      return result;
+    }
+  }
+}
+
+auto Subrun::pick_random_tip() -> Node_index {
+  DCHECK_GT(std::ssize(tree_), 0);
+  while (true) {
+    auto result = pick_random_node();
+    if (tree_.at(result).is_tip()) {
       return result;
     }
   }
@@ -205,6 +216,59 @@ auto Subrun::inner_node_displace_move() -> void {
   if (log_mh >= 0.0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_mh)) {
     // Accept
     coalescent_prior_part_->coalescence_displaced(old_node_t, new_node_t);
+    tree_.at(node).t = new_node_t;
+
+    auto dt = new_node_t - old_node_t;
+    log_G_ += d_logG_dt * dt;
+    log_augmented_coalescent_prior_ += delta_log_prior;
+  }
+}
+
+auto Subrun::tip_displace_move() -> void {
+  if (std::ssize(tree_) < 1) return;
+
+  auto node = pick_random_tip();
+  CHECK_NE(node, tree_.root);
+  if (tree_.at(node).t_min == tree_.at(node).t_max) { return; }  // No uncertainty!
+
+  auto t_min = std::max(double{tree_.at(node).t_min}, tree_.at_parent_of(node).t);
+  for (const auto& m : tree_.at(node).mutations) {
+    t_min = std::max(t_min, m.t);
+  }
+
+  auto t_max = double{tree_.at(node).t_max};
+
+  auto lambda_at_node = lambda_i_[node];
+  auto d_logG_dt = 0.0;
+  
+  // parent branch lengthens
+  d_logG_dt += -lambda_at_node;
+
+  // Pick tree_.at(node).t as ~ exp(d_logG_dt * node.t), bounded by t_min and t_max.
+  auto old_node_t = tree_.at(node).t;
+  auto log_alpha_old_to_new_over_new_to_old = 0.0;
+  
+  auto t_dist = Bounded_exponential_distribution{d_logG_dt, t_min, t_max};
+  auto new_node_t = t_dist(bitgen_);
+  
+  // The proposal probability being proportional to the likelihood, the MH ratio will be 1.0 (before considering the coalescent prior)
+  log_alpha_old_to_new_over_new_to_old = d_logG_dt * (new_node_t - old_node_t);
+
+  // Forbid zero-length branches or mutation times that coincide with node times
+  if (new_node_t == t_min || new_node_t == t_max) { return; }
+
+  CHECK(t_min <= new_node_t) << lambda_at_node << ","
+                             << d_logG_dt << "," << t_min << "," << t_max << "," << new_node_t;
+  CHECK(new_node_t <= t_max);
+
+  // See if coalescent prior agrees with us
+  auto delta_log_G = d_logG_dt * (new_node_t - old_node_t);
+  auto delta_log_prior =
+      coalescent_prior_part_->calc_delta_partial_log_prior_after_displace_tip(old_node_t, new_node_t);
+  auto log_mh = delta_log_G + 0.0*delta_log_prior - log_alpha_old_to_new_over_new_to_old;
+  if (log_mh >= 0.0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_mh)) {
+    // Accept
+    coalescent_prior_part_->tip_displaced(old_node_t, new_node_t);
     tree_.at(node).t = new_node_t;
 
     auto dt = new_node_t - old_node_t;

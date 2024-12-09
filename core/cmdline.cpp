@@ -64,10 +64,10 @@ auto fasta_to_maple(
       auto delta = calculate_delta_from_reference(
           fasta_entry.id, fasta_entry.sequence, result.ref_sequence, warning_hook);
 
-      // FIXME: Add 1-month uncertainty to every tip
+      // FIXME: Add 1-month uncertainty to every tip, except for the first one
       auto t = opt_t.value();
-      auto t_min = t - 15.0;
-      auto t_max = t + 15.0;
+      auto t_min = (seqs_so_far == 0) ? t : t - 15.0;
+      auto t_max = (seqs_so_far == 0) ? t : t + 15.0;
       
       result.tip_descs.push_back({
           .name = fasta_entry.id,
