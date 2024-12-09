@@ -612,6 +612,48 @@ auto delphy_phylo_tree_set_time_of(
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
+auto delphy_phylo_tree_get_min_time_of(
+    Delphy_context& /*ctx*/,
+    const Phylo_tree& tree,
+    Node_index node)
+    -> double {
+  return tree.at(node).t_min;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_phylo_tree_set_min_time_of(
+    Delphy_context& /*ctx*/,
+    Phylo_tree& tree,
+    Node_index node,
+    double new_time)
+    -> void {
+  tree.at(node).t_min = new_time;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_phylo_tree_get_max_time_of(
+    Delphy_context& /*ctx*/,
+    const Phylo_tree& tree,
+    Node_index node)
+    -> double {
+  return tree.at(node).t_max;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_phylo_tree_set_max_time_of(
+    Delphy_context& /*ctx*/,
+    Phylo_tree& tree,
+    Node_index node,
+    double new_time)
+    -> void {
+  tree.at(node).t_max = new_time;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
 auto delphy_phylo_tree_get_mutation_list_iterators_of(
     Delphy_context& /*ctx*/,
     Phylo_tree& tree,
