@@ -184,7 +184,7 @@ auto Subrun::inner_node_displace_move() -> void {
     log_alpha_old_to_new_over_new_to_old = 0.0;
   } else {
     auto t_dist = Bounded_exponential_distribution{d_logG_dt, t_min, t_max};
-    auto new_node_t = t_dist(bitgen_);
+    new_node_t = t_dist(bitgen_);
     
     // The proposal probability being proportional to the likelihood, the MH ratio will be 1.0 (before considering the coalescent prior)
     log_alpha_old_to_new_over_new_to_old = d_logG_dt * (new_node_t - old_node_t);
