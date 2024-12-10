@@ -861,7 +861,6 @@ auto keyboard_func(char key) -> void {
       ui_run->set_num_parts(new_num_parts);
       std::cerr << "*** USING " << ui_run->num_parts() << " SUBTREES IN PARALLEL ***" << std::endl;
       timestamps.clear();
-      mcc_tree = {};
       break;
     }
     case 'm':
