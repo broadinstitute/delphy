@@ -58,17 +58,14 @@ auto fasta_to_maple(
   auto seqs_so_far = 0;
   for (auto& fasta_entry : in_fasta) {
     // Ignore sequences that we can't date correctly
-    if (auto opt_t = extract_date_from_sequence_id(fasta_entry.id); not opt_t.has_value()) {
+    if (auto opt_t_range = extract_date_range_from_sequence_id(fasta_entry.id); not opt_t_range.has_value()) {
       warning_hook(fasta_entry.id, Sequence_warnings::No_valid_date{});
     } else {
+      
+      auto [t_min, t_max] = opt_t_range.value();
       auto delta = calculate_delta_from_reference(
           fasta_entry.id, fasta_entry.sequence, result.ref_sequence, warning_hook);
 
-      // FIXME: Add 1-month uncertainty to every tip, except for the first one
-      auto t = opt_t.value();
-      auto t_min = (seqs_so_far == 0) ? t : t - 15.0;
-      auto t_max = (seqs_so_far == 0) ? t : t + 15.0;
-      
       result.tip_descs.push_back({
           .name = fasta_entry.id,
           .t_min = static_cast<float>(t_min),

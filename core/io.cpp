@@ -165,16 +165,14 @@ auto read_maple(
     auto id_end = std::find_if(id_begin, line.end(), [](auto c) { return std::isspace(c); });
     tip_desc.name.assign(id_begin, id_end);
 
-    auto maybe_t = extract_date_from_sequence_id(tip_desc.name);
-    if (not maybe_t.has_value()) {
+    auto maybe_t_range = extract_date_range_from_sequence_id(tip_desc.name);
+    if (not maybe_t_range.has_value()) {
       warning_hook(tip_desc.name, Sequence_warnings::No_valid_date{});
       ignore_this_tip = true;
     } else {
-      auto t = maybe_t.value();
-      
-      // FIXME: Add 1 month uncertainty to every tip
-      tip_desc.t_min = t - 15.0;
-      tip_desc.t_max = t + 15.0;
+      auto [t_min, t_max] = maybe_t_range.value();
+      tip_desc.t_min = t_min;
+      tip_desc.t_max = t_max;
     }
 
     while(getline(is, line)) {

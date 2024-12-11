@@ -10,6 +10,7 @@
 #include "api.h"
 #include "cmdline.h"
 #include "phylo_tree_calc.h"
+#include "dates.h"
 
 namespace delphy {
 
@@ -79,12 +80,18 @@ auto redate_trees(
     const std::string& pinned_ref)
     -> void {
 
-  auto maybe_date = extract_date_from_sequence_id(pinned_ref);
-  if (not maybe_date.has_value()) {
+  auto maybe_date_range = extract_date_range_from_sequence_id(pinned_ref);
+  if (not maybe_date_range.has_value()) {
     std::cerr << absl::StreamFormat("ERROR: Could not determine date of pinned reference sequence '%s'\n", pinned_ref);
     std::exit(EXIT_FAILURE);
   }
-  auto target_date = maybe_date.value();
+  auto [t_min, t_max] = maybe_date_range.value();
+  if (t_min != t_max) {
+    std::cerr << absl::StreamFormat("ERROR: Uncertain date for pinned reference sequence '%s': %s/%s\n",
+                                    pinned_ref, to_iso_date(t_min), to_iso_date(t_max));
+    std::exit(EXIT_FAILURE);
+  }
+  auto target_date = double{t_min};
   
   for (auto& [state, tree] : trees) {
     auto t_offset = 0.0;

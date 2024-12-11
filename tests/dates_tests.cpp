@@ -62,4 +62,38 @@ TEST(Dates_test, absl_dates) {
   EXPECT_EQ(absl::ToDoubleHours(t2 - t1) / 24.0, 1461.0);
 }
 
+TEST(Dates_test, parse_iso_month) {
+  // 31 days
+  EXPECT_THAT(parse_iso_month("2024-12"), testing::Eq(std::pair{parse_iso_date("2024-12-01"), parse_iso_date("2025-01-01")}));
+  
+  // 30 days
+  EXPECT_THAT(parse_iso_month("2024-11"), testing::Eq(std::pair{parse_iso_date("2024-11-01"), parse_iso_date("2024-12-01")}));
+  
+  // 28 days
+  EXPECT_THAT(parse_iso_month("2023-02"), testing::Eq(std::pair{parse_iso_date("2023-02-01"), parse_iso_date("2023-03-01")}));
+  
+  // 29 days on leap year
+  EXPECT_THAT(parse_iso_month("2024-02"), testing::Eq(std::pair{parse_iso_date("2024-02-01"), parse_iso_date("2024-03-01")}));
+  
+  // The year 1900 was not a leap year
+  EXPECT_THAT(parse_iso_month("1900-02"), testing::Eq(std::pair{parse_iso_date("1900-02-01"), parse_iso_date("1900-03-01")}));
+  
+  // But the year 2000 was (multiple of 400)
+  EXPECT_THAT(parse_iso_month("2000-02"), testing::Eq(std::pair{parse_iso_date("2000-02-01"), parse_iso_date("2000-03-01")}));
+}
+
+TEST(Dates_test, parse_iso_year) {
+  // The year 2024 was a leap year
+  EXPECT_THAT(parse_iso_year("2024"), testing::Eq(std::pair{parse_iso_date("2024-01-01"), parse_iso_date("2025-01-01")}));
+  
+  // The year 2023 was not a leap year
+  EXPECT_THAT(parse_iso_year("2023"), testing::Eq(std::pair{parse_iso_date("2023-01-01"), parse_iso_date("2024-01-01")}));
+  
+  // The year 1900 was not a leap year
+  EXPECT_THAT(parse_iso_year("1900"), testing::Eq(std::pair{parse_iso_date("1900-01-01"), parse_iso_date("1901-01-01")}));
+  
+  // But the year 2000 was (multiple of 400)
+  EXPECT_THAT(parse_iso_year("2000"), testing::Eq(std::pair{parse_iso_date("2000-01-01"), parse_iso_date("2001-01-01")}));
+}
+
 }  // namespace delphy

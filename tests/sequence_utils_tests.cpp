@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
 
+#include "dates.h"
 #include "sequence_utils.h"
 
 namespace delphy {
@@ -133,6 +134,27 @@ TEST(Sequence_utils_test, calculate_delta_from_reference_muts_with_incompatible_
               testing::ElementsAre(Seq_delta{0, rA, rG}));
   EXPECT_THAT(estd::ranges::to_vec(delta.missations.slow_elements(ref_seq)),
               testing::ElementsAre(Missation{1, rC}, Missation{2, rG}));
+}
+
+TEST(Sequence_utils_test, extract_date_range_from_sequence_id_simple) {
+  EXPECT_THAT(extract_date_range_from_sequence_id("Seq123"), testing::Eq(std::nullopt));
+  EXPECT_THAT(extract_date_range_from_sequence_id("Seq123|This year"), testing::Eq(std::nullopt));
+  EXPECT_THAT(extract_date_range_from_sequence_id("Seq123|YYYY-MM-DD"), testing::Eq(std::nullopt));
+  EXPECT_THAT(extract_date_range_from_sequence_id("Seq123|2024-12-10"),
+              testing::Eq(std::optional{std::pair{parse_iso_date("2024-12-10"), parse_iso_date("2024-12-10")}}));
+}
+
+TEST(Sequence_utils_test, extract_date_range_uncertain) {
+  EXPECT_THAT(extract_date_range_from_sequence_id("Seq123|2024"),
+              testing::Eq(std::optional{std::pair{parse_iso_date("2024-01-01"), parse_iso_date("2025-01-01")}}));
+  EXPECT_THAT(extract_date_range_from_sequence_id("Seq123|2024-12"),
+              testing::Eq(std::optional{std::pair{parse_iso_date("2024-12-01"), parse_iso_date("2025-01-01")}}));
+  EXPECT_THAT(extract_date_range_from_sequence_id("Seq123|2024-07-14/2024-09-22"),
+              testing::Eq(std::optional{std::pair{parse_iso_date("2024-07-14"), parse_iso_date("2024-09-22")}}));
+
+  // The following are real ISO time ranges, but we choose not to support them
+  EXPECT_THAT(extract_date_range_from_sequence_id("Seq123|2024-12-12/19"), testing::Eq(std::nullopt));
+  EXPECT_THAT(extract_date_range_from_sequence_id("Seq123|2024-11-07/12-26"), testing::Eq(std::nullopt));
 }
 
 }  // namespace delphy

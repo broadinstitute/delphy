@@ -17,6 +17,12 @@ namespace delphy {
 auto parse_iso_date(std::string_view iso_date_str) -> double;
 auto to_iso_date(double t) -> std::string;
 
+// A month is represented as midnight at the beginning of its first day to midnight at the end of its last day
+auto parse_iso_month(std::string_view iso_month_str) -> std::pair<double, double>;
+
+// A year is represented as midnight at the beginning of its first day to midnight at the end of its last day
+auto parse_iso_year(std::string_view iso_year_str) -> std::pair<double, double>;
+
 auto pseudo_date(Phylo_tree& tree, absl::BitGenRef bitgen) -> void;
 
 }  // namespace delphy

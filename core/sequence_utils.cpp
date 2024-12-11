@@ -63,34 +63,151 @@ auto calculate_delta_from_reference(
   return result;
 }
 
-auto extract_date_from_sequence_id(const std::string_view id) -> std::optional<double> {
+static auto is_valid_year_str(std::string_view sv) -> bool {
+  return
+      sv.length() == (4) &&
+      std::ranges::all_of(sv.substr(0, 4), isdigit);
+}
+
+static auto is_valid_month_str(std::string_view sv) -> bool {
+  return
+      sv.length() == (4+1+2) &&
+      std::ranges::all_of(sv.substr(0, 4), isdigit) &&
+      sv[4] == '-' &&
+      std::ranges::all_of(sv.substr(5, 2), isdigit);
+}
+
+static auto is_valid_date_str(std::string_view sv) -> bool {
+  return
+      sv.length() == (4+1+2+1+2) &&
+      std::ranges::all_of(sv.substr(0, 4), isdigit) &&
+      sv[4] == '-' &&
+      std::ranges::all_of(sv.substr(5, 2), isdigit) &&
+      sv[7] == '-' &&
+      std::ranges::all_of(sv.substr(8, 2), isdigit);
+}
+
+static auto is_valid_date_range_str(std::string_view sv) -> bool {
+  return
+      sv.length() == (4+1+2+1+2+1+4+1+2+1+2) &&
+      is_valid_date_str(sv.substr(0, 4+1+2+1+2)) &&
+      sv[4+1+2+1+2] == '/' &&
+      is_valid_date_str(sv.substr(4+1+2+1+2+1, 4+1+2+1+2));
+}
+
+auto extract_date_range_from_sequence_id(const std::string_view id) -> std::optional<std::pair<double, double>> {
   // We assume that sequence IDs look like this (these are real examples):
   //
   //   hCoV-19/England/PLYM-3258B175/2022|EPI_ISL_15330011|2022-10-01
   //   hRSV-A-England-160340212-2016-EPI_ISL_11428309-2016-01-19
   //
-  // So we check that there's something date-like at the end of the string, and parse that.
-  // Bork badly if the date isn't there
-  if (id.length() < (1 + 4 + 1 + 2 + 1 + 2)) {
-    // Not long enough
-    return {};
+  // So we check that there's something date-range-like at the end of the string, and parse that.
+  // Bork badly if the date range isn't there
+  //
+  // Date ranges can be in the following formats:
+  //
+  //   2024-12-26             (exact)
+  //   2024-12                (the whole month)
+  //   2024                   (the whole year)
+  //   2024-11-05/2024-12-26  (arbitrary date range, endpoints *must* be YYYY-MM-DD)
+  //
+
+  const auto len_arb_date_range = 4+1+2+1+2+1+4+1+2+1+2;
+  const auto len_arb_date       = 4+1+2+1+2;
+  const auto len_arb_month      = 4+1+2;
+  const auto len_arb_year       = 4;
+  
+  // At any point, parse_iso_date can fail with an exception; we just report that it failed and swallow the error
+  try {
+    // Try arbitrary date range first
+    do {
+      if (id.length() < 1 + len_arb_date_range) {
+        break;
+      }
+      
+      auto date_range_plus_bar = id.substr(id.length() - (1 + len_arb_date_range));
+      if (date_range_plus_bar[0] != '|' && date_range_plus_bar[0] != '-') {
+        // No separator before date range
+        break;
+      }
+      if (not is_valid_date_range_str(date_range_plus_bar.substr(1, len_arb_date_range))) {
+        break;
+      }
+      
+      auto min_date_str = date_range_plus_bar.substr(1, len_arb_date);
+      auto max_date_str = date_range_plus_bar.substr(1+len_arb_date+1, len_arb_date);
+      
+      auto t_min = parse_iso_date(min_date_str);
+      auto t_max = parse_iso_date(max_date_str);
+      return {{t_min, t_max}};
+    } while(false);
+
+    // Next try exact date
+    do {
+      if (id.length() < 1 + len_arb_date) {
+        break;
+      }
+      
+      auto date_plus_bar = id.substr(id.length() - (1 + len_arb_date));
+      if (date_plus_bar[0] != '|' && date_plus_bar[0] != '-') {
+        // No separator before date
+        break;
+      }
+      if (not is_valid_date_str(date_plus_bar.substr(1, len_arb_date))) {
+        break;
+      }
+      
+      auto date_str = date_plus_bar.substr(1, len_arb_date);
+      auto t_exact = parse_iso_date(date_str);
+      return {{t_exact, t_exact}};
+    } while(false);
+
+    // Next try month
+    do {
+      if (id.length() < 1 + len_arb_month) {
+        break;
+      }
+      
+      auto month_plus_bar = id.substr(id.length() - (1 + len_arb_month));
+      if (month_plus_bar[0] != '|' && month_plus_bar[0] != '-') {
+        // No separator before month
+        break;
+      }
+      if (not is_valid_month_str(month_plus_bar.substr(1, len_arb_month))) {
+        break;
+      }
+      
+      auto month_str = month_plus_bar.substr(1, len_arb_month);
+      auto [t_min, t_max] = parse_iso_month(month_str);
+      return {{t_min, t_max}};
+    } while(false);
+
+    // Next try year
+    do {
+      if (id.length() < 1 + len_arb_year) {
+        break;
+      }
+      
+      auto year_plus_bar = id.substr(id.length() - (1 + len_arb_year));
+      if (year_plus_bar[0] != '|' && year_plus_bar[0] != '-') {
+        // No separator before year
+        break;
+      }
+      if (not is_valid_year_str(year_plus_bar.substr(1, len_arb_year))) {
+        break;
+      }
+      
+      auto year_str = year_plus_bar.substr(1, len_arb_year);
+      auto [t_min, t_max] = parse_iso_year(year_str);
+      return {{t_min, t_max}};
+    } while(false);
+
+  } catch(...) {
+    // Horribly formatted date, bail
   }
-  auto date_plus_bar = id.substr(id.length() - (1 + 4 + 1 + 2 + 1 + 2));
-  if (date_plus_bar[0] != '|' && date_plus_bar[0] != '-') {
-    // No separator before date
-    return {};
-  }
-  auto date_str = date_plus_bar.substr(1);
-  auto valid =
-      std::ranges::all_of(date_str.substr(0, 4), isdigit) &&
-          date_str[4] == '-' &&
-          std::ranges::all_of(date_str.substr(5, 2), isdigit) &&
-          date_str[7] == '-' &&
-          std::ranges::all_of(date_str.substr(8, 2), isdigit);
-  if (not valid) {
-    return {};
-  }
-  return parse_iso_date(date_str);
+  
+  // Nothing worked
+  return {};
 }
 
 }  // namespace delphy

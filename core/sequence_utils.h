@@ -93,7 +93,7 @@ auto calculate_delta_from_reference(
     = default_sequence_warning_hook)
     -> Delta_from_reference;
 
-auto extract_date_from_sequence_id(const std::string_view id) -> std::optional<double>;
+auto extract_date_range_from_sequence_id(const std::string_view id) -> std::optional<std::pair<double, double>>;
 
 }  // namespace delphy
 

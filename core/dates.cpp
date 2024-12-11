@@ -21,6 +21,30 @@ auto parse_iso_date(std::string_view iso_date_str) -> double {
   return std::round(d - k_epoch_day);
 }
 
+auto parse_iso_month(std::string_view iso_month_str) -> std::pair<double, double> {
+  auto m = absl::CivilMonth{};
+  if (not absl::ParseCivilTime(iso_month_str, &m)) {
+    throw std::runtime_error(absl::StrFormat(
+        "Badly formatted ISO month: %s", iso_month_str));
+  }
+  return {
+    absl::CivilDay{m} - k_epoch_day,
+    absl::CivilDay{m+1} - k_epoch_day
+  };
+}
+
+auto parse_iso_year(std::string_view iso_year_str) -> std::pair<double, double> {
+  auto y = absl::CivilYear{};
+  if (not absl::ParseCivilTime(iso_year_str, &y)) {
+    throw std::runtime_error(absl::StrFormat(
+        "Badly formatted ISO year: %s", iso_year_str));
+  }
+  return {
+    absl::CivilDay{y} - k_epoch_day,
+    absl::CivilDay{y+1} - k_epoch_day
+  };
+}
+
 auto to_iso_date(double t) -> std::string {
   auto d = k_epoch_day + static_cast<int>(std::floor(t));
   return absl::FormatCivilTime(d);
