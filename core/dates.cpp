@@ -50,6 +50,17 @@ auto to_iso_date(double t) -> std::string {
   return absl::FormatCivilTime(d);
 }
 
+auto to_linear_year(double t) -> double {
+  auto d = absl::CivilDay{k_epoch_day + static_cast<int>(std::floor(t))};
+  auto y_start = absl::CivilDay{d.year()};  // first day of the year
+  auto y_end = absl::CivilDay{d.year()+1};  // first day of the following year
+  
+  auto days_since_y_start = static_cast<double>(d - y_start);
+  auto days_in_y = static_cast<double>(y_end - y_start);
+
+  return d.year() + days_since_y_start / days_in_y;
+}
+
 // Assign dates to leaf and inner nodes of the tree in a very dumb way:
 // * For leaf nodes, keep times read in from import
 // * For inner nodes, estimate time from times of children & their mutations

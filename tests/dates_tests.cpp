@@ -96,4 +96,23 @@ TEST(Dates_test, parse_iso_year) {
   EXPECT_THAT(parse_iso_year("2000"), testing::Eq(std::pair{parse_iso_date("2000-01-01"), parse_iso_date("2001-01-01")}));
 }
 
+TEST(Dates_test, to_linear_year) {
+  // The year 2024 was a leap year
+  EXPECT_THAT(to_linear_year(parse_iso_date("2024-02-01")), testing::DoubleNear(2024.0 + 31.0 / 366.0, 1e-6));
+  EXPECT_THAT(to_linear_year(parse_iso_date("2024-03-01")), testing::DoubleNear(2024.0 + (31.0 + 29.0) / 366.0, 1e-6));
+  EXPECT_THAT(to_linear_year(parse_iso_date("2024-03-15")), testing::DoubleNear(2024.0 + (31.0 + 29.0 + 15-1) / 366.0, 1e-6));
+
+  // The year 2023 was not a leap year
+  EXPECT_THAT(to_linear_year(parse_iso_date("2023-02-01")), testing::DoubleNear(2023.0 + 31.0 / 365.0, 1e-6));
+  EXPECT_THAT(to_linear_year(parse_iso_date("2023-03-01")), testing::DoubleNear(2023.0 + (31.0 + 28.0) / 365.0, 1e-6));
+
+  // The year 1900 was not a leap year
+  EXPECT_THAT(to_linear_year(parse_iso_date("1900-02-01")), testing::DoubleNear(1900.0 + 31.0 / 365.0, 1e-6));
+  EXPECT_THAT(to_linear_year(parse_iso_date("1900-03-01")), testing::DoubleNear(1900.0 + (31.0 + 28.0) / 365.0, 1e-6));
+
+  // But the year 2000 was (multiple of 400)
+  EXPECT_THAT(to_linear_year(parse_iso_date("2000-02-01")), testing::DoubleNear(2000.0 + 31.0 / 366.0, 1e-6));
+  EXPECT_THAT(to_linear_year(parse_iso_date("2000-03-01")), testing::DoubleNear(2000.0 + (31.0 + 29.0) / 366.0, 1e-6));
+}
+
 }  // namespace delphy

@@ -17,6 +17,11 @@ namespace delphy {
 auto parse_iso_date(std::string_view iso_date_str) -> double;
 auto to_iso_date(double t) -> std::string;
 
+// Convert a time in "days since 1-Jan-2020" (no ambiguities w.r.t. leap years)
+// to BEAST's linear years (see https://beast.community/tip_dates)
+// Example: to_linear_year(parse_iso_date("2024-02-01")) == ~ 2024.08333 = 2024 + 1./12.
+auto to_linear_year(double t) -> double;
+
 // A month is represented as midnight at the beginning of its first day to midnight at the end of its last day
 auto parse_iso_month(std::string_view iso_month_str) -> std::pair<double, double>;
 
