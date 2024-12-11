@@ -144,11 +144,13 @@ static auto rescale_axes() {
 
   for (const auto& node : index_order_traversal(tree)) {
     auto t = tree.at(node).t;
+    auto t_min = double{tree.at(node).t_min};
+    auto t_max = double{tree.at(node).t_max};
     t_min_x_axis = std::min(t, t_min_x_axis);
     t_max_x_axis = std::max(t, t_max_x_axis);
     if (tree.at(node).is_tip()) {
-      t_min_scale_bar = std::min(t, t_min_scale_bar);
-      t_max_scale_bar = std::max(t, t_max_scale_bar);
+      t_min_scale_bar = std::min(t_min, t_min_scale_bar);
+      t_max_scale_bar = std::max(t_max, t_max_scale_bar);
     }
   }
 }
