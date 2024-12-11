@@ -170,11 +170,11 @@ auto read_maple(
       warning_hook(tip_desc.name, Sequence_warnings::No_valid_date{});
       ignore_this_tip = true;
     } else {
-      tip_desc.t = maybe_t.value();
+      auto t = maybe_t.value();
       
       // FIXME: Add 1 month uncertainty to every tip
-      tip_desc.t_min = tip_desc.t - 15.0;
-      tip_desc.t_max = tip_desc.t + 15.0;
+      tip_desc.t_min = t - 15.0;
+      tip_desc.t_max = t + 15.0;
     }
 
     while(getline(is, line)) {

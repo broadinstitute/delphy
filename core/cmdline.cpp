@@ -73,7 +73,6 @@ auto fasta_to_maple(
           .name = fasta_entry.id,
           .t_min = static_cast<float>(t_min),
           .t_max = static_cast<float>(t_max),
-          .t = t,
           .seq_deltas = std::move(delta.seq_deltas),
           .missations = std::move(delta.missations)});
     }

@@ -139,7 +139,6 @@ struct Tip_desc {
   std::string name;
   float t_min = +42.0;  // See comments in Phylo_node
   float t_max = -42.0;
-  double t;
   std::vector<Seq_delta> seq_deltas;
   Missation_map<> missations;
 };

@@ -676,9 +676,10 @@ auto build_random_tree(
     tree.at(tip).children = {};
     tree.at(tip).name = std::move(tip_desc.name);
     CHECK_LE(tip_desc.t_min, tip_desc.t_max);
-    tree.at(tip).t = absl::Uniform(absl::IntervalClosedClosed, bitgen, tip_desc.t_min, tip_desc.t_max);
+    auto t = absl::Uniform(absl::IntervalClosedClosed, bitgen, tip_desc.t_min, tip_desc.t_max);
+    tree.at(tip).t = t;
     for (const auto& m : tip_desc.seq_deltas) {
-      tree.at(tip).mutations.push_back(m.place_at(tip_desc.t));
+      tree.at(tip).mutations.push_back(m.place_at(t));
     }
     sort_mutations(tree.at(tip).mutations);
     tree.at(tip).missations = tip_desc.missations;
