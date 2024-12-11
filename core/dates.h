@@ -7,11 +7,11 @@
 
 namespace delphy {
 
-// In this whole code, we measure time in units of "days since 31-Dec-2019", i.e.:
+// In this whole code, we measure time in units of "days since 1-Jan-2020", i.e.:
 //
-//  2020-01-01 => 1
-//  2020-01-02 => 2
-//  2020-01-03 => 3
+//  2020-01-01 => 0
+//  2020-01-02 => 1
+//  2020-01-03 => 2
 //   ...
 
 auto parse_iso_date(std::string_view iso_date_str) -> double;
