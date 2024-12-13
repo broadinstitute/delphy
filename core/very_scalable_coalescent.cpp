@@ -101,6 +101,7 @@ auto make_very_scalable_coalescent_prior_parts(
     std::vector<double> k_twiddle_bar_p;
   };
   auto infos = std::vector<Part_info>(std::ssize(subtrees));
+  auto& root_info = infos[root_partition_index];
 
   for (auto i = 0; i != std::ssize(subtrees); ++i) {
     infos[i].part_index = i;
@@ -122,6 +123,11 @@ auto make_very_scalable_coalescent_prior_parts(
   auto all_t_min = std::ranges::min(infos, {}, [](const auto& part_info) { return part_info.t_min; }).t_min;
   auto all_t_max = std::ranges::max(infos, {}, [](const auto& part_info) { return part_info.t_max; }).t_max;
 
+  // Root partition always extends to the minimum time
+  // (with tip-date uncertainty, it may be that the t_min of a tip in a different partition
+  //  comes earlier than the t_min of the root partition as calculated above!)
+  root_info.t_min = all_t_min;
+  
   // Everything uses all_t_max as the reference time and grows time towards the past
   auto t_ref = all_t_max;
 
