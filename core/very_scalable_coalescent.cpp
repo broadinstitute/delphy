@@ -48,8 +48,14 @@ auto add_interval(
   assert_space(t_start, t_ref, t_step, k);
   auto cell_start = cell_for(t_start, t_ref, t_step);
 
-  assert_space(t_end, t_ref, t_step, k);
-  auto cell_end = cell_for(t_end, t_ref, t_step);
+  // Careful setup so that if t_end is right at the beginning of
+  // the leftmost cell, we don't accidentally try to grab one more cell
+  // owing to floating-point roundoff
+  auto cell_end = std::ssize(k)-1;
+  if (t_end != cell_lbound(cell_end, t_ref, t_step)) {
+    assert_space(t_end, t_ref, t_step, k);
+    cell_end = cell_for(t_end, t_ref, t_step);
+  }
 
   if (cell_start == cell_end) {
     k[cell_start] += delta_k * (t_start - t_end) / t_step;
@@ -161,8 +167,7 @@ auto make_very_scalable_coalescent_prior_parts(
   }
 
   // Add the last interval from the root node to the earliest time we track
-  auto& root_info = infos[root_partition_index];
-  add_interval(cell_lbound(num_cells - 1, t_ref, t_step) + 0.0001*t_step,
+  add_interval(cell_lbound(num_cells - 1, t_ref, t_step),
                root_info.subtree->at_root().t,
                +1.0, root_info.k_bar_p, t_ref, t_step);
 
