@@ -265,7 +265,7 @@ auto Subrun::tip_displace_move() -> void {
   auto delta_log_G = d_logG_dt * (new_node_t - old_node_t);
   auto delta_log_prior =
       coalescent_prior_part_->calc_delta_partial_log_prior_after_displace_tip(old_node_t, new_node_t);
-  auto log_mh = delta_log_G + 0.0*delta_log_prior - log_alpha_old_to_new_over_new_to_old;
+  auto log_mh = delta_log_G + delta_log_prior - log_alpha_old_to_new_over_new_to_old;
   if (log_mh >= 0.0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_mh)) {
     // Accept
     coalescent_prior_part_->tip_displaced(old_node_t, new_node_t);
