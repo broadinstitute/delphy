@@ -46,20 +46,31 @@ auto probe_ancestors_on_tree(const Phylo_tree& tree,
 
   auto k = static_cast<int>(std::ssize(marked_ancestors));
   
-  // Initial probabilities are all 0.0 if t_start <= t_root;  we don't handle t_start > t_root yet
+  // Initial probabilities are all 0.0 if t_start <= t_root
+  // If t_start > t_root, we add cells at the beginning until we reach past the root time,
+  // but mark those for ignoring (there's a much better way to do this properly, but
+  // this crude scheme will do for now)
+  auto real_t_start = t_start;
+  auto cells_to_skip = 0;
   if (tree.root != k_no_node && t_start > tree.at_root().t) {
-    throw std::runtime_error("t_start > t_root is not implemented yet!");
+    auto cell_size = (t_end - t_start) / num_t_cells;
+    while (real_t_start > tree.at_root().t) {
+      real_t_start -= cell_size;
+      ++num_t_cells;
+      ++cells_to_skip;
+    }
   }
+  
   auto p_initial = std::vector<double>(k+1, 0.0);
   p_initial[k] = 1.0;
   
   // Accumulate counts of branches where CMA is `i`
-  auto branch_counts_by_cma = Staircase_family{k+1, t_start, t_end, num_t_cells};
+  auto branch_counts_by_cma = Staircase_family{k+1, real_t_start, t_end, num_t_cells};
   if (tree.root != k_no_node) {
     probe_ancestors_on_tree_helper(tree, tree.root, marked_ancestors, k, branch_counts_by_cma);
   }
   
-  auto prober = Tree_prober{branch_counts_by_cma, pop_model, std::move(p_initial)};
+  auto prober = Tree_prober{branch_counts_by_cma, cells_to_skip, pop_model, std::move(p_initial)};
   
   return prober.p();
 }

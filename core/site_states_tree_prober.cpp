@@ -51,9 +51,19 @@ auto probe_site_states_on_tree(
     throw std::out_of_range(absl::StrFormat("Site %d is outside the valid range [1, %d]", site+1, L));
   }
 
-  // Initial probabilities match root sequence if t_start <= t_root;  we don't handle t_start > t_root yet
+  // Initial probabilities match root sequence if t_start <= t_root
+  // If t_start > t_root, we add cells at the beginning until we reach past the root time,
+  // but mark those for ignoring (there's a much better way to do this properly, but
+  // this crude scheme will do for now)
+  auto real_t_start = t_start;
+  auto cells_to_skip = 0;
   if (tree.root != k_no_node && t_start > tree.at_root().t) {
-    throw std::runtime_error("t_start > t_root is not implemented yet!");
+    auto cell_size = (t_end - t_start) / num_t_cells;
+    while (real_t_start > tree.at_root().t) {
+      real_t_start -= cell_size;
+      ++num_t_cells;
+      ++cells_to_skip;
+    }
   }
   
   auto state_at_root = tree.ref_sequence[site];
@@ -71,12 +81,12 @@ auto probe_site_states_on_tree(
   p_initial[index_of(state_at_root)] = 1.0;
   
   // Accumulate counts of branches where site has states A, C, G or T
-  auto branch_counts_by_state = Staircase_family{k_num_real_seq_letters, t_start, t_end, num_t_cells};
+  auto branch_counts_by_state = Staircase_family{k_num_real_seq_letters, real_t_start, t_end, num_t_cells};
   if (tree.root != k_no_node) {
     probe_site_states_on_tree_helper(tree, tree.root, site, state_at_root, branch_counts_by_state);
   }
 
-  auto prober = Tree_prober{branch_counts_by_state, pop_model, std::move(p_initial)};
+  auto prober = Tree_prober{branch_counts_by_state, cells_to_skip, pop_model, std::move(p_initial)};
   
   return prober.p();
 }
