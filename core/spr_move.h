@@ -55,19 +55,11 @@ struct Spr_graft {
     Scratch_interval_set hot_sites;
     Scratch_vector<Mutation> hot_muts_to_X;
     Site_deltas hot_deltas_to_X;
-    
-    Branch_info(Scratch_space& scratch)
-        : warm_sites{scratch},
-          hot_sites{scratch},
-          hot_muts_to_X{scratch},
-          hot_deltas_to_X{scratch} {}
   };
   Scratch_vector<Branch_info> branch_infos;
 
   double delta_log_G;
   double log_alpha_mut;
-
-  Spr_graft(Scratch_space& scratch) : branch_infos{{}, scratch} {}
 };
 
 struct Spr_move {
@@ -78,18 +70,14 @@ struct Spr_move {
       const Global_evo_model& evo,
       Node_vector<double>& lambda_i,
       const std::vector<double>& ref_cum_Q_l,
-      Node_vector<int>& num_sites_missing_at_every_node,
-      Scratch_space& scratch)
+      Node_vector<int>& num_sites_missing_at_every_node)
       : tree{&tree},
         mu_proposal{mu_proposal},
         can_change_root{can_change_root},
         evo{&evo},
         lambda_i{&lambda_i},
         ref_cum_Q_l{&ref_cum_Q_l},
-        num_sites_missing_at_every_node{&num_sites_missing_at_every_node},
-        scratch{&scratch},
-        graft_before{scratch},
-        graft_after{scratch} {}
+        num_sites_missing_at_every_node{&num_sites_missing_at_every_node} {}
 
   auto analyze_graft(Node_index X) const -> Spr_graft;
   auto move(Node_index X, Node_index SS, double new_t_P) -> void;
@@ -108,7 +96,6 @@ struct Spr_move {
   Node_vector<double>* lambda_i;
   const std::vector<double>* ref_cum_Q_l;
   Node_vector<int>* num_sites_missing_at_every_node;
-  Scratch_space* scratch;
 
   // Results
   Spr_graft graft_before;
@@ -144,8 +131,7 @@ struct Spr_move {
 // with site mutation rate `mu`.  Each entry `{l, {from, to}}` in the map `deltas` specifies unequal initial
 // and final states of site `l`.  All sites not present in `deltas` have initial and final state `A`,
 // which should be adjusted by the caller if needed.
-// Memory allocations should be serviced from the `scratch` space, and any random numbers needed should
-// be generated with `bitgen`.
+// Any random numbers needed should be generated with `bitgen`.
 //
 // Returns the mutational history as a vector of timed mutations (`{t, {site, from, to}}`), sorted by increasing time.
 //
@@ -162,14 +148,13 @@ auto sample_mutational_history(
     double T,
     double mu,
     const Site_deltas& deltas,
-    Scratch_space& scratch,
     absl::BitGenRef bitgen)
     -> Scratch_vector<Mutation>;
 
 // Sample a JC69 mutational history trajectory for a sequence of `L` sites, ranging from `-T` to `0`,
 // with site mutation rate `mu`.  For each site l, the start state is unconstrained and the final state is `A`;
 // this should be adjusted by the caller if needed.
-// Memory allocations should be serviced from the `scratch` space, and any random numbers needed should
+// Any random numbers needed should
 // be generated with `bitgen`.
 //
 // Returns the mutational history as a vector of timed mutations (`{t, {site, from, to}}`), sorted by increasing time.
@@ -178,7 +163,6 @@ auto sample_unconstrained_mutational_history(
     Site_index L,
     double T,
     double mu,
-    Scratch_space& scratch,
     absl::BitGenRef bitgen)
     -> Scratch_vector<Mutation>;
 
@@ -193,8 +177,7 @@ auto adjust_mutational_history(
     Scratch_vector<Mutation>& history,
     const Site_deltas site_deltas,
     const Phylo_tree& tree,
-    Phylo_tree_loc end_loc,
-    Scratch_space& scratch)
+    Phylo_tree_loc end_loc)
     -> void;
 
 }  // namespace delphy

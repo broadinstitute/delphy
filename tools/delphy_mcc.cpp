@@ -97,6 +97,8 @@ auto main(int argc, char** argv) -> int {
   using namespace delphy;
 
   absl::InitializeLog();
+  
+  auto scope = Local_arena_scope{};
 
   CHECK_EQ(argc, 3);
   auto tree_is = std::ifstream{argv[1]};

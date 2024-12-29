@@ -125,12 +125,11 @@ auto rewire_tree_through_sequential_accretion(
 
 auto randomize_tree(Phylo_tree& tree, absl::BitGenRef bitgen) -> void;
 
-auto randomize_mutation_times(Phylo_tree& tree, absl::BitGenRef bitgen, Scratch_space& scratch) -> void;
+auto randomize_mutation_times(Phylo_tree& tree, absl::BitGenRef bitgen) -> void;
 auto randomize_branch_mutation_times(
     Phylo_tree& tree,
     Branch_index X,
-    absl::BitGenRef bitgen,
-    Scratch_space& scratch)
+    absl::BitGenRef bitgen)
     -> Scratch_vector<Mutation>;
 
 // Whole-tree construction

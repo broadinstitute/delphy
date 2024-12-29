@@ -6,15 +6,13 @@
 namespace delphy {
 
 TEST(Interval_set_test, empty) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{scratch};
+  auto s = Scratch_interval_set{};
 
   EXPECT_EQ(s.begin(), s.end());
 }
 
 TEST(Interval_set_test, nonoverlapping_inserts) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{scratch};
+  auto s = Scratch_interval_set{};
 
   auto [it, inserted] = s.insert({100, 200});
   EXPECT_THAT(inserted, testing::IsTrue());
@@ -30,8 +28,7 @@ TEST(Interval_set_test, nonoverlapping_inserts) {
 }
 
 TEST(Interval_set_test, nonoverlapping_site_inserts) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{scratch};
+  auto s = Scratch_interval_set{};
 
   auto [it, inserted] = s.insert(100);
   EXPECT_THAT(inserted, testing::IsTrue());
@@ -47,15 +44,13 @@ TEST(Interval_set_test, nonoverlapping_site_inserts) {
 }
 
 TEST(Interval_set_test, construct_from_initializer_list) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}, scratch};
+  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}};
 
   EXPECT_THAT(s, testing::ElementsAre(Site_interval{100, 200}, Site_interval{300, 400}));
 }
 
 TEST(Interval_set_test, copy_assign_from_different_allocator) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}, scratch};
+  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}};
 
   auto s2 = Interval_set<>{};  // Not a Scratch_interval_set!
   
@@ -65,8 +60,7 @@ TEST(Interval_set_test, copy_assign_from_different_allocator) {
 }
 
 TEST(Interval_set_test, contains) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}, scratch};
+  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}};
 
   EXPECT_THAT(s.contains(50), testing::IsFalse());
   
@@ -88,8 +82,7 @@ TEST(Interval_set_test, contains) {
 }
 
 TEST(Interval_set_test, overlapping_intervals_closed) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}, scratch};
+  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}};
 
   // s.begin() == it_A              it_B                it_C == s.end()
   //               |                  |
@@ -116,8 +109,7 @@ TEST(Interval_set_test, overlapping_intervals_closed) {
 }
 
 TEST(Interval_set_test, strictly_overlapping_inserts) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{scratch};
+  auto s = Scratch_interval_set{};
 
   auto [it, inserted] = s.insert({100, 200});
   EXPECT_THAT(inserted, testing::IsTrue());
@@ -131,8 +123,7 @@ TEST(Interval_set_test, strictly_overlapping_inserts) {
 }
 
 TEST(Interval_set_test, fully_contained_overlapping_inserts) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{scratch};
+  auto s = Scratch_interval_set{};
 
   auto [it, inserted] = s.insert({100, 200});
   EXPECT_THAT(inserted, testing::IsTrue());
@@ -146,8 +137,7 @@ TEST(Interval_set_test, fully_contained_overlapping_inserts) {
 }
 
 TEST(Interval_set_test, complex_overlapping_inserts) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}, scratch};
+  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}};
   
   auto [it2, inserted2] = s.insert({150, 450});
   EXPECT_THAT(inserted2, testing::IsTrue());
@@ -158,8 +148,7 @@ TEST(Interval_set_test, complex_overlapping_inserts) {
 }
 
 TEST(Interval_set_test, tough_merging_inserts) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}, scratch};
+  auto s = Scratch_interval_set{{Site_interval{100, 200}, Site_interval{300, 400}}};
   
   auto [it2, inserted2] = s.insert({200, 300});
   EXPECT_THAT(inserted2, testing::IsTrue());
@@ -171,8 +160,7 @@ TEST(Interval_set_test, tough_merging_inserts) {
 
 TEST(Interval_set_test, consecutive_site_inserts) {
   // This is very inefficient, but it *should* work
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{scratch};
+  auto s = Scratch_interval_set{};
 
   s.insert(10);
   s.insert(11);
@@ -194,22 +182,20 @@ TEST(Interval_set_test, merge) {
   // s2: --[----)--------------------[-)--------------[---------)-------------------[---------)-[--)---------[-)-------
   //  m: --[----)--[---------)-[----)[-----------)----[--------------)---------[--------------)-[--------------)-------
   //
-  auto scratch = Scratch_space{};
   auto s1 = Scratch_interval_set{
     {Site_interval{10,  20},
      Site_interval{22,  27},
      Site_interval{30,  40},
      Site_interval{50,  60},
      Site_interval{70,  80},
-     Site_interval{90, 100}}, scratch};
+     Site_interval{90, 100}}};
   auto s2 = Scratch_interval_set{
     {Site_interval{  2,   7},
      Site_interval{ 28,  30},
      Site_interval{ 45,  55},
      Site_interval{ 75,  85},
      Site_interval{ 87,  90},
-     Site_interval{100, 102}
-    }, scratch};
+     Site_interval{100, 102}}};
 
   EXPECT_THAT(merge_interval_sets(s1, s2), testing::ElementsAre(
       Site_interval{ 2,   7},
@@ -230,22 +216,20 @@ TEST(Interval_set_test, intersect) {
   // s2: --[----)--------------------[-)--------------[---------)-------------------[---------)-[--)---------[-)-------
   //  o: --------------------------------------------------[----)-------------------[----)-----------------------------
   //
-  auto scratch = Scratch_space{};
   auto s1 = Scratch_interval_set{
     {Site_interval{10,  20},
      Site_interval{22,  27},
      Site_interval{30,  40},
      Site_interval{50,  60},
      Site_interval{70,  80},
-     Site_interval{90, 100}}, scratch};
+     Site_interval{90, 100}}};
   auto s2 = Scratch_interval_set{
     {Site_interval{  2,   7},
      Site_interval{ 28,  30},
      Site_interval{ 45,  55},
      Site_interval{ 75,  85},
      Site_interval{ 87,  90},
-     Site_interval{100, 102}
-    }, scratch};
+     Site_interval{100, 102}}};
 
   EXPECT_THAT(intersect_interval_sets(s1, s2), testing::ElementsAre(
       Site_interval{50,  55},
@@ -273,22 +257,20 @@ TEST(Interval_set_test, subtract) {
   // s1: ----------[---------)-[----)--[---------)---------[---------)---------[---------)---------[---------)---------
   //2-1: --[----)--------------------[-)--------------[----)-----------------------------[----)-[--)---------[-)-------
   //
-  auto scratch = Scratch_space{};
   auto s1 = Scratch_interval_set{
     {Site_interval{10,  20},
      Site_interval{22,  27},
      Site_interval{30,  40},
      Site_interval{50,  60},
      Site_interval{70,  80},
-     Site_interval{90, 100}}, scratch};
+     Site_interval{90, 100}}};
   auto s2 = Scratch_interval_set{
     {Site_interval{  2,   7},
      Site_interval{ 28,  30},
      Site_interval{ 45,  55},
      Site_interval{ 75,  85},
      Site_interval{ 87,  90},
-     Site_interval{100, 102}
-    }, scratch};
+     Site_interval{100, 102}}};
 
   EXPECT_THAT(subtract_interval_sets(s1, s2), testing::ElementsAre(
       Site_interval{10,  20},
@@ -316,7 +298,6 @@ TEST(Interval_set_test, subtract_edges) {
   // s2: [--)------[-----)---[-------)----[-)-------[--)------[----)-----[)--------[-)-------[--)--------[-)-----------
   //1-2: ---[--)----------------------------[)--------------------------[)[)------[)--------[)--------[--)------[--)---
   //
-  auto scratch = Scratch_space{};
   auto s1 = Scratch_interval_set{
     {Site_interval{  3,   6},
      Site_interval{ 13,  16},
@@ -328,7 +309,7 @@ TEST(Interval_set_test, subtract_edges) {
      Site_interval{ 73,  76},
      Site_interval{ 83,  86},
      Site_interval{ 93,  96},
-     Site_interval{103, 106}}, scratch};
+     Site_interval{103, 106}}};
   auto s2 = Scratch_interval_set{
     {Site_interval{  0,   3},
      Site_interval{ 10,  16},
@@ -339,8 +320,7 @@ TEST(Interval_set_test, subtract_edges) {
      Site_interval{ 64,  65},
      Site_interval{ 74,  76},
      Site_interval{ 84,  87},
-     Site_interval{ 96,  98}
-    }, scratch};
+     Site_interval{ 96,  98}}};
 
   EXPECT_THAT(subtract_interval_sets(s1, s2), testing::ElementsAre(
       Site_interval{  3,   6},
@@ -354,8 +334,7 @@ TEST(Interval_set_test, subtract_edges) {
 }
 
 TEST(Interval_set_test, slow_elements) {
-  auto scratch = Scratch_space{};
-  auto s = Scratch_interval_set{{Site_interval{2, 5}, Site_interval{7, 8}}, scratch};
+  auto s = Scratch_interval_set{{Site_interval{2, 5}, Site_interval{7, 8}}};
 
   EXPECT_THAT(estd::ranges::to_vec(s.slow_elements()), testing::ElementsAre(2, 3, 4, 7));
 }

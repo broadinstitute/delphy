@@ -17,8 +17,8 @@ auto count_mutations(const Phylo_tree& tree) -> int {
 }
 
 auto view_of_sequence_at(const Phylo_tree& tree, Phylo_tree_loc x) -> Sequence_overlay {
-  auto scratch = Scratch_space{};
-  auto site_deltas = Site_deltas{scratch};
+  auto scope = Local_arena_scope{};
+  auto site_deltas = Site_deltas{};
   for (auto cur = x.branch; cur != k_no_node; cur = tree.at(cur).parent) {
     for (const auto& m : tree.at(cur).mutations | std::views::reverse) {
       if (m.t <= x.t) {
@@ -38,28 +38,14 @@ auto view_of_sequence_at(const Phylo_tree& tree, Node_index X) -> Sequence_overl
   return view_of_sequence_at(tree, tree.node_loc(X));
 }
 
-auto reconstruct_missing_sites_at(const Phylo_tree& tree, Node_index node) -> Interval_set<> {
-  // Accumulate missations all the way up to (and including!) the root
-  auto scratch1 = Interval_set<>{};
-  auto scratch2 = Interval_set<>{};
-  auto so_far = &scratch1;
-  auto cur_scratch = &scratch2;
-  for (auto cur = node; cur != k_no_node; cur = tree.at(cur).parent) {
-    merge_interval_sets(*cur_scratch, *so_far, tree.at(cur).missations.intervals);
-    std::swap(so_far, cur_scratch);
-  }
-  return *so_far;
-}
-
 auto reconstruct_missing_sites_at(
     const Phylo_tree& tree,
-    Node_index node,
-    Scratch_space& scratch)
+    Node_index node)
     -> Scratch_interval_set {
   
   // Accumulate missations all the way up to (and including!) the root
-  auto scratch1 = Scratch_interval_set{scratch};
-  auto scratch2 = Scratch_interval_set{scratch};
+  auto scratch1 = Scratch_interval_set{};
+  auto scratch2 = Scratch_interval_set{};
   auto so_far = &scratch1;
   auto cur_scratch = &scratch2;
   for (auto cur = node; cur != k_no_node; cur = tree.at(cur).parent) {
@@ -626,11 +612,12 @@ auto assert_tip_sequences_compatible_with_original_ones(
   if (estd::is_debug_enabled) {
     for (const auto& node : index_order_traversal(tree)) {
       if (tree.at(node).is_tip()) {
-        
+        auto scope = Local_arena_scope{};
         auto current_missing_sites = reconstruct_missing_sites_at(tree, node);
         const auto& original_missing_sites = original_missing_sites_all[node];
-        CHECK(current_missing_sites == original_missing_sites) << absl::StreamFormat(
-            "Tip %d has a different set of missing sites ({%s}) than it originally did ({%s})",
+        CHECK(std::ranges::equal(current_missing_sites, original_missing_sites))
+            << absl::StreamFormat(
+                "Tip %d has a different set of missing sites ({%s}) than it originally did ({%s})",
             node,
             absl::FormatStreamed(current_missing_sites),
             absl::FormatStreamed(original_missing_sites));

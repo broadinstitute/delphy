@@ -34,7 +34,7 @@ inline auto operator<<(std::ostream& os, const Mutation& m) -> std::ostream& {
 // TODO: Make a specialized container for mutation lists that handles 0-2 mutations efficiently
 template<typename Alloc = std::allocator<Mutation>>
 using Mutation_list = std::vector<Mutation, Alloc>;
-using Scratch_mutation_list = Mutation_list<Stl_scratch_space<Mutation>>;
+using Scratch_mutation_list = Mutation_list<Stl_local_arena_allocator<Mutation>>;
 
 // Mutations on a branch should always be sorted in increasing order of time.
 // To facilitate testing, we also break ties by sorting according to site.
@@ -239,7 +239,7 @@ inline auto operator<<(std::ostream& os, const Missation_map<Allocator>& mis) ->
       absl::StrJoin(mis.from_states, ", ", absl::StreamFormatter()));
 }
 
-using Scratch_missation_map = Missation_map<Stl_scratch_space<Site_interval>>;
+using Scratch_missation_map = Missation_map<Stl_local_arena_allocator<Site_interval>>;
 
 template<
   typename Alloc_mi_A,

@@ -76,15 +76,14 @@ auto displace_site_deltas_start_downwards(
     const Phylo_tree& tree,
     Site_deltas& site_deltas,
     Phylo_tree_loc a,
-    Phylo_tree_loc x,
-    Scratch_space& scratch)
+    Phylo_tree_loc x)
     -> void;
 
 // Given the site deltas from x to y and those from y to z, mutate the first site deltas to go from x to z
 auto append_site_deltas(Site_deltas& x_to_y_deltas, const Site_deltas& y_to_z_deltas) -> void;
 
-auto calc_site_deltas_between(const Phylo_tree& tree, Phylo_tree_loc x, Phylo_tree_loc y, Scratch_space& scratch) -> Site_deltas;
-auto calc_site_deltas_between(const Phylo_tree& tree, Node_index X, Node_index Y, Scratch_space& scratch) -> Site_deltas;
+auto calc_site_deltas_between(const Phylo_tree& tree, Phylo_tree_loc x, Phylo_tree_loc y) -> Site_deltas;
+auto calc_site_deltas_between(const Phylo_tree& tree, Node_index X, Node_index Y) -> Site_deltas;
 
 }  // namespace delphy
 

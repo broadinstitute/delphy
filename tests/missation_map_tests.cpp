@@ -15,16 +15,14 @@ inline constexpr auto rG = Real_seq_letter::G;
 inline constexpr auto rT = Real_seq_letter::T;
 
 TEST(Missation_map_test, empty) {
-  auto scratch = Scratch_space{};
-  auto mis = Scratch_missation_map(scratch);
+  auto mis = Scratch_missation_map();
 
   EXPECT_THAT(mis.empty(), testing::IsTrue());
 }
 
 TEST(Missation_map_test, simple) {
-  auto scratch = Scratch_space{};
   auto ref_seq = Real_sequence{rA, rC, rG, rT};
-  auto mis = Scratch_missation_map({Missation{0, rA}, Missation{1, rG}}, ref_seq, scratch);
+  auto mis = Scratch_missation_map({Missation{0, rA}, Missation{1, rG}}, ref_seq);
 
   EXPECT_THAT(mis.intervals, testing::ElementsAre(
       Site_interval{0, 2}));
@@ -41,12 +39,10 @@ TEST(Missation_map_test, missation_printing) {
 }
 
 TEST(Missation_map_test, missation_map_basics) {
-  auto scratch = Scratch_space{};
   auto ref_seq = Real_sequence{rA, rA, rA, rA, rA, rA, rA};
   auto mi_map = Scratch_missation_map{
     {Missation{4, rA}, Missation{6, rC}, Missation{2, rG}, Missation{4, rA}},
-    ref_seq,
-    scratch
+    ref_seq
   };
 
   EXPECT_THAT(mi_map.num_intervals(), testing::Eq(3));

@@ -11,7 +11,6 @@ Subrun::Subrun(absl::BitGenRef bitgen, Phylo_tree tree, bool includes_run_root, 
     : bitgen_{bitgen},
       tree_{std::move(tree)},
       includes_run_root_{includes_run_root},
-      scratch_{},
       evo_{std::move(evo)} {
   
   assert_phylo_tree_integrity(tree_, true);  // check even in release builds
@@ -99,7 +98,9 @@ auto Subrun::assert_cur_tip_sequences_compatible_with_original_ones() -> void {
 }
 
 auto Subrun::mcmc_sub_iteration() -> void {
-  // All moves can allocate quickly in the Scratch_space scratch_, which will all be freed at the end of the move
+  // All moves can allocate Scratch_X containers quickly,
+  // which will all be freed at the end of the move
+  auto scope = Local_arena_scope{};
   
   validate_derived_quantities();
 
@@ -119,8 +120,6 @@ auto Subrun::mcmc_sub_iteration() -> void {
   }
 
   check_derived_quantities();
-
-  scratch_.reset();
 }
 
 auto Subrun::pick_random_node() -> Node_index {
@@ -297,7 +296,7 @@ auto Subrun::branch_reform_move() -> void {
   
   // Proposal
   auto& old_mutations = tree_.at(X).mutations;
-  auto new_mutations = randomize_branch_mutation_times(tree_, X, bitgen_, scratch_);
+  auto new_mutations = randomize_branch_mutation_times(tree_, X, bitgen_);
 
   // Accept/reject
   auto delta_log_G = 
@@ -381,7 +380,7 @@ auto Subrun::subtree_slide_move() -> void {
       // 3.1.2 no new root... => tree rewired in spr_move_core
 
       // 3.1.3 count the hypothetical sources of this destination
-      auto branches = Scratch_vector<Node_index>{scratch_};
+      auto branches = Scratch_vector<Node_index>{};
       enumerate_descendant_branches_straddling(tree_, SS, old_P_t, X, std::back_inserter(branches));
 
       auto alpha_old_to_new = 1.0;
@@ -404,7 +403,7 @@ auto Subrun::subtree_slide_move() -> void {
     // 4.1 will the move change the topology
     if (new_P_t > tree_.at(S).t) {
 
-      auto branches = Scratch_vector<Node_index>{scratch_};
+      auto branches = Scratch_vector<Node_index>{};
       enumerate_descendant_branches_straddling(tree_, P, new_P_t, X, std::back_inserter(branches));
 
       // if no valid destinations then return a failure
@@ -512,7 +511,7 @@ auto Subrun::spr1_move() -> void {
   // 0. Kick off SPR move by cataloguing and removing all of X's upstream mutations
   // FIXME: There *must* be a way to share the spr move core here
   auto spr = Spr_move{tree_, mu_JC, includes_run_root_,
-    evo_, lambda_i_, ref_cum_Q_l_, num_sites_missing_at_every_node_, scratch_};
+    evo_, lambda_i_, ref_cum_Q_l_, num_sites_missing_at_every_node_};
 
   auto old_graft = spr.analyze_graft(X);
   spr.peel_graft(old_graft);
@@ -525,9 +524,9 @@ auto Subrun::spr1_move() -> void {
   auto old_min_muts = spr.count_min_mutations(old_graft);
   auto old_num_muts = spr.count_closed_mutations(old_graft);
   auto old_deltas_P_to_X = spr.summarize_closed_mutations(old_graft);
-  auto missing_at_X = reconstruct_missing_sites_at(tree_, X, scratch_);
+  auto missing_at_X = reconstruct_missing_sites_at(tree_, X);
 
-  auto pre_builder = Spr_study_builder{tree_, X, t_X, missing_at_X, scratch_};
+  auto pre_builder = Spr_study_builder{tree_, X, t_X, missing_at_X};
   pre_builder.max_muts_from_start = limit; // Stop when crossing over more than 1 mutation (makes move local)
   pre_builder.seed_fill_from(old_S, 0, std::move(old_deltas_P_to_X), includes_run_root_);
 
@@ -572,7 +571,7 @@ auto Subrun::spr1_move() -> void {
   auto new_min_muts = spr.count_min_mutations(new_graft);
   auto new_num_muts = spr.count_closed_mutations(new_graft);
   auto new_deltas_P_to_X = spr.summarize_closed_mutations(new_graft);
-  auto post_builder = Spr_study_builder{tree_, X, t_X, missing_at_X, scratch_};
+  auto post_builder = Spr_study_builder{tree_, X, t_X, missing_at_X};
   post_builder.max_muts_from_start = limit; // Stop when crossing over more than 1 mutation (makes move local)
   post_builder.seed_fill_from(new_S, 0, std::move(new_deltas_P_to_X), includes_run_root_);
   
@@ -691,7 +690,7 @@ auto Subrun::spr_move_core(
   //std::cerr << absl::StreamFormat("mu_JC = %.3g x 10^3 / site / year\n",
   //                                mu_JC * 365.0 * 1e3);
   auto spr = Spr_move{tree_, mu_JC, includes_run_root_,
-    evo_, lambda_i_, ref_cum_Q_l_, num_sites_missing_at_every_node_, scratch_};
+    evo_, lambda_i_, ref_cum_Q_l_, num_sites_missing_at_every_node_};
 
   auto old_graft = spr.analyze_graft(X);
   spr.peel_graft(old_graft);

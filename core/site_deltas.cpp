@@ -120,8 +120,7 @@ auto displace_site_deltas_start_downwards(
     const Phylo_tree& tree,
     Site_deltas& site_deltas,
     Phylo_tree_loc a,
-    Phylo_tree_loc x,
-    Scratch_space& scratch)
+    Phylo_tree_loc x)
     -> void {
   //
   // site_deltas are the deltas from the sequence at a to the sequence at some other downstream point y.
@@ -145,7 +144,7 @@ auto displace_site_deltas_start_downwards(
   CHECK_NE(a.branch, k_no_node);
   auto G = tree.at(a.branch).parent;
   
-  auto branches_x_to_a = Scratch_vector<Branch_index>{scratch};
+  auto branches_x_to_a = Scratch_vector<Branch_index>{};
   for (auto cur = x.branch; cur != G; cur = tree.at(cur).parent) {
     branches_x_to_a.push_back(cur);
   }
@@ -165,8 +164,8 @@ auto append_site_deltas(Site_deltas& x_to_y_deltas, const Site_deltas& y_to_z_de
   }
 }
 
-auto calc_site_deltas_between(const Phylo_tree& tree, Phylo_tree_loc x, Phylo_tree_loc y, Scratch_space& scratch) -> Site_deltas {
-  auto site_deltas = Site_deltas{scratch};
+auto calc_site_deltas_between(const Phylo_tree& tree, Phylo_tree_loc x, Phylo_tree_loc y) -> Site_deltas {
+  auto site_deltas = Site_deltas{};
   auto a = find_MRCA_of(tree, x, y);
   
   // Here: site_deltas goes from y to y
@@ -178,7 +177,7 @@ auto calc_site_deltas_between(const Phylo_tree& tree, Phylo_tree_loc x, Phylo_tr
   // Here: site_deltas goes from a to y
   
   if (x != a) {
-    displace_site_deltas_start_downwards(tree, site_deltas, a, x, scratch);
+    displace_site_deltas_start_downwards(tree, site_deltas, a, x);
   }
 
   // Here: site_deltas goes from x to y
@@ -186,8 +185,8 @@ auto calc_site_deltas_between(const Phylo_tree& tree, Phylo_tree_loc x, Phylo_tr
   return site_deltas;
 }
 
-auto calc_site_deltas_between(const Phylo_tree& tree, Node_index X, Node_index Y, Scratch_space& scratch) -> Site_deltas {
-  return calc_site_deltas_between(tree, tree.node_loc(X), tree.node_loc(Y), scratch);
+auto calc_site_deltas_between(const Phylo_tree& tree, Node_index X, Node_index Y) -> Site_deltas {
+  return calc_site_deltas_between(tree, tree.node_loc(X), tree.node_loc(Y));
 }
 
 }  // namespace delphy

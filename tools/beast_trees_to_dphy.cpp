@@ -648,6 +648,8 @@ auto main(int argc, char** argv) -> int {
   using namespace delphy;
 
   absl::InitializeLog();
+  
+  auto scope = Local_arena_scope{};
 
   cxxopts::Options options("beast_trees_to_dphy", "Infer plausible mutations on BEAST trees (parsimony model) and write out an equivalent .dphy file (we're targetting exploring the trees with the Delphy UI, not the traces, lineage/mutation prevalences, etc.)");
 

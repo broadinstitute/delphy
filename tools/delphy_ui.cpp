@@ -659,8 +659,7 @@ auto randomize_tree_times(Phylo_tree& tree) -> void {
     }
   }
 
-  auto scratch = Scratch_space{};
-  randomize_mutation_times(tree, ui_run->bitgen(), scratch);
+  randomize_mutation_times(tree, ui_run->bitgen());
 }
 
 auto start_log_output() -> void {
@@ -1062,6 +1061,8 @@ auto main(int argc, char** argv) -> int {
 
   absl::InitializeLog();
   ui_init(&argc, argv);
+
+  auto scope = Local_arena_scope{};
 
   auto c = process_args(argc, argv);
 

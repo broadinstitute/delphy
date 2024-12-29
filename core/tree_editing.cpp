@@ -10,16 +10,14 @@ Tree_editing_session::Tree_editing_session(
       const Global_evo_model& evo,
       Node_vector<double>& lambda_i,
       const std::vector<double>& ref_cum_Q_l,
-      Node_vector<int>& num_sites_missing_at_every_node,
-      Scratch_space& scratch)
+      Node_vector<int>& num_sites_missing_at_every_node)
     : tree{&tree},
       X{X},
       evo{&evo},
       lambda_i{&lambda_i},
       ref_cum_Q_l{&ref_cum_Q_l},
       num_sites_missing_at_every_node{&num_sites_missing_at_every_node},
-      scratch{&scratch},
-      deltas_nexus_to_X{scratch} {
+      deltas_nexus_to_X{} {
 
   CHECK_NE(X, this->tree->root);
   
@@ -127,7 +125,7 @@ auto Tree_editing_session::slide_root(double new_t_P) -> void {
         std::ranges::find_if(tree->at(S).mutations, [&](const auto& m) { return m.t > new_t_P; });
     if (P_S_muts_before_new_t_P_begin != P_S_muts_before_new_t_P_end) {
 
-      auto ref_to_root_deltas = Site_deltas{*scratch};
+      auto ref_to_root_deltas = Site_deltas{};
       for (const auto& m : tree->at(P).mutations) {
         push_back_site_deltas(m, ref_to_root_deltas);
       }
@@ -183,10 +181,8 @@ auto Tree_editing_session::do_hop_up(Node_index X) -> void {
   
   // 1. Push P's missations down to children
   if (not tree->at(P).missations.empty()) {
-    tree->at(X).missations = merge_missations_nondestructively(tree->at(X).missations, tree->at(P).missations,
-                                                               Stl_scratch_space<Site_interval>{*scratch});
-    tree->at(S).missations = merge_missations_nondestructively(tree->at(S).missations, tree->at(P).missations,
-                                                               Stl_scratch_space<Site_interval>{*scratch});
+    tree->at(X).missations = merge_missations_nondestructively(tree->at(X).missations, tree->at(P).missations);
+    tree->at(S).missations = merge_missations_nondestructively(tree->at(S).missations, tree->at(P).missations);
     tree->at(P).missations.clear();
   }
   
@@ -197,8 +193,7 @@ auto Tree_editing_session::do_hop_up(Node_index X) -> void {
   // 3. Bubble up common missations above G (in *new* topology!  see below)
   CHECK(tree->at(G).missations.empty());  // because of tree->at(P).missations().clear() above
   if (interval_sets_intersect(tree->at(S).missations.intervals, tree->at(U).missations.intervals)) {
-    factor_out_common_missations(tree->at(S).missations, tree->at(U).missations, tree->at(G).missations,
-                                 Stl_scratch_space<Site_interval>{*scratch});
+    factor_out_common_missations(tree->at(S).missations, tree->at(U).missations, tree->at(G).missations);
   }
 
   // Change topology
@@ -253,17 +248,14 @@ auto Tree_editing_session::flip() -> void {
   
   // 1. Push P's missations down to children
   if (not tree->at(P).missations.empty()) {
-    tree->at(S).missations = merge_missations_nondestructively(tree->at(S).missations, tree->at(P).missations,
-                                                               Stl_scratch_space<Site_interval>{*scratch});
-    tree->at(X).missations = merge_missations_nondestructively(tree->at(X).missations, tree->at(P).missations,
-                                                               Stl_scratch_space<Site_interval>{*scratch});
+    tree->at(S).missations = merge_missations_nondestructively(tree->at(S).missations, tree->at(P).missations);
+    tree->at(X).missations = merge_missations_nondestructively(tree->at(X).missations, tree->at(P).missations);
     tree->at(P).missations.clear();
   }
 
   // 2. Bubble up common missations above P (in *new* topology!  see below)
   if (interval_sets_intersect(tree->at(X).missations.intervals, tree->at(U).missations.intervals)) {
-    factor_out_common_missations(tree->at(X).missations, tree->at(U).missations, tree->at(P).missations,
-                                 Stl_scratch_space<Site_interval>{*scratch});
+    factor_out_common_missations(tree->at(X).missations, tree->at(U).missations, tree->at(P).missations);
   }
 
   // Change topology

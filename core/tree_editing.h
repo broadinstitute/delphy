@@ -20,8 +20,7 @@ struct Tree_editing_session {
       const Global_evo_model& evo,
       Node_vector<double>& lambda_i,
       const std::vector<double>& ref_cum_Q_l,
-      Node_vector<int>& num_sites_missing_at_every_node,
-      Scratch_space& scratch);
+      Node_vector<int>& num_sites_missing_at_every_node);
 
   bool ongoing;
   
@@ -31,7 +30,6 @@ struct Tree_editing_session {
   Node_vector<double>* lambda_i;
   const std::vector<double>* ref_cum_Q_l;
   Node_vector<int>* num_sites_missing_at_every_node;
-  Scratch_space* scratch;
 
   Site_deltas deltas_nexus_to_X;
 

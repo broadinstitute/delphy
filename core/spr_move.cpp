@@ -123,12 +123,12 @@ auto Spr_move::start_rooty_graft_analysis(Node_index X) const -> Spr_graft {
   const auto& muts_X = tree->at(X).mutations;
   const auto& muts_S = tree->at(S).mutations;
   
-  auto graft = Spr_graft{*scratch};
+  auto graft = Spr_graft{};
   graft.X = X;
   graft.S = S;
   graft.t_P = t_P;
 
-  graft.branch_infos.resize(3, {*scratch});
+  graft.branch_infos.resize(3);
   
   auto& P_X_path = graft.branch_infos[Spr_graft::k_branch_info_P_X];
   P_X_path.A = P;
@@ -219,15 +219,15 @@ auto Spr_move::propose_new_rooty_graft_mutations(Spr_graft& graft, absl::BitGenR
       auto new_mutations =
           branch_info.is_open
           ? sample_unconstrained_mutational_history(
-              tree->num_sites(), branch_info.T_to_X, mu_proposal, *scratch, bitgen)
+              tree->num_sites(), branch_info.T_to_X, mu_proposal, bitgen)
           : sample_mutational_history(
                 tree->num_sites(), branch_info.T_to_X, mu_proposal,
-                branch_info.hot_deltas_to_X, *scratch, bitgen);
+                branch_info.hot_deltas_to_X, bitgen);
       if (not new_mutations.empty()) {
         std::erase_if(new_mutations, [&](const auto& m) { return not branch_info.hot_sites.contains(m.site); });
 
         auto path_end = (branch_info_idx == Spr_graft::k_branch_info_P_S ? tree->node_loc(S) : tree->node_loc(X));
-        adjust_mutational_history(new_mutations, branch_info.hot_deltas_to_X, *tree, path_end, *scratch);
+        adjust_mutational_history(new_mutations, branch_info.hot_deltas_to_X, *tree, path_end);
       }
       branch_info.hot_muts_to_X = std::move(new_mutations);
 
@@ -261,13 +261,13 @@ auto Spr_move::finish_rooty_graft_analysis(Spr_graft& graft) const -> void {
   graft.delta_log_G += calc_branch_log_G(t_P, t_S, P_S_path.partial_lambda_at_X, *evo, P_S_path.hot_muts_to_X);
   
   // S-P-X path is a bit trickier since the substitution model need not be time-reversible
-  auto S_P_X_muts_P_S_muts = Scratch_vector<Mutation>{*scratch};
+  auto S_P_X_muts_P_S_muts = Scratch_vector<Mutation>{};
   for (const auto& m : S_P_X_path.hot_muts_to_X | std::views::reverse) {
     if (m.t < t_P) {
       S_P_X_muts_P_S_muts.push_back(Mutation{m.to, m.site, m.from, t_P + (t_P - m.t)});
     }
   }
-  auto S_P_X_muts_P_X_muts = Scratch_vector<Mutation>{*scratch};
+  auto S_P_X_muts_P_X_muts = Scratch_vector<Mutation>{};
   for (const auto& m : S_P_X_path.hot_muts_to_X) {
     if (m.t >= t_P) {
       S_P_X_muts_P_X_muts.push_back(m);
@@ -342,7 +342,7 @@ auto Spr_move::peel_rooty_graft(const Spr_graft& graft) -> void {
   const auto& S_P_X_path = graft.branch_infos[Spr_graft::k_branch_info_S_P_X];
 
   // Remove all existing mutations (which may change the root sequence)
-  auto ref_to_root_deltas = Site_deltas{*scratch};
+  auto ref_to_root_deltas = Site_deltas{};
   for (const auto& m : muts_P) {
     push_back_site_deltas(m, ref_to_root_deltas);
   }
@@ -464,7 +464,7 @@ auto Spr_move::apply_rooty_graft(const Spr_graft& graft) -> void {
   muts_X.clear();
   
   // Record deltas to the root sequence, since they may change
-  auto ref_to_root_deltas = Site_deltas{*scratch};
+  auto ref_to_root_deltas = Site_deltas{};
   for (const auto& m : muts_P) {
     push_back_site_deltas(m, ref_to_root_deltas);
   }
@@ -594,7 +594,7 @@ auto Spr_move::start_inner_graft_analysis(Node_index X) const -> Spr_graft {
   auto t_P = tree->at(P).t;
   auto S = tree->at(P).sibling_of(X);
 
-  auto graft = Spr_graft{*scratch};
+  auto graft = Spr_graft{};
   graft.X = X;
   graft.S = S;
   graft.t_P = t_P;
@@ -604,7 +604,7 @@ auto Spr_move::start_inner_graft_analysis(Node_index X) const -> Spr_graft {
   // P-X path is special because we can't correctly enumerate the warm sites without (expensively) walking
   // all the way up to the root; for all other paths, the warm sites are the interesection of all intervening
   // sibling branches' missations' sites.
-  auto& P_X_path = graft.branch_infos.emplace_back(*scratch);
+  auto& P_X_path = graft.branch_infos.emplace_back();
   P_X_path.A = P;
   P_X_path.B = X;
   P_X_path.is_open = false;
@@ -631,12 +631,12 @@ auto Spr_move::start_inner_graft_analysis(Node_index X) const -> Spr_graft {
   auto parent = tree->at(cur).parent;
   auto sibling = tree->at(parent).sibling_of(cur);
   auto partial_lambda = next_partial_lambda_at_B;
-  auto scratch_sites = Scratch_interval_set{*scratch};
+  auto scratch_sites = Scratch_interval_set{};
 
   while (not sliding_missations.empty()) {
 
     // See which sites graduate from "warm" to "hot"
-    auto& branch_info = graft.branch_infos.emplace_back(*scratch);
+    auto& branch_info = graft.branch_infos.emplace_back();
     branch_info.A = parent;
     branch_info.B = cur;
     branch_info.is_open = false;
@@ -681,7 +681,7 @@ auto Spr_move::start_inner_graft_analysis(Node_index X) const -> Spr_graft {
         branch_info.partial_lambda_at_A += partial_lambda;
       } else {
         if (not sliding_missations.empty()) {
-          auto& final_open_branch_info = graft.branch_infos.emplace_back(*scratch);
+          auto& final_open_branch_info = graft.branch_infos.emplace_back();
           final_open_branch_info.A = k_no_node;
           final_open_branch_info.B = tree->root;
           final_open_branch_info.is_open = true;
@@ -750,10 +750,10 @@ auto Spr_move::propose_new_inner_graft_mutations(Spr_graft& graft, absl::BitGenR
     auto new_mutations =
         branch_info.is_open
         ? sample_unconstrained_mutational_history(
-            tree->num_sites(), branch_info.T_to_X, mu_proposal, *scratch, bitgen)
+            tree->num_sites(), branch_info.T_to_X, mu_proposal, bitgen)
         : sample_mutational_history(
               tree->num_sites(), branch_info.T_to_X, mu_proposal,
-              branch_info.hot_deltas_to_X, *scratch, bitgen);
+              branch_info.hot_deltas_to_X, bitgen);
     if (not new_mutations.empty()) {
       std::erase_if(new_mutations, [&](const auto& m) { return not branch_info.hot_sites.contains(m.site); });
       if (branch_info.B == X) {
@@ -767,7 +767,7 @@ auto Spr_move::propose_new_inner_graft_mutations(Spr_graft& graft, absl::BitGenR
         });
       }
       
-      adjust_mutational_history(new_mutations, branch_info.hot_deltas_to_X, *tree, path_end, *scratch);
+      adjust_mutational_history(new_mutations, branch_info.hot_deltas_to_X, *tree, path_end);
     }
     
     branch_info.hot_muts_to_X = std::move(new_mutations);
@@ -851,7 +851,7 @@ auto Spr_move::peel_inner_graft(const Spr_graft& graft) -> void {
   // Exception: for the final path, if open, we slide the mutations off left-to-right to above the root,
   // which may change the root sequence
   auto& final_path = graft.branch_infos.back();
-  auto ref_to_root_deltas = Site_deltas{*scratch};
+  auto ref_to_root_deltas = Site_deltas{};
   if (final_path.is_open) {
     for (const auto& m : tree->at_root().mutations) {
       push_back_site_deltas(m, ref_to_root_deltas);
@@ -981,7 +981,7 @@ auto Spr_move::apply_inner_graft(const Spr_graft& graft) -> void {
   }
   
   // We may have to change the root sequence if the final path is open
-  auto ref_to_root_deltas = Site_deltas{*scratch};
+  auto ref_to_root_deltas = Site_deltas{};
   if (final_path.is_open) {
     for (const auto& m : tree->at_root().mutations) {
       push_back_site_deltas(m, ref_to_root_deltas);
@@ -1088,7 +1088,7 @@ auto Spr_move::count_inner_closed_mutations(const Spr_graft& graft) -> int {
 }
 
 auto Spr_move::summarize_inner_closed_mutations(const Spr_graft& graft) -> Site_deltas {
-  auto result = Site_deltas{*scratch};
+  auto result = Site_deltas{};
   for (const auto& branch_info : graft.branch_infos) {
     if (not branch_info.is_open) {
       append_site_deltas(result, branch_info.hot_deltas_to_X); // OK because no site is hot in more than one branch_info
@@ -1116,7 +1116,7 @@ auto Spr_move::move(Node_index X, Node_index SS, double new_t_P) -> void {
   auto A = find_MRCA_of(*tree, G, GG);
 
   // 1. First, we displace X's attachment point until X and SS are siblings
-  auto edit = Tree_editing_session{*tree, X, *evo, *lambda_i, *ref_cum_Q_l, *num_sites_missing_at_every_node, *scratch};
+  auto edit = Tree_editing_session{*tree, X, *evo, *lambda_i, *ref_cum_Q_l, *num_sites_missing_at_every_node};
 
   // Slide X up just below A
   while (tree->at(P).parent != A) {
@@ -1134,7 +1134,7 @@ auto Spr_move::move(Node_index X, Node_index SS, double new_t_P) -> void {
   // Slide X down to become SS's sibling
   DCHECK(descends_from(*tree, SS, P));
 
-  auto branches_to_SS = Scratch_vector<Node_index>{*scratch};
+  auto branches_to_SS = Scratch_vector<Node_index>{};
   auto Xs_current_sibling = tree->at(P).sibling_of(X);
   for (auto cur = SS; cur != Xs_current_sibling; cur = tree->at(cur).parent) {
     branches_to_SS.push_back(cur);
@@ -1165,18 +1165,17 @@ auto sample_mutational_history(
     double T,
     double mu,
     const Site_deltas& deltas,
-    Scratch_space& scratch,
     absl::BitGenRef bitgen)
     -> Scratch_vector<Mutation> {
 
-  auto result = Scratch_vector<Mutation>{scratch};
+  auto result = Scratch_vector<Mutation>{};
   
   // For sites with deltas, sample CTMC trajectories starting with `from` state with at least one mutation
   // until we get a trajectory with state `to` at the end.  This is equivalent to doing straight rejection
   // sampling over unconstrained trajectories, but skipping quickly over all proposed trajectories with 0 mutations.
-  auto to_states = Scratch_vector<Real_seq_letter>{scratch};
-  auto mut_times = Scratch_vector<double>{scratch};
-  auto trajectory = Scratch_vector<Mutation>{scratch};
+  auto to_states = Scratch_vector<Real_seq_letter>{};
+  auto mut_times = Scratch_vector<double>{};
+  auto trajectory = Scratch_vector<Mutation>{};
   auto num_muts_dist_ge1 = K_truncated_poisson_distribution{mu*T, 1};
   for (const auto& [l, delta] : deltas) {
 
@@ -1348,17 +1347,16 @@ auto sample_unconstrained_mutational_history(
     Site_index L,
     double T,
     double mu,
-    Scratch_space& scratch,
     absl::BitGenRef bitgen)
     -> Scratch_vector<Mutation> {
 
-  auto result = Scratch_vector<Mutation>{scratch};
+  auto result = Scratch_vector<Mutation>{};
 
   // This is nearly trivial with the Gillespie algorithm
-  auto cur_state_of_site = Scratch_flat_hash_map<Site_index, Real_seq_letter>{scratch};
+  auto cur_state_of_site = Scratch_flat_hash_map<Site_index, Real_seq_letter>{};
 
   // We accumulate mutations in reverse order...
-  auto trajectory = Scratch_vector<Mutation>{scratch};
+  auto trajectory = Scratch_vector<Mutation>{};
   auto t = 0.0;
   while (true) {
     t -= absl::Exponential(bitgen, mu*L);
@@ -1386,11 +1384,10 @@ auto adjust_mutational_history(
     Scratch_vector<Mutation>& history,
     const Site_deltas site_deltas,
     const Phylo_tree& tree,
-    Phylo_tree_loc end_loc,
-    Scratch_space& scratch)
+    Phylo_tree_loc end_loc)
     -> void {
 
-  auto end_states_of_non_mutated_sites = Scratch_flat_hash_map<Site_index, Real_seq_letter>{scratch};
+  auto end_states_of_non_mutated_sites = Scratch_flat_hash_map<Site_index, Real_seq_letter>{};
   
   for (auto& m : history | std::views::reverse) {
     

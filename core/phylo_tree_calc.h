@@ -39,11 +39,9 @@ auto count_mutations(const Phylo_tree& tree) -> int;
 auto view_of_sequence_at(const Phylo_tree& tree, Node_index X) -> Sequence_overlay;
 auto view_of_sequence_at(const Phylo_tree& tree, Phylo_tree_loc x) -> Sequence_overlay;
 
-auto reconstruct_missing_sites_at(const Phylo_tree& tree, Node_index node) -> Interval_set<>;
 auto reconstruct_missing_sites_at(
     const Phylo_tree& tree,
-    Node_index node,
-    Scratch_space& scratch)
+    Node_index node)
     -> Scratch_interval_set;
 auto is_site_missing_at(const Phylo_tree& tree, Node_index node, Site_index l) -> bool;
 auto calc_num_sites_missing_at_every_node(const Phylo_tree& tree) -> Node_vector<int>;

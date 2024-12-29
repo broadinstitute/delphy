@@ -140,11 +140,10 @@ class Spr_move_simple_test : public Spr_move_test_base {
 };
 
 TEST_F(Spr_move_simple_test, analyze_graft_a) {
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
-  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(a);
 
@@ -200,11 +199,10 @@ TEST_F(Spr_move_simple_test, analyze_graft_a) {
 }
 
 TEST_F(Spr_move_simple_test, analyze_graft_b) {
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
-  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(b);
 
@@ -260,11 +258,10 @@ TEST_F(Spr_move_simple_test, analyze_graft_b) {
 }
 
 TEST_F(Spr_move_simple_test, analyze_graft_c) {
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
-  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(c);
 
@@ -367,11 +364,10 @@ TEST_F(Spr_move_simple_test, analyze_graft_c) {
 }
 
 TEST_F(Spr_move_simple_test, analyze_graft_x) {
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
-  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(x);
 
@@ -474,11 +470,10 @@ TEST_F(Spr_move_simple_test, analyze_graft_x) {
 }
 
 auto Spr_move_test_base::run_propose_new_graft_test(Phylo_tree& tree) -> void {
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
-  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto old_tree = Phylo_tree{tree};  // Copy
   
@@ -620,11 +615,10 @@ class Spr_move_superfluous_mutation_at_root_test : public Spr_move_test_base {
 };
 
 TEST_F(Spr_move_superfluous_mutation_at_root_test, analyze_graft_x) {
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
-  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(x);
 
@@ -789,11 +783,10 @@ class Spr_move_superfluous_mutation_not_at_root_test : public Spr_move_test_base
 };
 
 TEST_F(Spr_move_superfluous_mutation_not_at_root_test, analyze_graft_a) {
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
-  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(a);
 
@@ -937,12 +930,11 @@ class Spr_move_precarious_path_without_root_test : public Spr_move_test_base {
 
 TEST_F(Spr_move_precarious_path_without_root_test, analyze_graft_a) {
   auto can_change_root = false;
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   auto spr = Spr_move{tree, mu_JC, can_change_root, evo, lambda_i,
-    ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+    ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(a);
 
@@ -1114,12 +1106,11 @@ class Spr_move_precarious_path_with_root_test : public Spr_move_test_base {
 
 TEST_F(Spr_move_precarious_path_with_root_test, analyze_graft_a) {
   auto can_change_root = true;
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   auto spr = Spr_move{tree, mu_JC, can_change_root, evo, lambda_i,
-    ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+    ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(a);
 
@@ -1269,12 +1260,11 @@ class Spr_move_tricky_rooty_graft_test : public Spr_move_test_base {
 
 TEST_F(Spr_move_tricky_rooty_graft_test, analyze_graft_X) {
   auto can_change_root = true;
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   auto spr = Spr_move{tree, mu_JC, can_change_root, evo, lambda_i,
-    ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+    ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(X);
 
@@ -1444,12 +1434,11 @@ TEST_F(Spr_move_tricky_rooty_graft_test, analyze_graft_X) {
 
 TEST_F(Spr_move_tricky_rooty_graft_test, peel_graft_X) {
   auto can_change_root = true;
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   auto spr = Spr_move{tree, mu_JC, can_change_root, evo, lambda_i,
-    ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+    ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(X);
   spr.peel_graft(analysis);
@@ -1478,12 +1467,11 @@ TEST_F(Spr_move_tricky_rooty_graft_test, peel_graft_X) {
 
 TEST_F(Spr_move_tricky_rooty_graft_test, closed_mutations_graft_X) {
   auto can_change_root = true;
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   auto spr = Spr_move{tree, mu_JC, can_change_root, evo, lambda_i,
-    ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+    ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(X);
   spr.peel_graft(analysis);
@@ -1496,12 +1484,11 @@ TEST_F(Spr_move_tricky_rooty_graft_test, closed_mutations_graft_X) {
 
 TEST_F(Spr_move_tricky_rooty_graft_test, peel_reapply_graft_X) {
   auto can_change_root = true;
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   auto spr = Spr_move{tree, mu_JC, can_change_root, evo, lambda_i,
-    ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+    ref_cum_Q_l, num_sites_missing_at_every_node};
   
   auto analysis = spr.analyze_graft(X);
   spr.peel_graft(analysis);
@@ -1535,11 +1522,10 @@ auto Spr_move_test_base::run_full_spr_move_test(
     double new_t_P,
     absl::BitGenRef bitgen)
     -> void {
-  auto scratch = Scratch_space{};
   auto ref_cum_Q_l = calc_cum_Q_l_for_sequence(tree.ref_sequence, evo);
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
-  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto spr = Spr_move{tree, mu_JC, true, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   auto old_tree = Phylo_tree{tree};  // Copy
 
@@ -1814,8 +1800,6 @@ TEST_F(Spr_move_simple_test, sample_mutational_history) {
   // An unusual trajectory that's more than just a mutation followed by a reversal is `super-unusual`.
   // For fixed mu & T, we can calculate the probability of getting such unusual and super-unusual trajectories.
   //
-  auto scratch = Scratch_space{};
-
   auto verbose = false;
   auto num_histories = (estd::is_debug_enabled ? 1'000 : 25'000);
   auto L = tree.num_sites();
@@ -1843,7 +1827,7 @@ TEST_F(Spr_move_simple_test, sample_mutational_history) {
     for (auto l = 0; l != L; ++l) {
       end_seq[l] = calc_site_state_at(tree, end_loc, l);
     }
-    auto deltas = Site_deltas{scratch};
+    auto deltas = Site_deltas{};
     for (auto l = 0; l != L; ++l) {
       if (target_start_seq[l] != end_seq[l]) {
         deltas.insert({l, {target_start_seq[l], end_seq[l]}});
@@ -1851,8 +1835,8 @@ TEST_F(Spr_move_simple_test, sample_mutational_history) {
     }
 
     // Go!
-    auto mut_history = sample_mutational_history(L, T, mu_JC, deltas, scratch, bitgen);
-    adjust_mutational_history(mut_history, deltas, tree, end_loc, scratch);
+    auto mut_history = sample_mutational_history(L, T, mu_JC, deltas, bitgen);
+    adjust_mutational_history(mut_history, deltas, tree, end_loc);
 
     if (verbose) {
       std::cerr << "From ";

@@ -19,6 +19,7 @@ add_library(delphy_core
   pop_model.cpp
   run.cpp
   scalable_coalescent.cpp
+  scratch_space.cpp
   sequence_utils.cpp
   site_deltas.cpp
   site_states_tree_prober.cpp

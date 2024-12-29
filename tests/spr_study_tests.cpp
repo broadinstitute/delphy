@@ -83,22 +83,19 @@ class Spr_study_test : public testing::Test {
 
 TEST_F(Spr_study_test, trivial_builder) {
   // No work => empty result
-  auto scratch = Scratch_space{};
-  auto builder = Spr_study_builder{tree, a, 5.0, Scratch_interval_set{scratch}, scratch};
+  auto builder = Spr_study_builder{tree, a, 5.0, Scratch_interval_set{}};
 
   EXPECT_THAT(builder.result, testing::IsEmpty());
 }
 
 TEST_F(Spr_study_test, full_spr_study_a) {
-  auto scratch = Scratch_space{};
-
   // Start with a CANN attached at x
-  auto site_deltas = calc_site_deltas_between(tree, x, a, scratch);
-  auto missing_at_X = reconstruct_missing_sites_at(tree, a, scratch);
+  auto site_deltas = calc_site_deltas_between(tree, x, a);
+  auto missing_at_X = reconstruct_missing_sites_at(tree, a);
 
   auto t_X = 1.5;  // A little after 1.0 to include parts of lower branches
   
-  auto builder = Spr_study_builder{tree, a, t_X, missing_at_X, scratch};
+  auto builder = Spr_study_builder{tree, a, t_X, missing_at_X};
   builder.seed_fill_from(b, 0, std::move(site_deltas), true);
 
   EXPECT_THAT(builder.result, testing::UnorderedElementsAre(
@@ -112,15 +109,13 @@ TEST_F(Spr_study_test, full_spr_study_a) {
 }
 
 TEST_F(Spr_study_test, full_spr_study_a_no_root) {
-  auto scratch = Scratch_space{};
-
   // Start with a CANN attached at x
-  auto site_deltas = calc_site_deltas_between(tree, x, a, scratch);
-  auto missing_at_X = reconstruct_missing_sites_at(tree, a, scratch);
+  auto site_deltas = calc_site_deltas_between(tree, x, a);
+  auto missing_at_X = reconstruct_missing_sites_at(tree, a);
 
   auto t_X = 1.5;  // A little after 1.0 to include parts of lower branches
   
-  auto builder = Spr_study_builder{tree, a, t_X, missing_at_X, scratch};
+  auto builder = Spr_study_builder{tree, a, t_X, missing_at_X};
   builder.seed_fill_from(b, 0, std::move(site_deltas), false);  // Don't allow regrafting above the root
 
   EXPECT_THAT(builder.result, testing::UnorderedElementsAre(
@@ -134,15 +129,13 @@ TEST_F(Spr_study_test, full_spr_study_a_no_root) {
 }
 
 TEST_F(Spr_study_test, study_a_up_to_1_mut_away) {
-  auto scratch = Scratch_space{};
-
   // Start with a CANN attached at x
-  auto site_deltas = calc_site_deltas_between(tree, x, a, scratch);
-  auto missing_at_X = reconstruct_missing_sites_at(tree, a, scratch);
+  auto site_deltas = calc_site_deltas_between(tree, x, a);
+  auto missing_at_X = reconstruct_missing_sites_at(tree, a);
 
   auto t_X = 1.5;  // A little after 1.0 to include parts of lower branches
   
-  auto builder = Spr_study_builder{tree, a, t_X, missing_at_X, scratch};
+  auto builder = Spr_study_builder{tree, a, t_X, missing_at_X};
 
   builder.max_muts_from_start = 1;
   
@@ -159,13 +152,11 @@ TEST_F(Spr_study_test, study_a_up_to_1_mut_away) {
 }
 
 TEST_F(Spr_study_test, full_spr_study_x) {
-  auto scratch = Scratch_space{};
-
   // Start with a TANN attached upstream of c
-  auto site_deltas = calc_site_deltas_between(tree, c, x, scratch);
-  auto missing_at_X = reconstruct_missing_sites_at(tree, x, scratch);
+  auto site_deltas = calc_site_deltas_between(tree, c, x);
+  auto missing_at_X = reconstruct_missing_sites_at(tree, x);
 
-  auto builder = Spr_study_builder{tree, x, tree.at(x).t, missing_at_X, scratch};
+  auto builder = Spr_study_builder{tree, x, tree.at(x).t, missing_at_X};
   builder.seed_fill_from(c, std::ssize(tree.at(c).mutations), std::move(site_deltas), true);
 
   EXPECT_THAT(builder.result, testing::UnorderedElementsAre(
@@ -173,13 +164,11 @@ TEST_F(Spr_study_test, full_spr_study_x) {
 }
 
 TEST_F(Spr_study_test, full_spr_study_c) {
-  auto scratch = Scratch_space{};
-
   // Start with a GNAN attached upstream of x
-  auto site_deltas = calc_site_deltas_between(tree, x, c, scratch);
-  auto missing_at_X = reconstruct_missing_sites_at(tree, c, scratch);
+  auto site_deltas = calc_site_deltas_between(tree, x, c);
+  auto missing_at_X = reconstruct_missing_sites_at(tree, c);
 
-  auto builder = Spr_study_builder{tree, c, tree.at(c).t, missing_at_X, scratch};
+  auto builder = Spr_study_builder{tree, c, tree.at(c).t, missing_at_X};
   builder.seed_fill_from(x, std::ssize(tree.at(x).mutations), std::move(site_deltas), true);
 
   EXPECT_THAT(builder.result, testing::UnorderedElementsAre(
@@ -191,17 +180,14 @@ TEST_F(Spr_study_test, full_spr_study_c) {
 }
 
 TEST_F(Spr_study_test, full_study_new_seq) {
-  auto scratch = Scratch_space{};
-
   // Where should we attach a TAAN?  Start above the root (AAAN)
   auto site_deltas = Site_deltas{{
-      site_deltas_entry(0, rA, rT)},
-    scratch};
-  auto missing_at_X = Scratch_interval_set{{Site_interval{3, 4}}, scratch};
+      site_deltas_entry(0, rA, rT)}};
+  auto missing_at_X = Scratch_interval_set{{Site_interval{3, 4}}};
 
   auto t_X = 1.5;  // A little after 1.0 to include parts of lower branches
   
-  auto builder = Spr_study_builder{tree, k_no_node, t_X, missing_at_X, scratch};
+  auto builder = Spr_study_builder{tree, k_no_node, t_X, missing_at_X};
 
   builder.seed_fill_from(tree.root, std::ssize(tree.at_root().mutations), std::move(site_deltas), true);
 

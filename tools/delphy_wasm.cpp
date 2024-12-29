@@ -60,6 +60,7 @@ struct Delphy_context {
   
   std::mt19937 bitgen_;
   ctpl::thread_pool thread_pool_;
+  Local_arena_scope scope_;
 };
 
 // Initialize the main thread pool with N worker threads

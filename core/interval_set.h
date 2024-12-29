@@ -211,7 +211,7 @@ class Interval_set {
   container_type intervals_;
 };
 
-using Scratch_interval_set = Interval_set<Stl_scratch_space<Site_interval>>;
+using Scratch_interval_set = Interval_set<Stl_local_arena_allocator<Site_interval>>;
 
 template<typename Allocator>
 inline auto operator<<(std::ostream& os, const Interval_set<Allocator>& intervals) -> std::ostream& {

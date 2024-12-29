@@ -85,7 +85,6 @@ class Subrun {
   absl::BitGenRef bitgen_;
   Phylo_tree tree_;
   bool includes_run_root_;
-  Scratch_space scratch_;
 
   // Parameters
   Global_evo_model evo_;

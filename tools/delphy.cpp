@@ -203,6 +203,8 @@ auto main(int argc, char** argv) -> int {
 
   absl::InitializeLog();
 
+  auto scope = Local_arena_scope{};
+
   auto c = process_args(argc, argv);
 
   return cli_main_loop(c);

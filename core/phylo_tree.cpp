@@ -500,10 +500,11 @@ auto rewire_tree_through_sequential_accretion(
   }
 }
 
-auto randomize_mutation_times(Phylo_tree& tree, absl::BitGenRef bitgen, Scratch_space& scratch) -> void {
+auto randomize_mutation_times(Phylo_tree& tree, absl::BitGenRef bitgen) -> void {
   for (const auto& node : index_order_traversal(tree)) {
     if (node != tree.root) {
-      auto new_mutations = randomize_branch_mutation_times(tree, node, bitgen, scratch);
+      auto scope = Local_arena_scope{};
+      auto new_mutations = randomize_branch_mutation_times(tree, node, bitgen);
       tree.at(node).mutations.assign(new_mutations.begin(), new_mutations.end());
     }
   }
@@ -512,15 +513,14 @@ auto randomize_mutation_times(Phylo_tree& tree, absl::BitGenRef bitgen, Scratch_
 auto randomize_branch_mutation_times(
     Phylo_tree& tree,
     Branch_index X,
-    absl::BitGenRef bitgen,
-    Scratch_space& scratch)
+    absl::BitGenRef bitgen)
     -> Scratch_vector<Mutation> {
 
   const auto& old_mutations = tree.at(X).mutations;
   
   if (X == tree.root) {
     // Mutations above the root are not really mutations
-    return Scratch_vector<Mutation>(old_mutations.begin(), old_mutations.end(), scratch);
+    return Scratch_vector<Mutation>(old_mutations.begin(), old_mutations.end());
   }
   
   auto P = tree.at(X).parent;
@@ -528,7 +528,7 @@ auto randomize_branch_mutation_times(
   auto t_P = tree.at(P).t;
   
   // See if branch has multiply mutated sites (it rarely does)
-  auto mutated_sites = Scratch_flat_hash_set<Site_index>{scratch};
+  auto mutated_sites = Scratch_flat_hash_set<Site_index>{};
   mutated_sites.reserve(std::ssize(old_mutations));
   auto complicated = false;
   for (auto& m : old_mutations) {
@@ -538,7 +538,7 @@ auto randomize_branch_mutation_times(
     }
   }
   
-  auto new_mutations = Scratch_vector<Mutation>{scratch};
+  auto new_mutations = Scratch_vector<Mutation>{};
   new_mutations.reserve(std::ssize(old_mutations));
   if (not complicated) {
     // Pick new mutation times uniformly
@@ -550,7 +550,7 @@ auto randomize_branch_mutation_times(
     // We have to treat each site separately, and propose new mutation times
     // uniformly but in the same order.
     // This path is intentionally written for clarity instead of speed because it is rare.
-    auto new_site_mut_times = Scratch_vector<double>{scratch};
+    auto new_site_mut_times = Scratch_vector<double>{};
     new_site_mut_times.reserve(std::ssize(old_mutations));
     for (auto l : mutated_sites) {
       new_site_mut_times.clear();
@@ -600,8 +600,7 @@ auto randomize_tree(Phylo_tree& tree, absl::BitGenRef bitgen) -> void {
 
   fix_up_missations(tree);
 
-  auto scratch = Scratch_space{};
-  randomize_mutation_times(tree, bitgen, scratch);
+  randomize_mutation_times(tree, bitgen);
 
   rereference_to_root_sequence(tree);
 
@@ -715,8 +714,7 @@ auto build_random_tree(
     }
   }
 
-  auto scratch = Scratch_space{};
-  randomize_mutation_times(tree, bitgen, scratch);
+  randomize_mutation_times(tree, bitgen);
 
   rereference_to_root_sequence(tree);
 
@@ -848,21 +846,22 @@ auto build_usher_like_tree(
   progress_hook(2, num_tips);
   
   // Sequentially graft every tip where it implies the fewest additional mutations
-  auto scratch = Scratch_space{};
   for (auto X = Node_index{2}; X != num_tips; ++X) {
+
+    auto scope = Local_arena_scope{};
     
     // Study SPR possibilities for attaching X to the budding tree
     auto& tip_desc = tip_descs[X];
     auto t_X = tree.at(X).t;
-    auto deltas_root_to_X = Site_deltas{scratch};
+    auto deltas_root_to_X = Site_deltas{};
     for (const auto& delta : tip_desc.seq_deltas) {
       push_back_site_deltas(delta, deltas_root_to_X);
     }
-    auto missing_at_X = Scratch_interval_set{scratch};
+    auto missing_at_X = Scratch_interval_set{};
     missing_at_X = tip_desc.missations.intervals;
 
     tree.at(X).parent = k_no_node;
-    auto builder = Spr_study_builder{tree, k_no_node, tree.at(X).t, missing_at_X, scratch};
+    auto builder = Spr_study_builder{tree, k_no_node, tree.at(X).t, missing_at_X};
     builder.seed_fill_from(tree.root, std::ssize(tree.at_root().mutations), deltas_root_to_X, true);
 
     // Find least number of mutations required on the P-X branch without changing the rest of the tree
@@ -911,7 +910,7 @@ auto build_usher_like_tree(
     auto G = tree.at(S).parent;
     auto P = X + num_tips - 1;
     auto t_P = double{};
-    auto deltas_P_to_X = Site_deltas{scratch};
+    auto deltas_P_to_X = Site_deltas{};
     if (S == tree.root) {
       // We're inserting the tip above the root
 
@@ -933,7 +932,7 @@ auto build_usher_like_tree(
       t_P = absl::Uniform(absl::IntervalOpenOpen, bitgen, chosen_region.t_min, chosen_region.t_max);
       
       deltas_P_to_X = deltas_root_to_X;
-      displace_site_deltas_start_downwards(tree, deltas_P_to_X, tree.node_loc(tree.root), {S, t_P}, scratch);
+      displace_site_deltas_start_downwards(tree, deltas_P_to_X, tree.node_loc(tree.root), {S, t_P});
       
       auto U = tree.at(G).sibling_of(S);
       tree.at(G).children = {P, U};
@@ -958,7 +957,7 @@ auto build_usher_like_tree(
     // Distribute needed mutations randomly
     //  - ordered_mutations is here to avoid the non-determinism introduced by abseil's flat_hash_map
     //    (so delphy invocations with the same seed produce identical starting trees)
-    auto ordered_mutations = Scratch_vector<std::pair<Site_index, Site_delta>>{scratch};
+    auto ordered_mutations = Scratch_vector<std::pair<Site_index, Site_delta>>{};
     for (const auto& [l, delta] : deltas_P_to_X) {
       ordered_mutations.push_back({l, delta});
     }
@@ -976,9 +975,6 @@ auto build_usher_like_tree(
     tree.at(X).missations = tip_desc.missations;
 
     progress_hook(X+1, num_tips);
-    
-    // Reuse scratch memory for next tip
-    scratch.reset();
   }
 
   // Bubble up missations (and remove redundant mutations along the way)
@@ -986,7 +982,7 @@ auto build_usher_like_tree(
 
   // Improved guesses for inner node times now that a basic tree is in place
   pseudo_date(tree, bitgen);
-  randomize_mutation_times(tree, bitgen, scratch);
+  randomize_mutation_times(tree, bitgen);
   
   assert_phylo_tree_integrity(tree, true);
   

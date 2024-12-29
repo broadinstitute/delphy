@@ -111,8 +111,6 @@ struct Spr_study_builder {
   // Results
   Scratch_vector<Candidate_region> result;
   
-  Scratch_space* scratch;
-
   auto visit_cur_region() -> void;
   auto seed_neighbors_except(Branch_index old_branch, int old_mut_idx) -> void;
   auto account_for_Xs_detachment(bool can_change_root) -> void;
@@ -127,19 +125,17 @@ struct Spr_study_builder {
       const Phylo_tree& tree,
       Node_index X,
       double t_X,
-      const Scratch_interval_set& missing_at_X,
-      Scratch_space& scratch)
+      const Scratch_interval_set& missing_at_X)
       : tree{&tree},
         cur_branch{k_no_node},
         cur_mut_idx{-1},
         cur_muts_from_start{0},
-        cur_to_X_deltas{scratch},
+        cur_to_X_deltas{},
         missing_at_X{&missing_at_X},
         X{X},
         t_X{t_X},
-        work_stack{scratch},
-        result{scratch},
-        scratch{&scratch} {}
+        work_stack{},
+        result{} {}
 
   auto is_next_to_cur_region(Branch_index target_branch, int target_mut_idx) -> bool {
     if (cur_branch == k_no_node || target_branch == k_no_node) {

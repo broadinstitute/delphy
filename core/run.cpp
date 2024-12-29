@@ -1188,7 +1188,9 @@ auto Run::save_original_sequences() -> void {
     
     for (const auto& node : index_order_traversal(tree_)) {
       original_sequences_.push_back(view_of_sequence_at(tree_, node).rebase_to(original_ref_sequence_));
-      original_missing_sites_all_.push_back(reconstruct_missing_sites_at(tree_, node));
+      auto missing_sites = Interval_set<>{};
+      missing_sites = reconstruct_missing_sites_at(tree_, node);
+      original_missing_sites_all_.push_back(std::move(missing_sites));
     }
   }
 }

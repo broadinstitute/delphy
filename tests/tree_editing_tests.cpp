@@ -125,8 +125,6 @@ class Tree_editing_simple_test : public Tree_editing_test_base {
 };
 
 TEST_F(Tree_editing_simple_test, slide_up_simple) {
-  auto scratch = Scratch_space{};
-  
   // Old
   // ---
   // Time:         -1.0          0.0        1.0        2.0        3.0
@@ -157,7 +155,7 @@ TEST_F(Tree_editing_simple_test, slide_up_simple) {
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   
-  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   edit.slide_P_along_branch(-1.0);
   edit.end();
@@ -192,8 +190,6 @@ TEST_F(Tree_editing_simple_test, slide_up_simple) {
 }
 
 TEST_F(Tree_editing_simple_test, slide_up_missation_kills_mutation) {
-  auto scratch = Scratch_space{};
-  
   // Old
   // ---
   // Time:         -1.0          0.0        1.0        2.0        3.0
@@ -229,7 +225,7 @@ TEST_F(Tree_editing_simple_test, slide_up_missation_kills_mutation) {
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   
-  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   edit.slide_P_along_branch(-1.0);
   edit.end();
@@ -356,8 +352,6 @@ class Tree_editing_hop_flip_test : public Tree_editing_test_base {
 };
 
 TEST_F(Tree_editing_hop_flip_test, hop_up) {
-  auto scratch = Scratch_space{};
-  
   // Old
   // ---
   //
@@ -397,7 +391,7 @@ TEST_F(Tree_editing_hop_flip_test, hop_up) {
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   
-  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   edit.hop_up();
   edit.end();
@@ -449,8 +443,6 @@ TEST_F(Tree_editing_hop_flip_test, hop_up) {
 }
 
 TEST_F(Tree_editing_hop_flip_test, flip) {
-  auto scratch = Scratch_space{};
-  
   // Old
   // ---
   //
@@ -490,7 +482,7 @@ TEST_F(Tree_editing_hop_flip_test, flip) {
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   
-  auto edit = Tree_editing_session{tree, b, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto edit = Tree_editing_session{tree, b, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   edit.flip();
   edit.end();
@@ -542,8 +534,6 @@ TEST_F(Tree_editing_hop_flip_test, flip) {
 }
 
 TEST_F(Tree_editing_hop_flip_test, hop_down) {
-  auto scratch = Scratch_space{};
-  
   // Old
   // ---
   //
@@ -583,7 +573,7 @@ TEST_F(Tree_editing_hop_flip_test, hop_down) {
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   
-  auto edit = Tree_editing_session{tree, c, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto edit = Tree_editing_session{tree, c, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   edit.hop_down(b);  // Note: hop_down(b) == do_hop_up(a) !!!
   edit.end();
@@ -705,8 +695,6 @@ class Tree_editing_slide_down_test : public Tree_editing_test_base {
 };
 
 TEST_F(Tree_editing_slide_down_test, slide_down) {
-  auto scratch = Scratch_space{};
-  
   // Old
   // ---
   // Time:  0.0         1.0       2.0        3.0             4.0
@@ -736,7 +724,7 @@ TEST_F(Tree_editing_slide_down_test, slide_down) {
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   
-  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   edit.slide_P_along_branch(3.0);
   edit.end();
@@ -866,8 +854,6 @@ class Tree_editing_spr_test : public Tree_editing_test_base {
 };
 
 TEST_F(Tree_editing_spr_test, spr) {
-  auto scratch = Scratch_space{};
-  
   // Old
   // ---
   //
@@ -909,7 +895,7 @@ TEST_F(Tree_editing_spr_test, spr) {
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   
-  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   // Slide x all the way up to just below r
   edit.slide_P_along_branch(tree.at(y).t);
@@ -976,8 +962,6 @@ TEST_F(Tree_editing_spr_test, spr) {
 }
 
 TEST_F(Tree_editing_simple_test, slide_up_against_edge_mutation) {
-  auto scratch = Scratch_space{};
-
   // If we slide x right up against the beginning of its parent branch, all the mutations
   // before it should migrate to the child branch (edge case for zero-length branches).
   
@@ -1012,7 +996,7 @@ TEST_F(Tree_editing_simple_test, slide_up_against_edge_mutation) {
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   
-  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   edit.slide_P_along_branch(tree.at(r).t);
   edit.end();
@@ -1025,8 +1009,6 @@ TEST_F(Tree_editing_simple_test, slide_up_against_edge_mutation) {
 }
 
 TEST_F(Tree_editing_slide_down_test, slide_down_against_edge_mutation) {
-  auto scratch = Scratch_space{};
-
   // If we slide x right down against the end of its parent branch, all the mutations
   // after it should migrate to the parent branch (edge case for zero-length branches).
   
@@ -1061,7 +1043,7 @@ TEST_F(Tree_editing_slide_down_test, slide_down_against_edge_mutation) {
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   
-  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto edit = Tree_editing_session{tree, a, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   edit.slide_P_along_branch(tree.at(b).t);
   edit.end();
@@ -1077,8 +1059,6 @@ TEST_F(Tree_editing_slide_down_test, slide_down_against_edge_mutation) {
 }
 
 TEST_F(Tree_editing_slide_down_test, slide_down_root) {
-  auto scratch = Scratch_space{};
-
   // As always, handling the root is very tricky, because mutations on the sibling branch
   // don't simply migrate intact to above the root...
   
@@ -1118,7 +1098,7 @@ TEST_F(Tree_editing_slide_down_test, slide_down_root) {
   auto lambda_i = calc_lambda_i(tree, evo, ref_cum_Q_l);
   auto num_sites_missing_at_every_node = calc_num_sites_missing_at_every_node(tree);
   
-  auto edit = Tree_editing_session{tree, x, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node, scratch};
+  auto edit = Tree_editing_session{tree, x, evo, lambda_i, ref_cum_Q_l, num_sites_missing_at_every_node};
 
   edit.slide_P_along_branch(0.5);
   edit.end();
