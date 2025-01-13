@@ -187,11 +187,10 @@ auto make_very_scalable_coalescent_prior_parts(
 
   // Allocate and calculate popsize_bar
   auto popsize_bar = std::vector<double>(num_cells, 0.0);
-  auto cum_popsize_max = pop_model.cum_pop_at_time(cell_ubound(0, t_ref, t_step));
   for (auto i = 0; i != num_cells; ++i) {
-    auto cum_popsize_min = pop_model.cum_pop_at_time(cell_lbound(i, t_ref, t_step));
-    popsize_bar[i] = (cum_popsize_max - cum_popsize_min) / t_step;
-    cum_popsize_max = cum_popsize_min;
+    auto t_min_i = cell_lbound(i, t_ref, t_step);
+    auto t_max_i = cell_ubound(i, t_ref, t_step);
+    popsize_bar[i] = pop_model.pop_integral(t_min_i, t_max_i) / t_step;
   }
 
   // Sample k_twiddle_bar_p for each part
@@ -266,8 +265,9 @@ auto Very_scalable_coalescent_prior_part::ensure_space(double t) -> void {
     CHECK_EQ(std::ssize(popsize_bar_), std::ssize(k_twiddle_bar_p_));
 
     for (auto i = std::ssize(popsize_bar_); i <= max_cell; ++i) {
-      auto popsize_bar_i = (pop_model_->cum_pop_at_time(cell_ubound(i, t_ref_, t_step_))
-                            - pop_model_->cum_pop_at_time(cell_lbound(i, t_ref_, t_step_))) / t_step_;
+      auto t_min_i = cell_lbound(i, t_ref_, t_step_);
+      auto t_max_i = cell_ubound(i, t_ref_, t_step_);
+      auto popsize_bar_i = pop_model_->pop_integral(t_min_i, t_max_i) / t_step_;
       popsize_bar_.push_back(popsize_bar_i);
       num_active_parts_.push_back(1);
     }
