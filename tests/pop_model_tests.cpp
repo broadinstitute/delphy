@@ -23,8 +23,7 @@ TEST(Pop_model_test, const_pop_model_normal) {
   EXPECT_EQ(pop_model.pop(), pop);
   EXPECT_EQ(pop_model.pop_at_time(0.0), pop);
   EXPECT_EQ(pop_model.pop_at_time(5.0), pop);
-  EXPECT_EQ(pop_model.intensity_at_time(0.0), 0.0 / pop);
-  EXPECT_EQ(pop_model.intensity_at_time(5.0), 5.0 / pop);
+  EXPECT_EQ(pop_model.intensity_integral(2.0, 5.0), (5.0 - 2.0) / pop);
 }
 
 TEST(Pop_model_test, const_pop_model_print) {
@@ -56,23 +55,16 @@ TEST(Pop_model_test, exp_pop_model_normal) {
   EXPECT_THAT(pop_model.pop_at_time(-2.0), testing::DoubleNear(2.5, 1e-6));
   EXPECT_THAT(pop_model.pop_at_time(-3.0), testing::DoubleNear(1.25, 1e-6));
 
-  EXPECT_THAT(pop_model.cum_pop_at_time(0.0), testing::DoubleNear(0.0, 1e-6));
-  EXPECT_THAT(pop_model.cum_pop_at_time(1.0), testing::DoubleNear((1/g) * (20.0 - 10.0), 1e-6));
-  EXPECT_THAT(pop_model.cum_pop_at_time(-2.0), testing::DoubleNear((1/g) * (2.5 - 10.0), 1e-6));
-  EXPECT_THAT(pop_model.cum_pop_at_time(-3.0), testing::DoubleNear(
-      (1/g) * (1.25 - 10.0),
-      1e-6));
+  EXPECT_THAT(pop_model.pop_integral( 0.0,  1.0), testing::DoubleNear((1/g) * (20.0 - 10.0 ), 1e-6));
+  EXPECT_THAT(pop_model.pop_integral(-2.0,  0.0), testing::DoubleNear((1/g) * (10.0 -  2.5 ), 1e-6));
+  EXPECT_THAT(pop_model.pop_integral(-3.0, -2.0), testing::DoubleNear((1/g) * ( 2.5 -  1.25), 1e-6));
 
-  EXPECT_THAT(pop_model.intensity_at_time(0.0), testing::DoubleNear(
-      0.0, 1e-6));
-  EXPECT_THAT(pop_model.intensity_at_time(1.0), testing::DoubleNear(
-      (1/n0) * (1/g) * (1.0 - 0.5), 1e-6));
-  EXPECT_THAT(pop_model.intensity_at_time(2.0), testing::DoubleNear(
-      (1/n0) * (1/g) * (1.0 - 0.25), 1e-6));
-  EXPECT_THAT(pop_model.intensity_at_time(-2.0), testing::DoubleNear(
-      (1/n0) * (1/g) * (1.0 - 4.0), 1e-6));
-  EXPECT_THAT(pop_model.intensity_at_time(-3.0), testing::DoubleNear(
-      (1/n0) * (1/g) * (1.0 - 8.0), 1e-6));
+  EXPECT_THAT(pop_model.intensity_integral( 0.0,  1.0), testing::DoubleNear(
+      (1/n0) * (1/g) * (1.0 -  0.5), 1e-6));
+  EXPECT_THAT(pop_model.intensity_integral( 1.0,  2.0), testing::DoubleNear(
+      (1/n0) * (1/g) * (0.5 - 0.25), 1e-6));
+  EXPECT_THAT(pop_model.intensity_integral(-3.0, -2.0), testing::DoubleNear(
+      (1/n0) * (1/g) * (8.0 -  4.0), 1e-6));
 }
 
 TEST(Pop_model_test, exp_pop_model_print) {
