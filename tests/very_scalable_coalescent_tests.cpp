@@ -125,8 +125,8 @@ TEST(Very_scalable_coalescent_test, delta_log_prior) {
     {8.5, 4.7},  // k_bar_p
     {-0.5672, +6.141897},  // k_twiddle_bar_p
     {+1.8963, -3.527041},  // k_twiddle_bar
-    {pop_model.cum_pop_at_time(t_ref - 0*t_step) - pop_model.cum_pop_at_time(t_ref - 1*t_step),
-     pop_model.cum_pop_at_time(t_ref - 1*t_step) - pop_model.cum_pop_at_time(t_ref - 2*t_step)
+    {pop_model.pop_integral(t_ref - 1*t_step, t_ref - 0*t_step),
+     pop_model.pop_integral(t_ref - 2*t_step, t_ref - 1*t_step)
     },  // popsize_bar
     {4, 2}   // num_active_parts
   };

@@ -52,39 +52,33 @@ auto Scalable_coalescent_prior::ensure_space(double t) -> void {
   if (cell < 0) {
     auto num_cells_to_prepend = -cell;
     auto t_max_new = cell_lbound(0);
-    auto cum_popsize_max = pop_model_.cum_pop_at_time(t_max_new);
     for (auto i = 0; i != num_cells_to_prepend; ++i) {
       k_bars_.push_front(1.0);   // The ancestors of the root node can go on forever
 
       auto t_min_new = t_max_new - t_step_;
-      auto cum_popsize_min = pop_model_.cum_pop_at_time(t_min_new);
-      auto popsize_bar = (cum_popsize_max - cum_popsize_min) / t_step_;
+      auto popsize_bar = pop_model_.pop_integral(t_min_new, t_max_new) / t_step_;
       if (popsize_bar == 0.0) {
         popsize_bar = 1e-100;  // Stopgap
       }
       popsize_bars_.push_front(popsize_bar);
 
       t_max_new = t_min_new;
-      cum_popsize_max = cum_popsize_min;
     }
     cells_before_t_ref_ += num_cells_to_prepend;
 
   } else if (cell >= tot_cells) {
     auto num_cells_to_append = cell - tot_cells + 1;
     auto t_min_new = cell_ubound(tot_cells - 1);
-    auto cum_popsize_min = pop_model_.cum_pop_at_time(t_min_new);
     for (auto i = 0; i != num_cells_to_append; ++i) {
       k_bars_.push_back(0.0);
 
       auto t_max_new = t_min_new + t_step_;
-      auto cum_popsize_max = pop_model_.cum_pop_at_time(t_max_new);
-      auto popsize_bar = (cum_popsize_max - cum_popsize_min) / t_step_;
+      auto popsize_bar = pop_model_.pop_integral(t_min_new, t_max_new) / t_step_;
       if (popsize_bar == 0.0) {
         popsize_bar = 1e-100;  // Stopgap
       }
       popsize_bars_.push_back(popsize_bar);
       t_min_new = t_max_new;
-      cum_popsize_min = cum_popsize_max;
     }
   }
 
@@ -146,14 +140,12 @@ auto Scalable_coalescent_prior::displace_coalescence(Node_index node, double new
 auto Scalable_coalescent_prior::pop_model_changed() -> void {
   auto tot_cells = std::ssize(k_bars_);
   auto t_min = cell_lbound(0);
-  auto cum_popsize_min = pop_model_.cum_pop_at_time(t_min);
 
   auto iter_popsize_bar = popsize_bars_.begin();
   for (auto cell = 0; cell != tot_cells; ++cell) {
     auto t_max = t_min + t_step_;
-    auto cum_popsize_max = pop_model_.cum_pop_at_time(t_max);
 
-    auto popsize_bar = (cum_popsize_max - cum_popsize_min) / t_step_;
+    auto popsize_bar = pop_model_.pop_integral(t_min, t_max) / t_step_;
     if (popsize_bar == 0.0) {
       popsize_bar = 1e-100;  // Stopgap
     }
@@ -161,7 +153,6 @@ auto Scalable_coalescent_prior::pop_model_changed() -> void {
     *iter_popsize_bar = popsize_bar;
 
     t_min = t_max;
-    cum_popsize_min = cum_popsize_max;
     ++iter_popsize_bar;
   }
 }
@@ -172,14 +163,12 @@ auto Scalable_coalescent_prior::calc_log_prior() const -> double {
 
   auto tot_cells = std::ssize(k_bars_);
   auto t_min = cell_lbound(0);
-  auto cum_popsize_min = pop_model_.cum_pop_at_time(t_min);
   auto iter_k_bar = k_bars_.begin();
   for (auto cell = 0; cell != tot_cells; ++cell) {
     auto t_max = t_min + t_step_;
-    auto cum_popsize_max = pop_model_.cum_pop_at_time(t_max);
 
     auto kbar = *iter_k_bar;
-    auto popsize_bar = (cum_popsize_max - cum_popsize_min) / t_step_;
+    auto popsize_bar = pop_model_.pop_integral(t_min, t_max) / t_step_;
 
     if (popsize_bar == 0.0) {
       popsize_bar = 1e-100;  // Stopgap
@@ -188,7 +177,6 @@ auto Scalable_coalescent_prior::calc_log_prior() const -> double {
     result -= t_step_ * kbar * (kbar - 1) / (2.0 * popsize_bar);
 
     t_min = t_max;
-    cum_popsize_min = cum_popsize_max;
     ++iter_k_bar;
   }
 

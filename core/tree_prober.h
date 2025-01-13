@@ -61,12 +61,10 @@ public:
     // it has nothing to coalesce into.
 
     auto p_before = std::vector{std::move(p_initial)};
-    auto intensity_at_lbound = pop_model.intensity_at_time(t_start());
     for (auto in_cell = 0; in_cell != branch_counts_by_category.num_cells(); ++in_cell) {
-      //auto t_lbound = cell_lbound(branch_counts_by_category, in_cell);
+      auto t_lbound = cell_lbound(branch_counts_by_category, in_cell);
       auto t_ubound = cell_ubound(branch_counts_by_category, in_cell);
-      auto intensity_at_ubound = pop_model.intensity_at_time(t_ubound);
-      auto intensity_over_cell = intensity_at_ubound - intensity_at_lbound;
+      auto intensity_over_cell = pop_model.intensity_integral(t_lbound, t_ubound);
 
       // Rate of coalescence: k(t) / N(t) => Prob of coalescense = 1 - exp(-int_cell dt' k(t') / N(t'))
       auto total_branches = 0.0;
@@ -92,8 +90,6 @@ public:
         }
         p_before[cat] = p_ubound;
       }
-
-      intensity_at_lbound = intensity_at_ubound;
     }
   }
 

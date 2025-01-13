@@ -19,12 +19,15 @@ class Pop_model {
   // Should handle any value of t, not just nonnegative ones
   virtual auto pop_at_time(double t) const -> double = 0;
 
-  // \int_c^t dt' N(t') * rho  [lower bound unspecified, but always the same]
-  virtual auto cum_pop_at_time(double t) const -> double = 0;
+  // \int_a^b dt' N(t') * rho
+  // We use integrals with two bounds to avoid losing precision when subtracting the results of
+  // single-bounded integrals (\int_c^b ... for some fixed c)
+  virtual auto pop_integral(double a, double b) const -> double = 0;
 
-  // I(t) := \int_c^t dt' 1/N(t') [lower bound unspecified, but always the same]
-  // Can be +/-INFINITY.
-  virtual auto intensity_at_time(double t) const -> double = 0;
+  // \int_a^b dt' 1/N(t')
+  // We use integrals with two bounds to avoid losing precision when subtracting the results of
+  // single-bounded integrals (\int_c^b ... for some fixed c)
+  virtual auto intensity_integral(double a, double b) const -> double = 0;
 
   // Debug printing
   friend auto operator<<(std::ostream& os, const Pop_model& pop_model) -> std::ostream& {
@@ -45,8 +48,8 @@ class Const_pop_model : public Pop_model {
   auto pop() const -> double { return pop_; }
 
   auto pop_at_time(double t) const -> double override;
-  auto cum_pop_at_time(double t) const -> double override;
-  auto intensity_at_time(double t) const -> double override;
+  auto pop_integral(double a, double b) const -> double override;
+  auto intensity_integral(double a, double b) const -> double override;
 
  private:
   double pop_;
@@ -56,7 +59,7 @@ class Const_pop_model : public Pop_model {
 
 class Exp_pop_model : public Pop_model {
  public:
-  explicit Exp_pop_model(double t0, double pop_at_t0, double growth_rate);
+  Exp_pop_model(double t0, double pop_at_t0, double growth_rate);
 
   // No setters: change by assigning a new model (resets all params at once and consolidates validation in constructor)
   auto t0() const -> double { return t0_; }
@@ -64,8 +67,8 @@ class Exp_pop_model : public Pop_model {
   auto growth_rate() const -> double { return growth_rate_; }
 
   auto pop_at_time(double t) const -> double override;
-  auto cum_pop_at_time(double t) const -> double override;
-  auto intensity_at_time(double t) const -> double override;
+  auto pop_integral(double a, double b) const -> double override;
+  auto intensity_integral(double a, double b) const -> double override;
 
  private:
   double t0_;
