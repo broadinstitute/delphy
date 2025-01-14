@@ -81,6 +81,97 @@ class Exp_pop_model : public Pop_model {
   }
 };
 
+class Skygrid_pop_model : public Pop_model {
+ public:
+  enum class Type {
+    
+    // The original Skygrid model (Gill et al 2012, BEAST's "gmrfSkyGridLikelihood"),
+    // with constant population between M+1 knots at times x_k:
+    //
+    //        / exp(gamma_0),            t <= x_0;
+    // N(t) = | exp(gamma_k),  x_{k-1} < t <= x_k;
+    //        \ exp(gamma_M),      x_M < t.
+    //
+    // Note: we allow arbitrary knot times satisfying t_0 < t_1 < ... < t_M.
+    // The default choice of knot times is t_k = T - (M-k)/M * K,
+    // where T is the time of the latest tip (its lower bound if the date is uncertain),
+    // and K is the cutoff duration.  The main notational discrepancy is that,
+    // unlike in Gill et al 2012 or in BEAST, Delphy's internal time axis
+    // increases towards the future and has a fixed epoch at 2020-01-01:
+    //
+    //  Here                 Gill et al 2012
+    //  ----                 ---------------
+    //  t                    T-t
+    //  M                    M
+    //  T                    0
+    //  K                    K
+    //  x_k                  x_{M-k}
+    //  gamma_k              gamma_{1 + M-k}
+    //  exp(gamma_k)         theta_{1 + M-k}
+    
+    k_staircase,
+
+    // A continuous population curve s.t. log(N(t)) is continuous and linearly
+    // interpolates between the values at the knots.
+    // 
+    // From looking at published SkyGrid population curve estimates, this is what I
+    // _thought_ SkyGrid was doing, before reading the technical details. We keep the
+    // original model around for benchmarking against BEAST, but this one seems
+    // more natural to me.
+    //
+    //        / exp(gamma_0),                                  t <= x_0;
+    //        |
+    // N(t) = | exp((1-c) gamma_{k-1} + c gamma_k),  x_{k-1} < t <= x_k;
+    //        | [t= (1-c)     x_{k-1} + c     x_k]
+    //        |
+    //        \ exp(gamma_M),                            x_M < t.
+
+    k_log_linear
+  };
+  
+  Skygrid_pop_model(
+      std::vector<double> x,      // x[k] = time of knot k
+      std::vector<double> gamma,  // gamma[k] = log(N(x[k]))
+      Type type);
+
+  // No setters: change by assigning a new model (resets all params at once and consolidates validation in constructor)
+  auto x() const -> const std::vector<double>& { return x_; }
+  auto x_lo() const -> double { return x_.front(); }
+  auto x_hi() const -> double { return x_.back(); }
+  auto gamma() const -> const std::vector<double>& { return gamma_; }
+  auto type() const -> Type { return type_; }
+
+  // Derived quantities in convenient notation (see notation above)
+  auto M() const -> int { return std::ssize(x_) - 1; }
+  auto T() const -> double { return x_hi(); }
+  auto K() const -> double { return x_hi() - x_lo(); }
+  auto x(int k) const -> double { return x_.at(k); }
+  auto gamma(int k) const -> double { return gamma_.at(k); }
+  auto gamma_below_x_lo() const -> double { return gamma_.front(); }
+  auto gamma_above_x_hi() const -> double { return gamma_.back(); }
+
+  // The key functions
+  auto pop_at_time(double t) const -> double override;
+  auto pop_integral(double a, double b) const -> double override;
+  auto intensity_integral(double a, double b) const -> double override;
+
+ private:
+  std::vector<double> x_;
+  std::vector<double> gamma_;
+  std::vector<double> minus_gamma_;
+  Type type_;
+  
+  auto print_to(std::ostream& os) const -> void override;
+
+  // auto [k,c] = k_and_c(t);
+  // Calculates the interval k >= 1 containing time t, such that t = (1-c) x_{k-1} + c x_k
+  // If t <= x_0, returns (1, 0.0).  If t >= x_M, returns (M, 1.0)
+  auto k_and_c(double t) const -> std::pair<int, double>;
+
+  // pop_integral and intensity_integral are identical except for a flip in the sign of gamma_k
+  auto integral_core(double a, double b, const std::vector<double>& gamma_eff) const -> double;
+};
+
 // Utilities
 // ---------
 
