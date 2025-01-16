@@ -50,17 +50,11 @@ class Run {
   auto set_hky_kappa(double hky_kappa) -> void { hky_model_.kappa = hky_kappa, invalidate_derived_quantities(); }
   auto hky_pi() const -> Seq_vector<double> { return hky_model_.pi_a; }
   auto set_hky_pi(const Seq_vector<double>& hky_pi) -> void { hky_model_.pi_a = hky_pi, invalidate_derived_quantities(); }
-  auto pop_model() const -> const Exp_pop_model& { return pop_model_; }
-  auto set_pop_model(const Exp_pop_model& pop_model) -> void {
-    pop_model_ = pop_model;
-    coalescent_prior_.pop_model_changed();
+  auto pop_model() const -> const Pop_model& { return *pop_model_; }
+  auto set_pop_model(std::shared_ptr<const Pop_model> pop_model) -> void {
+    pop_model_ = std::move(pop_model);
+    coalescent_prior_.pop_model_changed(pop_model_);
     invalidate_derived_quantities(); }
-  auto final_pop_size() const -> double { return pop_model_.pop_at_t0(); }
-  auto set_final_pop_size(double final_pop_size) -> void {
-    set_pop_model(Exp_pop_model{pop_model_.t0(), final_pop_size, pop_model_.growth_rate()}); }
-  auto pop_growth_rate() const -> double { return pop_model_.growth_rate(); }
-  auto set_pop_growth_rate(double pop_growth_rate) -> void {
-    set_pop_model(Exp_pop_model{pop_model_.t0(), pop_model_.pop_at_t0(), pop_growth_rate}); }
 
   auto evo() const -> const Global_evo_model& {
     return validate_derived_quantities(), evo_; }
@@ -205,7 +199,7 @@ class Run {
   bool pop_growth_rate_move_enabled_ = true;
 
   // Parameters
-  Exp_pop_model pop_model_;
+  std::shared_ptr<const Pop_model> pop_model_;
   double alpha_;
   Site_vector<double> nu_;
   Hky_model hky_model_;

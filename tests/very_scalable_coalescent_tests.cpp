@@ -100,7 +100,7 @@ TEST(Very_scalable_coalescent_test, delta_log_prior) {
   auto n0 = 20.0;   // N_e * rho, in days
   auto g = 0.1;     // growing by a factor of `e` every 10 days
 
-  auto pop_model = Exp_pop_model{0.0, n0, g};
+  auto pop_model = std::make_shared<Exp_pop_model>(0.0, n0, g);
 
   auto num_tips = 10;
   auto num_nodes = 2*num_tips - 1;
@@ -125,8 +125,8 @@ TEST(Very_scalable_coalescent_test, delta_log_prior) {
     {8.5, 4.7},  // k_bar_p
     {-0.5672, +6.141897},  // k_twiddle_bar_p
     {+1.8963, -3.527041},  // k_twiddle_bar
-    {pop_model.pop_integral(t_ref - 1*t_step, t_ref - 0*t_step),
-     pop_model.pop_integral(t_ref - 2*t_step, t_ref - 1*t_step)
+    {pop_model->pop_integral(t_ref - 1*t_step, t_ref - 0*t_step),
+     pop_model->pop_integral(t_ref - 2*t_step, t_ref - 1*t_step)
     },  // popsize_bar
     {4, 2}   // num_active_parts
   };

@@ -72,9 +72,14 @@ static auto print_stats_line(const Run& run) -> void {
             << absl::StreamFormat("log_other_priors = %.2f, ", log_other_priors)
             << absl::StreamFormat("num_muts = %d, ", run.num_muts())
             << absl::StreamFormat("T = %.2f, ", calc_T(tree))
-            << absl::StreamFormat("t_MRCA = %s, ", to_iso_date(tree.at_root().t))
-            << absl::StreamFormat("n0 = %.1f, ", run.pop_model().pop_at_t0())
-            << absl::StreamFormat("g = %.4f, ", run.pop_model().growth_rate());
+            << absl::StreamFormat("t_MRCA = %s, ", to_iso_date(tree.at_root().t));
+  const auto& pop_model = run.pop_model();
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
+    std::cerr << absl::StreamFormat("n0 = %.1f, ", exp_pop_model.pop_at_t0())
+              << absl::StreamFormat("g = %.4f, ", exp_pop_model.growth_rate());
+  }
+  
   if (not run.mpox_hack_enabled()) {
     std::cerr << absl::StreamFormat("mu = %.2g * 10^-3 subst / site / year, ", run.mu() * 365 * 1000)
               << absl::StreamFormat("M_ts = %d, M_tv = %d, ", M_ts, run.num_muts() - M_ts)

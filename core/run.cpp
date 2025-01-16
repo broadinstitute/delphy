@@ -14,7 +14,7 @@ Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
       tree_{std::move(tree)},
       num_parts_{1},
       target_coal_prior_cells_{400},
-      pop_model_{calc_max_tip_time(tree_), 1000.0, 0.0},
+      pop_model_{std::make_shared<Exp_pop_model>(calc_max_tip_time(tree_), 1000.0, 0.0)},
       alpha_{10.0},
       nu_(tree_.num_sites(), 1.0),
       evo_{make_single_partition_global_evo_model(tree_.num_sites())},
@@ -492,14 +492,18 @@ auto Run::calc_cur_log_other_priors() const -> double {
         - 0.5 * std::log(2 * M_PI * sigma_log_kappa * sigma_log_kappa) - std::log(hky_kappa());
   }
 
-  // pop_n0 - 1/x prior
-  log_prior -= std::log(pop_model().pop_at_t0());
-
-  // pop_g - Laplace prior on the growth rate, with mu 0.001/365 and scale 30.701135/365
-  //      pdf(g; mu, scale) = 1/(2*scale) exp(-|g - mu| / scale)
-  const auto mu_g = 0.001 / 365.0;
-  const auto scale_g = 30.701135 / 365.0;
-  log_prior += -std::abs(pop_model().growth_rate() - mu_g) / scale_g - std::log(2 * scale_g);
+  if (typeid(*pop_model_) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(*pop_model_);
+    
+    // pop_n0 - 1/x prior
+    log_prior -= std::log(exp_pop_model.pop_at_t0());
+    
+    // pop_g - Laplace prior on the growth rate, with mu 0.001/365 and scale 30.701135/365
+    //      pdf(g; mu, scale) = 1/(2*scale) exp(-|g - mu| / scale)
+    const auto mu_g = 0.001 / 365.0;
+    const auto scale_g = 30.701135 / 365.0;
+    log_prior += -std::abs(exp_pop_model.growth_rate() - mu_g) / scale_g - std::log(2 * scale_g);
+  }
 
   return log_prior;
 }
@@ -1109,73 +1113,83 @@ auto Run::alpha_moves() -> void {
 }
 
 auto Run::pop_size_move() -> void {
-  // We follow LeMieux et al (2021) and use
-  //
-  // - a 1/x prior on the pop size at time 0  (this makes the choice of t = 0 irrelevant)
-  // - a scale operator with scale factor [0.75, 1/0.75] to change the pop size
-
-  auto scale_factor = 0.75;
-  auto old_n0 = pop_model_.pop_at_t0();
-  auto scale = absl::Uniform(bitgen_, scale_factor, 1 / scale_factor);
-  auto new_n0 = scale * old_n0;
-  auto alpha_n_to_o_over_o_to_n = old_n0 / new_n0;
-
-  // 1/x prior for n0:
-  //  pi(n0) ~ 1/n0  => pi(new_n0)/pi(old_n0) = 1/scale
-  auto log_prior_new_over_prior_old = -std::log(scale);
-
-  auto old_log_coal = log_coalescent_prior_;
-  auto old_pop_model = pop_model_;
-  pop_model_ = Exp_pop_model{old_pop_model.t0(), new_n0, old_pop_model.growth_rate()};
-  auto new_log_coal = calc_cur_log_coalescent_prior();
-
-  auto log_metropolis =
-      (new_log_coal - old_log_coal) + log_prior_new_over_prior_old + std::log(alpha_n_to_o_over_o_to_n);
-  if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
-    // Accept
-    coalescent_prior_.pop_model_changed();
-    log_coalescent_prior_ = new_log_coal;
-    log_other_priors_ += log_prior_new_over_prior_old;
-  } else {
-    // Reject
-    pop_model_ = old_pop_model;
+  if (typeid(*pop_model_) == typeid(Exp_pop_model)) {
+    auto exp_pop_model = std::static_pointer_cast<const Exp_pop_model>(pop_model_);
+    
+    // We follow LeMieux et al (2021) and use
+    //
+    // - a 1/x prior on the pop size at time 0  (this makes the choice of t = 0 irrelevant)
+    // - a scale operator with scale factor [0.75, 1/0.75] to change the pop size
+    
+    auto scale_factor = 0.75;
+    auto old_n0 = exp_pop_model->pop_at_t0();
+    auto scale = absl::Uniform(bitgen_, scale_factor, 1 / scale_factor);
+    auto new_n0 = scale * old_n0;
+    auto alpha_n_to_o_over_o_to_n = old_n0 / new_n0;
+    
+    // 1/x prior for n0:
+    //  pi(n0) ~ 1/n0  => pi(new_n0)/pi(old_n0) = 1/scale
+    auto log_prior_new_over_prior_old = -std::log(scale);
+    
+    auto old_log_coal = log_coalescent_prior_;
+    auto old_pop_model = exp_pop_model;
+    pop_model_ = std::make_shared<Exp_pop_model>(old_pop_model->t0(), new_n0, old_pop_model->growth_rate());
+    coalescent_prior_.pop_model_changed(pop_model_);
+    auto new_log_coal = calc_cur_log_coalescent_prior();
+    
+    auto log_metropolis =
+        (new_log_coal - old_log_coal) + log_prior_new_over_prior_old + std::log(alpha_n_to_o_over_o_to_n);
+    if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
+      // Accept
+      log_coalescent_prior_ = new_log_coal;
+      log_other_priors_ += log_prior_new_over_prior_old;
+    } else {
+      // Reject
+      pop_model_ = old_pop_model;
+      coalescent_prior_.pop_model_changed(pop_model_);
+    }
   }
 }
 
 auto Run::pop_growth_rate_move() -> void {
-  // We follow LeMieux et al (2021) and use
-  //
-  // - a Laplace prior on the growth rate, with mu 0.001/365 and scale 30.701135/365
-  //     pdf(g; mu, scale) = 1/(2*scale) exp(-|g - mu| / scale)
-  // - a random walk operator on the growth rate that adds a uniform perturbation in [-delta, +delta],
-  //   with delta = 1.0 / 365.0
-
-  auto window_size = 1.0 / 365.0;
-  auto mu = 0.001 / 365.0;
-  auto scale = 30.701135 / 365.0;
-
-  auto delta = absl::Uniform(bitgen_, -window_size, +window_size);
-  auto old_g = pop_model_.growth_rate();
-  auto new_g = old_g + delta;
-
-  // Laplace prior for g
-  //   pi(g) ~ exp(-|g - mu| / b)
-  auto log_prior_new_over_prior_old = (std::abs(old_g - mu) - std::abs(new_g - mu)) / scale;
-
-  auto old_log_coal = log_coalescent_prior_;
-  auto old_pop_model = pop_model_;
-  pop_model_ = Exp_pop_model{old_pop_model.t0(), old_pop_model.pop_at_t0(), new_g};
-  auto new_log_coal = calc_cur_log_coalescent_prior();
-
-  auto log_metropolis = (new_log_coal - old_log_coal) + log_prior_new_over_prior_old;
-  if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
-    // Accept
-    coalescent_prior_.pop_model_changed();
-    log_coalescent_prior_ = new_log_coal;
-    log_other_priors_ += log_prior_new_over_prior_old;
-  } else {
-    // Reject
-    pop_model_ = old_pop_model;
+  if (typeid(*pop_model_) == typeid(Exp_pop_model)) {
+    auto exp_pop_model = std::static_pointer_cast<const Exp_pop_model>(pop_model_);
+    
+    // We follow LeMieux et al (2021) and use
+    //
+    // - a Laplace prior on the growth rate, with mu 0.001/365 and scale 30.701135/365
+    //     pdf(g; mu, scale) = 1/(2*scale) exp(-|g - mu| / scale)
+    // - a random walk operator on the growth rate that adds a uniform perturbation in [-delta, +delta],
+    //   with delta = 1.0 / 365.0
+    
+    auto window_size = 1.0 / 365.0;
+    auto mu = 0.001 / 365.0;
+    auto scale = 30.701135 / 365.0;
+    
+    auto delta = absl::Uniform(bitgen_, -window_size, +window_size);
+    auto old_g = exp_pop_model->growth_rate();
+    auto new_g = old_g + delta;
+    
+    // Laplace prior for g
+    //   pi(g) ~ exp(-|g - mu| / b)
+    auto log_prior_new_over_prior_old = (std::abs(old_g - mu) - std::abs(new_g - mu)) / scale;
+    
+    auto old_log_coal = log_coalescent_prior_;
+    auto old_pop_model = exp_pop_model;
+    pop_model_ = std::make_shared<Exp_pop_model>(old_pop_model->t0(), old_pop_model->pop_at_t0(), new_g);
+    coalescent_prior_.pop_model_changed(pop_model_);
+    auto new_log_coal = calc_cur_log_coalescent_prior();
+    
+    auto log_metropolis = (new_log_coal - old_log_coal) + log_prior_new_over_prior_old;
+    if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
+      // Accept
+      log_coalescent_prior_ = new_log_coal;
+      log_other_priors_ += log_prior_new_over_prior_old;
+    } else {
+      // Reject
+      pop_model_ = old_pop_model;
+      coalescent_prior_.pop_model_changed(pop_model_);
+    }
   }
 }
 

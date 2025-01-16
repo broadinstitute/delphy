@@ -536,9 +536,13 @@ static auto print_stats_line() -> void {
             << absl::StreamFormat("log(posterior) = %.3g, ", ui_run->log_posterior())
             << absl::StreamFormat("log(G) = %.3g, ", ui_run->log_G())
             << absl::StreamFormat("log_coal = %.3g, ", ui_run->log_coalescent_prior())
-            << absl::StreamFormat("log_other_priors = %.3g, ", ui_run->log_other_priors())
-            << absl::StreamFormat("n0 = %.4g, ", ui_run->pop_model().pop_at_t0())
-            << absl::StreamFormat("g = %.4g, ", ui_run->pop_model().growth_rate());
+            << absl::StreamFormat("log_other_priors = %.3g, ", ui_run->log_other_priors());
+  const auto& pop_model = ui_run->pop_model();
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(ui_run->pop_model());
+    std::cerr << absl::StreamFormat("n0 = %.4g, ", exp_pop_model.pop_at_t0())
+              << absl::StreamFormat("g = %.4g, ", exp_pop_model.growth_rate());
+  }
   if (not ui_run->mpox_hack_enabled()) {
     std::cerr << absl::StreamFormat("mu = %.2g * 10^-3 subst / site / year, ", ui_run->mu() * 365 * 1000)
               << absl::StreamFormat("M_ts = %d, M_tv = %d, ", M_ts, ui_run->num_muts() - M_ts)
@@ -811,8 +815,14 @@ auto keyboard_func(char key) -> void {
       break;
     }
     case 'z': {
-      ui_run->set_final_pop_size(3.0 * 365.0);
-      std::cerr << "*** FINAL POPULATION SIZE RESET TO 3.0 years ***" << std::endl;
+      const auto& pop_model = ui_run->pop_model();
+      if (typeid(pop_model) == typeid(Exp_pop_model)) {
+        const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
+        ui_run->set_pop_model(std::make_shared<Exp_pop_model>(exp_pop_model.t0(), 3.0 * 365.0, exp_pop_model.growth_rate()));
+        std::cerr << "*** FINAL POPULATION SIZE RESET TO 3.0 years ***" << std::endl;
+      } else {
+        std::cerr << "*** POP MODEL IS OF TYPE " << typeid(pop_model).name() << ", IGNORING COMMAND TO RESET FINAL POPULATION SIZE ***" << std::endl;
+      }
       break;
     }
     case 'G': {
@@ -826,8 +836,14 @@ auto keyboard_func(char key) -> void {
       break;
     }
     case 'g': {
-      ui_run->set_pop_growth_rate(0.0);
-      std::cerr << "*** POPULATION GROWTH RATE RESET TO 0.0 e-foldings / year ***" << std::endl;
+      const auto& pop_model = ui_run->pop_model();
+      if (typeid(pop_model) == typeid(Exp_pop_model)) {
+        const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
+        ui_run->set_pop_model(std::make_shared<Exp_pop_model>(exp_pop_model.t0(), exp_pop_model.pop_at_t0(), 0.0));
+        std::cerr << "*** POPULATION GROWTH RATE RESET TO 0.0 e-foldings / year ***" << std::endl;
+      } else {
+        std::cerr << "*** POP MODEL IS OF TYPE " << typeid(pop_model).name() << ", IGNORING COMMAND TO RESET POPULATION GROWTH RATE ***" << std::endl;
+      }
       break;
     }
     case '=':

@@ -10,6 +10,7 @@
 #include "dates.h"
 #include "io.h"
 #include "phylo_tree.h"
+#include "phylo_tree_calc.h"
 #include "sequence_utils.h"
 #include "version.h"
 #include "beasty_input.h"
@@ -380,16 +381,16 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     auto target_coal_prior_cells = opts["v0-target-coal-prior-cells"].as<int>();
     
     // Create and configure initial run
+    auto t0 = calc_max_tip_time(tree);
     auto run = std::make_shared<Run>(*thread_pool, *prng, std::move(tree));
     run->set_mpox_hack_enabled(mpox_hack_enabled);
     run->set_alpha_move_enabled(alpha_move_enabled);
     run->set_mu_move_enabled(not fix_mutation_rate);
     run->set_mu(init_mu);
     run->set_target_coal_prior_cells(target_coal_prior_cells);
+    run->set_pop_model(std::make_unique<Exp_pop_model>(t0, init_final_pop_size, init_pop_growth_rate));
     run->set_final_pop_size_move_enabled(not fix_final_pop_size);
-    run->set_final_pop_size(init_final_pop_size);
     run->set_pop_growth_rate_move_enabled(not fix_pop_growth_rate);
-    run->set_pop_growth_rate(init_pop_growth_rate);
 
     // Output BEAST input XML if needed
     if (opts.count("v0-out-beast-xml")) {

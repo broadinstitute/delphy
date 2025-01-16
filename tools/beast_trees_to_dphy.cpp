@@ -602,7 +602,7 @@ auto write_delphy_file(
   fake_run.set_mu(42e-3 / 365.0);
   fake_run.set_hky_kappa(42.0);
   fake_run.set_hky_pi({0.1, 0.2, 0.3, 0.4});
-  fake_run.set_pop_model(Exp_pop_model{0.0, 42.0 / 365.0, 42.0 * 365.0});
+  fake_run.set_pop_model(std::make_shared<Exp_pop_model>(0.0, 42.0 / 365.0, 42.0 * 365.0));
   
   auto api_tree_info = phylo_tree_to_api_tree_info(trees.begin()->second);
 

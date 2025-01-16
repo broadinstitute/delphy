@@ -286,20 +286,33 @@ auto export_beast_input(
   os << "  <distribution id=\"posterior\" spec=\"util.CompoundDistribution\">\n";
   os << "    <distribution id=\"prior\" spec=\"util.CompoundDistribution\">\n";
   
-  os << "      <distribution id=\"CoalescentExponential.t:input_alignment\" spec=\"Coalescent\">\n";
-  os << "        <populationModel id=\"ExponentialGrowth.t:input_alignment\" spec=\"ExponentialGrowth\" growthRate=\"";
-  if (run.pop_growth_rate_move_enabled()) {
-    os << "@growthRate.t:input_alignment";
-  } else {
-      os << absl::StreamFormat("%g", run.pop_growth_rate()*365.0);  // per year!
-  }
-  os << "\" popSize=\"";
-  if (run.final_pop_size_move_enabled()) {
+  os << "      <distribution id=\"Coalescent.t:input_alignment\" spec=\"Coalescent\">\n";
+
+  const auto& pop_model = run.pop_model();
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
+    auto final_pop_size = exp_pop_model.pop_at_t0();
+    auto pop_growth_rate = exp_pop_model.growth_rate();
+    
+    os << "        <populationModel id=\"ExponentialGrowth.t:input_alignment\" spec=\"ExponentialGrowth\" growthRate=\"";
+    if (run.pop_growth_rate_move_enabled()) {
+      os << "@growthRate.t:input_alignment";
+    } else {
+      os << absl::StreamFormat("%g", pop_growth_rate*365.0);  // per year!
+    }
+    os << "\" popSize=\"";
+    if (run.final_pop_size_move_enabled()) {
       os << "@ePopSize.t:input_alignment";
+    } else {
+      os << absl::StreamFormat("%g", final_pop_size/365.0);  // years!
+    }
+    os << "\"/>\n";
+    
   } else {
-      os << absl::StreamFormat("%g", run.final_pop_size()/365.0);  // years!
+    std::cerr << "ERROR: Unrecognized population model type " << typeid(pop_model).name() << '\n';
+    os << absl::StreamFormat("<!-- ERROR: UNRECOGNIZED POPULATION MODEL TYPE: %s -->", typeid(pop_model).name());
   }
-  os << "\"/>\n";
+  
   os << "        <treeIntervals id=\"TreeIntervals.t:input_alignment\" spec=\"TreeIntervals\" tree=\"@Tree.t:input_alignment\"/>\n";
   os << "      </distribution>\n";
 
@@ -484,12 +497,14 @@ auto export_beast_input(
     os << "    <log idref=\"gammaShape.s:input_alignment\"/>\n";
   }
   os << "    <log idref=\"kappa.s:input_alignment\"/>\n";
-  os << "    <log idref=\"CoalescentExponential.t:input_alignment\"/>\n";
-  if (run.final_pop_size_move_enabled()) {
-    os << "    <log idref=\"ePopSize.t:input_alignment\"/>\n";
-  }
-  if (run.pop_growth_rate_move_enabled()) {
-    os << "    <log idref=\"growthRate.t:input_alignment\"/>\n";
+  os << "    <log idref=\"Coalescent.t:input_alignment\"/>\n";
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    if (run.final_pop_size_move_enabled()) {
+      os << "    <log idref=\"ePopSize.t:input_alignment\"/>\n";
+    }
+    if (run.pop_growth_rate_move_enabled()) {
+      os << "    <log idref=\"growthRate.t:input_alignment\"/>\n";
+    }
   }
   os << "    <log idref=\"freqParameter.s:input_alignment\"/>\n";
   if (first_uncertain_tip != k_no_node) {

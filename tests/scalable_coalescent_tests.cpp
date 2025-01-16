@@ -9,7 +9,7 @@ namespace delphy {
 
 TEST(Scalable_coalescent_test, log_prior) {
   auto pop = 20.0;   // N_e * rho, in days
-  auto pop_model = Const_pop_model{pop};  // 20.0 = N_e * rho, in days
+  auto pop_model = std::make_shared<Const_pop_model>(pop);  // 20.0 = N_e * rho, in days
 
   auto num_tips = 10;
   auto num_nodes = 2*num_tips - 1;
@@ -61,7 +61,7 @@ TEST(Scalable_coalescent_test, delta_log_prior) {
   auto n0 = 20.0;   // N_e * rho, in days
   auto g = 0.1;     // growing by a factor of `e` every 10 days
 
-  auto pop_model = Exp_pop_model{0.0, n0, g};
+  auto pop_model = std::make_shared<Exp_pop_model>(0.0, n0, g);
 
   auto num_tips = 10;
   auto num_nodes = 2*num_tips - 1;
