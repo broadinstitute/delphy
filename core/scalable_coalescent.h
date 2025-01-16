@@ -12,7 +12,7 @@ namespace delphy {
 // Initially, all node times are set to 0.0.  Use displace_tip and displace_coalescence to change them
 class Scalable_coalescent_prior {
  public:
-  Scalable_coalescent_prior(const Pop_model& pop_model, Node_index num_nodes, double t_ref, double t_step);
+  Scalable_coalescent_prior(std::shared_ptr<const Pop_model> pop_model, Node_index num_nodes, double t_ref, double t_step);
 
   auto t_step() const -> double { return t_step_; }
 
@@ -23,13 +23,13 @@ class Scalable_coalescent_prior {
 
   auto displace_tip(Node_index node, double new_t) -> void;
   auto displace_coalescence(Node_index node, double new_t) -> void;
-  auto pop_model_changed() -> void;
+  auto pop_model_changed(std::shared_ptr<const Pop_model> new_pop_model) -> void;
 
   auto calc_log_prior() const -> double;
   auto calc_delta_log_prior_after_displace_coalescence(int i, double new_t) -> double;
 
  private:
-  const Pop_model& pop_model_;
+  std::shared_ptr<const Pop_model> pop_model_;
   struct Node_info {
     double t;
     bool is_tip;

@@ -932,39 +932,79 @@ auto delphy_run_set_hky_pi_T(Delphy_context& /*ctx*/, Run& run, double hky_pi_T)
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_get_pop_t0(Delphy_context& /*ctx*/, const Run& run) -> double {
-  return run.pop_model().t0();
+  const auto& pop_model = run.pop_model();
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
+    return exp_pop_model.t0();
+  } else {
+    std::cerr << "WARNING: call to delphy_run_get_pop_t0 but run.pop_model is of type " << typeid(pop_model).name() << '\n';
+    return 0.0;
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_set_pop_t0(Delphy_context& /*ctx*/, Run& run, double pop_t0) -> void {
-  auto old_pop_model = run.pop_model();
-  run.set_pop_model(Exp_pop_model{
-      pop_t0, old_pop_model.pop_at_t0(), old_pop_model.growth_rate()});
+  const auto& old_pop_model = run.pop_model();
+  if (typeid(old_pop_model) == typeid(Exp_pop_model)) {
+    const auto& old_exp_pop_model = static_cast<const Exp_pop_model&>(old_pop_model);
+    run.set_pop_model(std::make_shared<Exp_pop_model>(
+        pop_t0, old_exp_pop_model.pop_at_t0(), old_exp_pop_model.growth_rate()));
+  } else {
+    std::cerr << "WARNING: call to delphy_run_set_pop_t0 but run.pop_model is of type " << typeid(old_pop_model).name() << '\n';
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_get_pop_n0(Delphy_context& /*ctx*/, const Run& run) -> double {
-  return run.pop_model().pop_at_t0();
+  const auto& pop_model = run.pop_model();
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
+    return exp_pop_model.pop_at_t0();
+  } else {
+    std::cerr << "WARNING: call to delphy_run_get_pop_n0 but run.pop_model is of type " << typeid(pop_model).name() << '\n';
+    return 0.0;
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_set_pop_n0(Delphy_context& /*ctx*/, Run& run, double pop_n0) -> void {
-  run.set_final_pop_size(pop_n0);
+  const auto& old_pop_model = run.pop_model();
+  if (typeid(old_pop_model) == typeid(Exp_pop_model)) {
+    const auto& old_exp_pop_model = static_cast<const Exp_pop_model&>(old_pop_model);
+    run.set_pop_model(std::make_shared<Exp_pop_model>(
+        old_exp_pop_model.t0(), pop_n0, old_exp_pop_model.growth_rate()));
+  } else {
+    std::cerr << "WARNING: call to delphy_run_set_pop_n0 but run.pop_model is of type " << typeid(old_pop_model).name() << '\n';
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_get_pop_g(Delphy_context& /*ctx*/, const Run& run) -> double {
-  return run.pop_model().growth_rate();
+  const auto& pop_model = run.pop_model();
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
+    return exp_pop_model.growth_rate();
+  } else {
+    std::cerr << "WARNING: call to delphy_run_get_pop_g but run.pop_model is of type " << typeid(pop_model).name() << '\n';
+    return 0.0;
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_set_pop_g(Delphy_context& /*ctx*/, Run& run, double pop_g) -> void {
-  run.set_pop_growth_rate(pop_g);
+  const auto& old_pop_model = run.pop_model();
+  if (typeid(old_pop_model) == typeid(Exp_pop_model)) {
+    const auto& old_exp_pop_model = static_cast<const Exp_pop_model&>(old_pop_model);
+    run.set_pop_model(std::make_shared<Exp_pop_model>(
+        old_exp_pop_model.t0(), old_exp_pop_model.pop_at_t0(), pop_g));
+  } else {
+    std::cerr << "WARNING: call to delphy_run_set_pop_g but run.pop_model is of type " << typeid(old_pop_model).name() << '\n';
+  }
 }
 
 EMSCRIPTEN_KEEPALIVE

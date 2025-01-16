@@ -83,7 +83,7 @@ using namespace Very_scalable_coalescent_prior;
 auto make_very_scalable_coalescent_prior_parts(
     const std::vector<const Phylo_tree*>& subtrees,
     int root_partition_index,
-    const Pop_model& pop_model,
+    std::shared_ptr<const Pop_model> pop_model,
     std::vector<std::mt19937>& prngs,
     double t_step)
     -> std::vector<Very_scalable_coalescent_prior_part> {
@@ -190,7 +190,7 @@ auto make_very_scalable_coalescent_prior_parts(
   for (auto i = 0; i != num_cells; ++i) {
     auto t_min_i = cell_lbound(i, t_ref, t_step);
     auto t_max_i = cell_ubound(i, t_ref, t_step);
-    popsize_bar[i] = pop_model.pop_integral(t_min_i, t_max_i) / t_step;
+    popsize_bar[i] = pop_model->pop_integral(t_min_i, t_max_i) / t_step;
   }
 
   // Sample k_twiddle_bar_p for each part
@@ -230,7 +230,7 @@ auto make_very_scalable_coalescent_prior_parts(
 }
 
 Very_scalable_coalescent_prior_part::Very_scalable_coalescent_prior_part(
-    const Pop_model& pop_model,
+    std::shared_ptr<const Pop_model> pop_model,
     const Phylo_tree& subtree,
     std::mt19937& prng,
     bool includes_tree_root,
@@ -241,7 +241,7 @@ Very_scalable_coalescent_prior_part::Very_scalable_coalescent_prior_part(
     std::vector<double> k_twiddle_bar,
     std::vector<double> popsize_bar,
     std::vector<int> num_active_parts)
-    : pop_model_{&pop_model},
+    : pop_model_{std::move(pop_model)},
       subtree_{&subtree},
       prng_{&prng},
       includes_tree_root_{includes_tree_root},

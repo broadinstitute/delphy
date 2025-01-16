@@ -5,11 +5,11 @@
 namespace delphy {
 
 Scalable_coalescent_prior::Scalable_coalescent_prior(
-    const Pop_model& pop_model,
+    std::shared_ptr<const Pop_model> pop_model,
     Node_index num_nodes,
     double t_ref,
     double t_step)
-    : pop_model_{pop_model},
+    : pop_model_{std::move(pop_model)},
       node_infos_(num_nodes, {.t = t_ref, .is_tip = false}),
       k_bars_{},
       popsize_bars_{},
@@ -56,7 +56,7 @@ auto Scalable_coalescent_prior::ensure_space(double t) -> void {
       k_bars_.push_front(1.0);   // The ancestors of the root node can go on forever
 
       auto t_min_new = t_max_new - t_step_;
-      auto popsize_bar = pop_model_.pop_integral(t_min_new, t_max_new) / t_step_;
+      auto popsize_bar = pop_model_->pop_integral(t_min_new, t_max_new) / t_step_;
       if (popsize_bar == 0.0) {
         popsize_bar = 1e-100;  // Stopgap
       }
@@ -73,7 +73,7 @@ auto Scalable_coalescent_prior::ensure_space(double t) -> void {
       k_bars_.push_back(0.0);
 
       auto t_max_new = t_min_new + t_step_;
-      auto popsize_bar = pop_model_.pop_integral(t_min_new, t_max_new) / t_step_;
+      auto popsize_bar = pop_model_->pop_integral(t_min_new, t_max_new) / t_step_;
       if (popsize_bar == 0.0) {
         popsize_bar = 1e-100;  // Stopgap
       }
@@ -137,7 +137,9 @@ auto Scalable_coalescent_prior::displace_coalescence(Node_index node, double new
   node_infos_[node].t = new_t;
 }
 
-auto Scalable_coalescent_prior::pop_model_changed() -> void {
+auto Scalable_coalescent_prior::pop_model_changed(std::shared_ptr<const Pop_model> new_pop_model) -> void {
+  pop_model_ = std::move(new_pop_model);
+  
   auto tot_cells = std::ssize(k_bars_);
   auto t_min = cell_lbound(0);
 
@@ -145,7 +147,7 @@ auto Scalable_coalescent_prior::pop_model_changed() -> void {
   for (auto cell = 0; cell != tot_cells; ++cell) {
     auto t_max = t_min + t_step_;
 
-    auto popsize_bar = pop_model_.pop_integral(t_min, t_max) / t_step_;
+    auto popsize_bar = pop_model_->pop_integral(t_min, t_max) / t_step_;
     if (popsize_bar == 0.0) {
       popsize_bar = 1e-100;  // Stopgap
     }
@@ -162,27 +164,21 @@ auto Scalable_coalescent_prior::calc_log_prior() const -> double {
   auto result = 0.0;
 
   auto tot_cells = std::ssize(k_bars_);
-  auto t_min = cell_lbound(0);
   auto iter_k_bar = k_bars_.begin();
+  auto iter_popsize_bar = popsize_bars_.begin();
   for (auto cell = 0; cell != tot_cells; ++cell) {
-    auto t_max = t_min + t_step_;
-
     auto kbar = *iter_k_bar;
-    auto popsize_bar = pop_model_.pop_integral(t_min, t_max) / t_step_;
-
-    if (popsize_bar == 0.0) {
-      popsize_bar = 1e-100;  // Stopgap
-    }
+    auto popsize_bar = *iter_popsize_bar;
     
     result -= t_step_ * kbar * (kbar - 1) / (2.0 * popsize_bar);
 
-    t_min = t_max;
     ++iter_k_bar;
+    ++iter_popsize_bar;
   }
 
   for (const auto& node_info : node_infos_) {
     if (not node_info.is_tip) {
-      result -= std::log(pop_model_.pop_at_time(node_info.t));
+      result -= std::log(pop_model_->pop_at_time(node_info.t));
     }
   }
 
@@ -248,7 +244,7 @@ auto Scalable_coalescent_prior::calc_delta_log_prior_after_displace_coalescence(
   }
 
   // Add factor from 1/N(tree)
-  delta_log_prior -= std::log(pop_model_.pop_at_time(new_t) / pop_model_.pop_at_time(old_t));
+  delta_log_prior -= std::log(pop_model_->pop_at_time(new_t) / pop_model_->pop_at_time(old_t));
 
   return delta_log_prior;
 }

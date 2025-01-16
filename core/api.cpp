@@ -211,10 +211,14 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   params_builder.add_hky_pi_C(run.hky_pi()[Real_seq_letter::C]);
   params_builder.add_hky_pi_G(run.hky_pi()[Real_seq_letter::G]);
   params_builder.add_hky_pi_T(run.hky_pi()[Real_seq_letter::T]);
-  params_builder.add_pop_t0(run.pop_model().t0());
-  params_builder.add_pop_n0(run.pop_model().pop_at_t0());
-  params_builder.add_pop_g(run.pop_model().growth_rate());
-
+  const auto& pop_model = run.pop_model();
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
+    params_builder.add_pop_t0(exp_pop_model.t0());
+    params_builder.add_pop_n0(exp_pop_model.pop_at_t0());
+    params_builder.add_pop_g(exp_pop_model.growth_rate());
+  }
+  
   params_builder.add_only_displacing_inner_nodes(run.only_displacing_inner_nodes());
   params_builder.add_topology_moves_enabled(run.topology_moves_enabled());
   params_builder.add_repartitioning_enabled(run.repartitioning_enabled());
@@ -262,7 +266,7 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
                   api_params->hky_pi_C(),
                   api_params->hky_pi_G(),
                   api_params->hky_pi_T()});
-  run.set_pop_model(Exp_pop_model{api_params->pop_t0(), api_params->pop_n0(), api_params->pop_g()});
+  run.set_pop_model(std::make_unique<Exp_pop_model>(api_params->pop_t0(), api_params->pop_n0(), api_params->pop_g()));
 
   run.set_only_displacing_inner_nodes(api_params->only_displacing_inner_nodes());
   run.set_topology_moves_enabled(api_params->topology_moves_enabled());

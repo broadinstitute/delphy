@@ -34,12 +34,15 @@ auto Beasty_log_output::output_headers(const Run& run) -> void {
       *os_ << "gammaShape\t";
     }
     *os_ << "kappa\t";
-    *os_ << "CoalescentExponential\t";
-    if (run.final_pop_size_move_enabled()) {
-      *os_ << "ePopSize\t";
-    }
-    if (run.pop_growth_rate_move_enabled()) {
-      *os_ << "growthRate\t";
+    *os_ << "Coalescent\t";
+    const auto& pop_model = run.pop_model();
+    if (typeid(pop_model) == typeid(Exp_pop_model)) {
+      if (run.final_pop_size_move_enabled()) {
+        *os_ << "ePopSize\t";
+      }
+      if (run.pop_growth_rate_move_enabled()) {
+        *os_ << "growthRate\t";
+      }
     }
     *os_ << "freqParameter.1\t"
          << "freqParameter.2\t"
@@ -54,10 +57,13 @@ auto Beasty_log_output::output_headers(const Run& run) -> void {
          << "likelihood_really_logG\t"
          << "treeModel.rootHeight\t"
          << "age(root)\t"
-         << "treeLength\t"
-         << "exponential.popSize\t"
-         << "exponential.growthRate\t"
-         << "apobec3.clock.rate\t"
+         << "treeLength\t";
+    const auto& pop_model = run.pop_model();
+    if (typeid(pop_model) == typeid(Exp_pop_model)) {
+      *os_ << "exponential.popSize\t"
+           << "exponential.growthRate\t";
+    }
+    *os_ << "apobec3.clock.rate\t"
          << "non_apobec3.clock.rate\t"
          << "coalescent.all\t"
          << "\n";
@@ -118,14 +124,20 @@ auto Beasty_log_output::output_log(const Run& run) -> void {
     // We measure time in days since 2020; ref BEAST run in years since time of latest tip
     *os_ << run.log_coalescent_prior() + num_inner_nodes * std::log(365.0) << "\t";
 
-    if (run.final_pop_size_move_enabled()) {
-      // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-      *os_ << run.pop_model().pop_at_time(beast_t0)/365 << "\t";
-    }
-
-    if (run.pop_growth_rate_move_enabled()) {
-      // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-      *os_ << run.pop_model().growth_rate()*365 << "\t";
+    const auto& pop_model = run.pop_model();
+    if (typeid(pop_model) == typeid(Exp_pop_model)) {
+      const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
+      auto pop_growth_rate = exp_pop_model.growth_rate();
+      
+      if (run.final_pop_size_move_enabled()) {
+        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+        *os_ << run.pop_model().pop_at_time(beast_t0)/365 << "\t";
+      }
+      
+      if (run.pop_growth_rate_move_enabled()) {
+        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+        *os_ << pop_growth_rate*365 << "\t";
+      }
     }
     
     if (not run.mpox_hack_enabled()) {
@@ -148,12 +160,19 @@ auto Beasty_log_output::output_log(const Run& run) -> void {
          << run.log_G() << "\t"  // log(G) instead of log_likelihood (which we don't calculate!)
          << (beast_t0 - tree.at_root().t) / 365 << "\t"
          << to_beast_date(tree.at_root().t) << "\t"
-         << calc_T(tree) / 365.0 << "\t"
-        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-         << run.pop_model().pop_at_time(beast_t0)/365 << "\t"
-        // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-         << run.pop_model().growth_rate()*365 << "\t"
-         << run.mpox_mu_star() * 365 << "\t"
+         << calc_T(tree) / 365.0 << "\t";
+    const auto& pop_model = run.pop_model();
+    if (typeid(pop_model) == typeid(Exp_pop_model)) {
+      const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
+      auto pop_growth_rate = exp_pop_model.growth_rate();
+      
+      *os_ 
+          // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+          << run.pop_model().pop_at_time(beast_t0)/365 << "\t"
+          // We measure time in days since 2020; ref BEAST run in years since time of latest tip
+          << pop_growth_rate*365 << "\t";
+    }
+    *os_ << run.mpox_mu_star() * 365 << "\t"
          << run.mpox_mu() * 365 << "\t"
         // Coalescent prior has units of (1/time)^(# coalescences)
         // We measure time in days since 2020; ref BEAST run in years since time of latest tip
