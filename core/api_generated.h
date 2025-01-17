@@ -31,6 +31,12 @@ struct NodeInfoBuilder;
 struct TreeInfo;
 struct TreeInfoBuilder;
 
+struct ExpPopModel;
+struct ExpPopModelBuilder;
+
+struct SkygridPopModel;
+struct SkygridPopModelBuilder;
+
 struct Params;
 struct ParamsBuilder;
 
@@ -69,6 +75,84 @@ inline const char *EnumNameRealSeqLetter(RealSeqLetter e) {
   const size_t index = static_cast<size_t>(e);
   return EnumNamesRealSeqLetter()[index];
 }
+
+enum SkygridType : int8_t {
+  SkygridType_Staircase = 1,
+  SkygridType_LogLinear = 2,
+  SkygridType_MIN = SkygridType_Staircase,
+  SkygridType_MAX = SkygridType_LogLinear
+};
+
+inline const SkygridType (&EnumValuesSkygridType())[2] {
+  static const SkygridType values[] = {
+    SkygridType_Staircase,
+    SkygridType_LogLinear
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesSkygridType() {
+  static const char * const names[3] = {
+    "Staircase",
+    "LogLinear",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNameSkygridType(SkygridType e) {
+  if (::flatbuffers::IsOutRange(e, SkygridType_Staircase, SkygridType_LogLinear)) return "";
+  const size_t index = static_cast<size_t>(e) - static_cast<size_t>(SkygridType_Staircase);
+  return EnumNamesSkygridType()[index];
+}
+
+enum PopModel : uint8_t {
+  PopModel_NONE = 0,
+  PopModel_ExpPopModel = 1,
+  PopModel_SkygridPopModel = 2,
+  PopModel_MIN = PopModel_NONE,
+  PopModel_MAX = PopModel_SkygridPopModel
+};
+
+inline const PopModel (&EnumValuesPopModel())[3] {
+  static const PopModel values[] = {
+    PopModel_NONE,
+    PopModel_ExpPopModel,
+    PopModel_SkygridPopModel
+  };
+  return values;
+}
+
+inline const char * const *EnumNamesPopModel() {
+  static const char * const names[4] = {
+    "NONE",
+    "ExpPopModel",
+    "SkygridPopModel",
+    nullptr
+  };
+  return names;
+}
+
+inline const char *EnumNamePopModel(PopModel e) {
+  if (::flatbuffers::IsOutRange(e, PopModel_NONE, PopModel_SkygridPopModel)) return "";
+  const size_t index = static_cast<size_t>(e);
+  return EnumNamesPopModel()[index];
+}
+
+template<typename T> struct PopModelTraits {
+  static const PopModel enum_value = PopModel_NONE;
+};
+
+template<> struct PopModelTraits<delphy::api::ExpPopModel> {
+  static const PopModel enum_value = PopModel_ExpPopModel;
+};
+
+template<> struct PopModelTraits<delphy::api::SkygridPopModel> {
+  static const PopModel enum_value = PopModel_SkygridPopModel;
+};
+
+bool VerifyPopModel(::flatbuffers::Verifier &verifier, const void *obj, PopModel type);
+bool VerifyPopModelVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types);
 
 FLATBUFFERS_MANUALLY_ALIGNED_STRUCT(4) Node FLATBUFFERS_FINAL_CLASS {
  private:
@@ -424,6 +508,144 @@ inline ::flatbuffers::Offset<TreeInfo> CreateTreeInfoDirect(
       node_infos__);
 }
 
+struct ExpPopModel FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef ExpPopModelBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_T0 = 4,
+    VT_N0 = 6,
+    VT_G = 8
+  };
+  double t0() const {
+    return GetField<double>(VT_T0, 0.0);
+  }
+  double n0() const {
+    return GetField<double>(VT_N0, 0.0);
+  }
+  double g() const {
+    return GetField<double>(VT_G, 0.0);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<double>(verifier, VT_T0, 8) &&
+           VerifyField<double>(verifier, VT_N0, 8) &&
+           VerifyField<double>(verifier, VT_G, 8) &&
+           verifier.EndTable();
+  }
+};
+
+struct ExpPopModelBuilder {
+  typedef ExpPopModel Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_t0(double t0) {
+    fbb_.AddElement<double>(ExpPopModel::VT_T0, t0, 0.0);
+  }
+  void add_n0(double n0) {
+    fbb_.AddElement<double>(ExpPopModel::VT_N0, n0, 0.0);
+  }
+  void add_g(double g) {
+    fbb_.AddElement<double>(ExpPopModel::VT_G, g, 0.0);
+  }
+  explicit ExpPopModelBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<ExpPopModel> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<ExpPopModel>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<ExpPopModel> CreateExpPopModel(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    double t0 = 0.0,
+    double n0 = 0.0,
+    double g = 0.0) {
+  ExpPopModelBuilder builder_(_fbb);
+  builder_.add_g(g);
+  builder_.add_n0(n0);
+  builder_.add_t0(t0);
+  return builder_.Finish();
+}
+
+struct SkygridPopModel FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
+  typedef SkygridPopModelBuilder Builder;
+  enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
+    VT_TYPE = 4,
+    VT_X_K = 6,
+    VT_GAMMA_K = 8
+  };
+  delphy::api::SkygridType type() const {
+    return static_cast<delphy::api::SkygridType>(GetField<int8_t>(VT_TYPE, 1));
+  }
+  const ::flatbuffers::Vector<double> *x_k() const {
+    return GetPointer<const ::flatbuffers::Vector<double> *>(VT_X_K);
+  }
+  const ::flatbuffers::Vector<double> *gamma_k() const {
+    return GetPointer<const ::flatbuffers::Vector<double> *>(VT_GAMMA_K);
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int8_t>(verifier, VT_TYPE, 1) &&
+           VerifyOffset(verifier, VT_X_K) &&
+           verifier.VerifyVector(x_k()) &&
+           VerifyOffset(verifier, VT_GAMMA_K) &&
+           verifier.VerifyVector(gamma_k()) &&
+           verifier.EndTable();
+  }
+};
+
+struct SkygridPopModelBuilder {
+  typedef SkygridPopModel Table;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_type(delphy::api::SkygridType type) {
+    fbb_.AddElement<int8_t>(SkygridPopModel::VT_TYPE, static_cast<int8_t>(type), 1);
+  }
+  void add_x_k(::flatbuffers::Offset<::flatbuffers::Vector<double>> x_k) {
+    fbb_.AddOffset(SkygridPopModel::VT_X_K, x_k);
+  }
+  void add_gamma_k(::flatbuffers::Offset<::flatbuffers::Vector<double>> gamma_k) {
+    fbb_.AddOffset(SkygridPopModel::VT_GAMMA_K, gamma_k);
+  }
+  explicit SkygridPopModelBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ::flatbuffers::Offset<SkygridPopModel> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = ::flatbuffers::Offset<SkygridPopModel>(end);
+    return o;
+  }
+};
+
+inline ::flatbuffers::Offset<SkygridPopModel> CreateSkygridPopModel(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    delphy::api::SkygridType type = delphy::api::SkygridType_Staircase,
+    ::flatbuffers::Offset<::flatbuffers::Vector<double>> x_k = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<double>> gamma_k = 0) {
+  SkygridPopModelBuilder builder_(_fbb);
+  builder_.add_gamma_k(gamma_k);
+  builder_.add_x_k(x_k);
+  builder_.add_type(type);
+  return builder_.Finish();
+}
+
+inline ::flatbuffers::Offset<SkygridPopModel> CreateSkygridPopModelDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    delphy::api::SkygridType type = delphy::api::SkygridType_Staircase,
+    const std::vector<double> *x_k = nullptr,
+    const std::vector<double> *gamma_k = nullptr) {
+  auto x_k__ = x_k ? _fbb.CreateVector<double>(*x_k) : 0;
+  auto gamma_k__ = gamma_k ? _fbb.CreateVector<double>(*gamma_k) : 0;
+  return delphy::api::CreateSkygridPopModel(
+      _fbb,
+      type,
+      x_k__,
+      gamma_k__);
+}
+
 struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef ParamsBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
@@ -455,7 +677,10 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_MU_MOVE_ENABLED = 54,
     VT_POP_T0 = 56,
     VT_FINAL_POP_SIZE_MOVE_ENABLED = 58,
-    VT_POP_GROWTH_RATE_MOVE_ENABLED = 60
+    VT_POP_GROWTH_RATE_MOVE_ENABLED = 60,
+    VT_POP_MODEL_TYPE = 62,
+    VT_POP_MODEL = 64,
+    VT_SKYGRID_TAU = 66
   };
   int64_t step() const {
     return GetField<int64_t>(VT_STEP, 0);
@@ -544,6 +769,22 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool pop_growth_rate_move_enabled() const {
     return GetField<uint8_t>(VT_POP_GROWTH_RATE_MOVE_ENABLED, 1) != 0;
   }
+  delphy::api::PopModel pop_model_type() const {
+    return static_cast<delphy::api::PopModel>(GetField<uint8_t>(VT_POP_MODEL_TYPE, 0));
+  }
+  const void *pop_model() const {
+    return GetPointer<const void *>(VT_POP_MODEL);
+  }
+  template<typename T> const T *pop_model_as() const;
+  const delphy::api::ExpPopModel *pop_model_as_ExpPopModel() const {
+    return pop_model_type() == delphy::api::PopModel_ExpPopModel ? static_cast<const delphy::api::ExpPopModel *>(pop_model()) : nullptr;
+  }
+  const delphy::api::SkygridPopModel *pop_model_as_SkygridPopModel() const {
+    return pop_model_type() == delphy::api::PopModel_SkygridPopModel ? static_cast<const delphy::api::SkygridPopModel *>(pop_model()) : nullptr;
+  }
+  double skygrid_tau() const {
+    return GetField<double>(VT_SKYGRID_TAU, 0.0);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int64_t>(verifier, VT_STEP, 8) &&
@@ -576,9 +817,21 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyField<double>(verifier, VT_POP_T0, 8) &&
            VerifyField<uint8_t>(verifier, VT_FINAL_POP_SIZE_MOVE_ENABLED, 1) &&
            VerifyField<uint8_t>(verifier, VT_POP_GROWTH_RATE_MOVE_ENABLED, 1) &&
+           VerifyField<uint8_t>(verifier, VT_POP_MODEL_TYPE, 1) &&
+           VerifyOffset(verifier, VT_POP_MODEL) &&
+           VerifyPopModel(verifier, pop_model(), pop_model_type()) &&
+           VerifyField<double>(verifier, VT_SKYGRID_TAU, 8) &&
            verifier.EndTable();
   }
 };
+
+template<> inline const delphy::api::ExpPopModel *Params::pop_model_as<delphy::api::ExpPopModel>() const {
+  return pop_model_as_ExpPopModel();
+}
+
+template<> inline const delphy::api::SkygridPopModel *Params::pop_model_as<delphy::api::SkygridPopModel>() const {
+  return pop_model_as_SkygridPopModel();
+}
 
 struct ParamsBuilder {
   typedef Params Table;
@@ -671,6 +924,15 @@ struct ParamsBuilder {
   void add_pop_growth_rate_move_enabled(bool pop_growth_rate_move_enabled) {
     fbb_.AddElement<uint8_t>(Params::VT_POP_GROWTH_RATE_MOVE_ENABLED, static_cast<uint8_t>(pop_growth_rate_move_enabled), 1);
   }
+  void add_pop_model_type(delphy::api::PopModel pop_model_type) {
+    fbb_.AddElement<uint8_t>(Params::VT_POP_MODEL_TYPE, static_cast<uint8_t>(pop_model_type), 0);
+  }
+  void add_pop_model(::flatbuffers::Offset<void> pop_model) {
+    fbb_.AddOffset(Params::VT_POP_MODEL, pop_model);
+  }
+  void add_skygrid_tau(double skygrid_tau) {
+    fbb_.AddElement<double>(Params::VT_SKYGRID_TAU, skygrid_tau, 0.0);
+  }
   explicit ParamsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -712,8 +974,12 @@ inline ::flatbuffers::Offset<Params> CreateParams(
     bool mu_move_enabled = true,
     double pop_t0 = 0.0,
     bool final_pop_size_move_enabled = true,
-    bool pop_growth_rate_move_enabled = true) {
+    bool pop_growth_rate_move_enabled = true,
+    delphy::api::PopModel pop_model_type = delphy::api::PopModel_NONE,
+    ::flatbuffers::Offset<void> pop_model = 0,
+    double skygrid_tau = 0.0) {
   ParamsBuilder builder_(_fbb);
+  builder_.add_skygrid_tau(skygrid_tau);
   builder_.add_pop_t0(pop_t0);
   builder_.add_mpox_mu_star(mpox_mu_star);
   builder_.add_mpox_mu(mpox_mu);
@@ -733,8 +999,10 @@ inline ::flatbuffers::Offset<Params> CreateParams(
   builder_.add_mu(mu);
   builder_.add_num_local_moves_per_global_move(num_local_moves_per_global_move);
   builder_.add_step(step);
+  builder_.add_pop_model(pop_model);
   builder_.add_nu(nu);
   builder_.add_num_parts(num_parts);
+  builder_.add_pop_model_type(pop_model_type);
   builder_.add_pop_growth_rate_move_enabled(pop_growth_rate_move_enabled);
   builder_.add_final_pop_size_move_enabled(final_pop_size_move_enabled);
   builder_.add_mu_move_enabled(mu_move_enabled);
@@ -776,7 +1044,10 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
     bool mu_move_enabled = true,
     double pop_t0 = 0.0,
     bool final_pop_size_move_enabled = true,
-    bool pop_growth_rate_move_enabled = true) {
+    bool pop_growth_rate_move_enabled = true,
+    delphy::api::PopModel pop_model_type = delphy::api::PopModel_NONE,
+    ::flatbuffers::Offset<void> pop_model = 0,
+    double skygrid_tau = 0.0) {
   auto nu__ = nu ? _fbb.CreateVector<double>(*nu) : 0;
   return delphy::api::CreateParams(
       _fbb,
@@ -808,7 +1079,39 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
       mu_move_enabled,
       pop_t0,
       final_pop_size_move_enabled,
-      pop_growth_rate_move_enabled);
+      pop_growth_rate_move_enabled,
+      pop_model_type,
+      pop_model,
+      skygrid_tau);
+}
+
+inline bool VerifyPopModel(::flatbuffers::Verifier &verifier, const void *obj, PopModel type) {
+  switch (type) {
+    case PopModel_NONE: {
+      return true;
+    }
+    case PopModel_ExpPopModel: {
+      auto ptr = reinterpret_cast<const delphy::api::ExpPopModel *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case PopModel_SkygridPopModel: {
+      auto ptr = reinterpret_cast<const delphy::api::SkygridPopModel *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    default: return true;
+  }
+}
+
+inline bool VerifyPopModelVector(::flatbuffers::Verifier &verifier, const ::flatbuffers::Vector<::flatbuffers::Offset<void>> *values, const ::flatbuffers::Vector<uint8_t> *types) {
+  if (!values || !types) return !values && !types;
+  if (values->size() != types->size()) return false;
+  for (::flatbuffers::uoffset_t i = 0; i < values->size(); ++i) {
+    if (!VerifyPopModel(
+        verifier,  values->Get(i), types->GetEnum<PopModel>(i))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace api

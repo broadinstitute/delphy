@@ -185,6 +185,28 @@ auto api_tree_and_tree_info_to_phylo_tree(const uint8_t* tree_fb, const uint8_t*
   return tree;
 }
 
+auto api_to_skygrid_pop_model_type(api::SkygridType api_type) -> Skygrid_pop_model::Type {
+  switch (api_type) {
+    case api::SkygridType_Staircase:
+      return Skygrid_pop_model::Type::k_staircase;
+    case api::SkygridType_LogLinear:
+      return Skygrid_pop_model::Type::k_log_linear;
+    default:
+      CHECK(false) << "unrecognized SkygridType " << api_type;
+  }
+}
+
+auto skygrid_pop_model_type_to_api(Skygrid_pop_model::Type type) -> api::SkygridType {
+  switch (type) {
+    case Skygrid_pop_model::Type::k_staircase:
+      return api::SkygridType_Staircase;
+    case Skygrid_pop_model::Type::k_log_linear:
+      return api::SkygridType_LogLinear;
+    default:
+      CHECK(false) << "unrecognized Skygrid_pop_model::Type " << static_cast<int>(type);
+  }
+}
+
 auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   const auto& tree = run.tree();
   auto fbb = flatbuffers::FlatBufferBuilder{
@@ -196,6 +218,29 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   auto api_nu = flatbuffers::Offset<flatbuffers::Vector<double>>{};
   if (not std::ranges::all_of(run.nu(), [](auto nu_l) { return nu_l == 1.0; })) {
     api_nu = fbb.CreateVector(run.nu());
+
+  auto pop_model_type = api::PopModel_NONE;
+  auto pop_model_offset = flatbuffers::Offset<void>{};
+
+  const auto& pop_model = run.pop_model();
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
+    pop_model_type = api::PopModel_ExpPopModel;
+    pop_model_offset = api::CreateExpPopModel(
+        fbb,
+        exp_pop_model.t0(),
+        exp_pop_model.pop_at_t0(),
+        exp_pop_model.growth_rate()).o;  // .o = slight typing glitch in flatbuffers
+    
+  } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+    const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(pop_model);
+    pop_model_type = api::PopModel_SkygridPopModel;
+
+    pop_model_offset = api::CreateSkygridPopModelDirect(
+        fbb,
+        skygrid_pop_model_type_to_api(skygrid_pop_model.type()),
+        &skygrid_pop_model.x(),
+        &skygrid_pop_model.gamma()).o;  // .o = slight typing glitch in flatbuffers
   }
   
   auto params_builder = api::ParamsBuilder{fbb};
@@ -211,7 +256,13 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   params_builder.add_hky_pi_C(run.hky_pi()[Real_seq_letter::C]);
   params_builder.add_hky_pi_G(run.hky_pi()[Real_seq_letter::G]);
   params_builder.add_hky_pi_T(run.hky_pi()[Real_seq_letter::T]);
-  const auto& pop_model = run.pop_model();
+  params_builder.add_pop_model_type(pop_model_type);
+  if (pop_model_type != api::PopModel_NONE) {
+    params_builder.add_pop_model(pop_model_offset);
+  }
+  params_builder.add_skygrid_tau(run.skygrid_tau());
+  
+  // Set the deprecated hard-coded exponential pop model parameters for compatibility
   if (typeid(pop_model) == typeid(Exp_pop_model)) {
     const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
     params_builder.add_pop_t0(exp_pop_model.t0());
@@ -256,8 +307,8 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
   run.set_mu(api_params->mu());
   run.set_alpha(api_params->alpha());
   if (api_params->nu() != nullptr) {
-    std::vector<double> new_nu{api_params->nu()->cbegin(), api_params->nu()->cend()};
-    run.set_nu(new_nu);
+    auto new_nu = std::vector<double>{api_params->nu()->cbegin(), api_params->nu()->cend()};
+    run.set_nu(std::move(new_nu));
   } else {
     run.set_nu(std::vector<double>(run.tree().num_sites(), 1.0));
   }
@@ -266,7 +317,44 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
                   api_params->hky_pi_C(),
                   api_params->hky_pi_G(),
                   api_params->hky_pi_T()});
-  run.set_pop_model(std::make_unique<Exp_pop_model>(api_params->pop_t0(), api_params->pop_n0(), api_params->pop_g()));
+
+  if (api_params->pop_model_type() == api::PopModel_NONE) {
+    run.set_pop_model(std::make_shared<Exp_pop_model>(
+        api_params->pop_t0(),
+        api_params->pop_n0(),
+        api_params->pop_g()));
+  } else {
+    switch (api_params->pop_model_type()) {
+      case api::PopModel_ExpPopModel: {
+        auto api_exp_pop_model = api_params->pop_model_as_ExpPopModel();
+        run.set_pop_model(std::make_shared<Exp_pop_model>(
+            api_exp_pop_model->t0(),
+            api_exp_pop_model->n0(),
+            api_exp_pop_model->g()));
+        break;
+      }
+      case api::PopModel_SkygridPopModel: {
+        auto api_skygrid_pop_model = api_params->pop_model_as_SkygridPopModel();
+        auto new_x = std::vector<double>{
+          api_skygrid_pop_model->x_k()->cbegin(),
+          api_skygrid_pop_model->x_k()->cend()};
+        auto new_gamma = std::vector<double>{
+          api_skygrid_pop_model->gamma_k()->cbegin(),
+          api_skygrid_pop_model->gamma_k()->cend()};
+
+        CHECK_EQ(std::ssize(new_x), std::ssize(new_gamma));
+        
+        run.set_pop_model(std::make_shared<Skygrid_pop_model>(
+            std::move(new_x),
+            std::move(new_gamma),
+            api_to_skygrid_pop_model_type(api_skygrid_pop_model->type())));
+        break;
+      }
+      default:
+        CHECK(false) << "unrecognized pop_model_type " << api_params->pop_model_type();
+    }
+  }
+  run.set_skygrid_tau(api_params->skygrid_tau());
 
   run.set_only_displacing_inner_nodes(api_params->only_displacing_inner_nodes());
   run.set_topology_moves_enabled(api_params->topology_moves_enabled());

@@ -109,7 +109,7 @@ class Skygrid_pop_model : public Pop_model {
     //  gamma_k              gamma_{1 + M-k}
     //  exp(gamma_k)         theta_{1 + M-k}
     
-    k_staircase,
+    k_staircase = 1,
 
     // A continuous population curve s.t. log(N(t)) is continuous and linearly
     // interpolates between the values at the knots.
@@ -126,7 +126,7 @@ class Skygrid_pop_model : public Pop_model {
     //        |
     //        \ exp(gamma_M),                            x_M < t.
 
-    k_log_linear
+    k_log_linear = 2
   };
   
   Skygrid_pop_model(
