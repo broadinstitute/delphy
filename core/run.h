@@ -55,6 +55,8 @@ class Run {
     pop_model_ = std::move(pop_model);
     coalescent_prior_.pop_model_changed(pop_model_);
     invalidate_derived_quantities(); }
+  auto skygrid_tau() const -> double { return skygrid_tau_; }
+  auto set_skygrid_tau(double skygrid_tau) -> void { skygrid_tau_ = skygrid_tau, invalidate_derived_quantities(); }
 
   auto evo() const -> const Global_evo_model& {
     return validate_derived_quantities(), evo_; }
@@ -200,6 +202,7 @@ class Run {
 
   // Parameters
   std::shared_ptr<const Pop_model> pop_model_;
+  double skygrid_tau_;
   double alpha_;
   Site_vector<double> nu_;
   Hky_model hky_model_;
@@ -247,6 +250,8 @@ class Run {
   auto alpha_moves() -> void;
   auto pop_size_move() -> void;
   auto pop_growth_rate_move() -> void;
+  auto skygrid_tau_move() -> void;
+  auto skygrid_gammas_move() -> void;
 };
 
 }  // namespace delphy
