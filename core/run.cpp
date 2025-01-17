@@ -15,6 +15,7 @@ Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
       num_parts_{1},
       target_coal_prior_cells_{400},
       pop_model_{std::make_shared<Exp_pop_model>(calc_max_tip_time(tree_), 1000.0, 0.0)},
+      skygrid_tau_{1.0},  // Prior mean, Gill et al 2012 Eq. 15
       alpha_{10.0},
       nu_(tree_.num_sites(), 1.0),
       evo_{make_single_partition_global_evo_model(tree_.num_sites())},
@@ -503,6 +504,36 @@ auto Run::calc_cur_log_other_priors() const -> double {
     const auto mu_g = 0.001 / 365.0;
     const auto scale_g = 30.701135 / 365.0;
     log_prior += -std::abs(exp_pop_model.growth_rate() - mu_g) / scale_g - std::log(2 * scale_g);
+    
+  } else if (typeid(*pop_model_) == typeid(Skygrid_pop_model)) {
+    const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(*pop_model_);
+
+    // tau - gamma prior (Gill et al 2012, Eq. 15)
+    const auto prior_tau_alpha = 0.001;
+    const auto prior_tau_beta = 0.001;
+
+    const auto log_tau = std::log(skygrid_tau_);
+    
+    log_prior +=
+        (prior_tau_alpha - 1) * log_tau
+        - prior_tau_beta * skygrid_tau_;
+
+    // gamma - GMRF prior (Gill et al 2012, Eq. 13)
+    //
+    // Since time intervals are in principle not all the same, we really should
+    // be using something like a diffusion law to condition how much consecutive
+    // gamma's should vary, e.g., gamma_{i+1} - gamma_i ~ N(0, 2 D (x_{i+1} - x_i)).
+    // We don't do that to not deviate from the standard Skygrid parametrization;
+    // assuming equal time intervals of width dt = x_1 - x_0, we'd have
+    //
+    //    2 D dt = 1/tau => D = 1/(2 tau dt).
+
+    for (auto k = 0; k != skygrid_pop_model.M(); ++k) {
+      auto delta_gamma = skygrid_pop_model.gamma(k+1) - skygrid_pop_model.gamma(k);
+      log_prior +=
+          0.5 * log_tau
+          - 0.5 * delta_gamma*delta_gamma * skygrid_tau_;
+    }
   }
 
   return log_prior;
@@ -651,12 +682,21 @@ auto Run::run_global_moves() -> void {
   // Depends only on tree topology; after enough MCMC moves, the
   // resulting population model parameters are practically Gibbs sampled
   for (auto i = 0; i != 50; ++i) {
-    if (final_pop_size_move_enabled_) {
-      pop_size_move();
+    if (typeid(*pop_model_) == typeid(Exp_pop_model)) {
+      if (final_pop_size_move_enabled_) {
+        pop_size_move();
+        check_derived_quantities();
+      }
+      if (pop_growth_rate_move_enabled_) {
+        pop_growth_rate_move();
+        check_derived_quantities();
+      }
+      
+    } else if (typeid(*pop_model_) == typeid(Skygrid_pop_model)) {
+      skygrid_tau_move();
       check_derived_quantities();
-    }
-    if (pop_growth_rate_move_enabled_) {
-      pop_growth_rate_move();
+      
+      skygrid_gammas_move();
       check_derived_quantities();
     }
   }
@@ -1113,83 +1153,179 @@ auto Run::alpha_moves() -> void {
 }
 
 auto Run::pop_size_move() -> void {
-  if (typeid(*pop_model_) == typeid(Exp_pop_model)) {
-    auto exp_pop_model = std::static_pointer_cast<const Exp_pop_model>(pop_model_);
+  CHECK(typeid(*pop_model_) == typeid(Exp_pop_model));
+  auto exp_pop_model = std::static_pointer_cast<const Exp_pop_model>(pop_model_);
     
-    // We follow LeMieux et al (2021) and use
-    //
-    // - a 1/x prior on the pop size at time 0  (this makes the choice of t = 0 irrelevant)
-    // - a scale operator with scale factor [0.75, 1/0.75] to change the pop size
+  // We follow LeMieux et al (2021) and use
+  //
+  // - a 1/x prior on the pop size at time 0  (this makes the choice of t = 0 irrelevant)
+  // - a scale operator with scale factor [0.75, 1/0.75] to change the pop size
     
-    auto scale_factor = 0.75;
-    auto old_n0 = exp_pop_model->pop_at_t0();
-    auto scale = absl::Uniform(bitgen_, scale_factor, 1 / scale_factor);
-    auto new_n0 = scale * old_n0;
-    auto alpha_n_to_o_over_o_to_n = old_n0 / new_n0;
+  auto scale_factor = 0.75;
+  auto old_n0 = exp_pop_model->pop_at_t0();
+  auto scale = absl::Uniform(bitgen_, scale_factor, 1 / scale_factor);
+  auto new_n0 = scale * old_n0;
+  auto alpha_n_to_o_over_o_to_n = old_n0 / new_n0;
     
-    // 1/x prior for n0:
-    //  pi(n0) ~ 1/n0  => pi(new_n0)/pi(old_n0) = 1/scale
-    auto log_prior_new_over_prior_old = -std::log(scale);
+  // 1/x prior for n0:
+  //  pi(n0) ~ 1/n0  => pi(new_n0)/pi(old_n0) = 1/scale
+  auto log_prior_new_over_prior_old = -std::log(scale);
     
-    auto old_log_coal = log_coalescent_prior_;
-    auto old_pop_model = exp_pop_model;
-    pop_model_ = std::make_shared<Exp_pop_model>(old_pop_model->t0(), new_n0, old_pop_model->growth_rate());
+  auto old_log_coal = log_coalescent_prior_;
+  auto old_pop_model = exp_pop_model;
+  pop_model_ = std::make_shared<Exp_pop_model>(old_pop_model->t0(), new_n0, old_pop_model->growth_rate());
+  coalescent_prior_.pop_model_changed(pop_model_);
+  auto new_log_coal = calc_cur_log_coalescent_prior();
+    
+  auto log_metropolis =
+      (new_log_coal - old_log_coal) + log_prior_new_over_prior_old + std::log(alpha_n_to_o_over_o_to_n);
+  if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
+    // Accept
+    log_coalescent_prior_ = new_log_coal;
+    log_other_priors_ += log_prior_new_over_prior_old;
+  } else {
+    // Reject
+    pop_model_ = old_pop_model;
     coalescent_prior_.pop_model_changed(pop_model_);
-    auto new_log_coal = calc_cur_log_coalescent_prior();
-    
-    auto log_metropolis =
-        (new_log_coal - old_log_coal) + log_prior_new_over_prior_old + std::log(alpha_n_to_o_over_o_to_n);
-    if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
-      // Accept
-      log_coalescent_prior_ = new_log_coal;
-      log_other_priors_ += log_prior_new_over_prior_old;
-    } else {
-      // Reject
-      pop_model_ = old_pop_model;
-      coalescent_prior_.pop_model_changed(pop_model_);
-    }
   }
 }
 
 auto Run::pop_growth_rate_move() -> void {
-  if (typeid(*pop_model_) == typeid(Exp_pop_model)) {
-    auto exp_pop_model = std::static_pointer_cast<const Exp_pop_model>(pop_model_);
+  CHECK(typeid(*pop_model_) == typeid(Exp_pop_model));
+  auto exp_pop_model = std::static_pointer_cast<const Exp_pop_model>(pop_model_);
     
-    // We follow LeMieux et al (2021) and use
-    //
-    // - a Laplace prior on the growth rate, with mu 0.001/365 and scale 30.701135/365
-    //     pdf(g; mu, scale) = 1/(2*scale) exp(-|g - mu| / scale)
-    // - a random walk operator on the growth rate that adds a uniform perturbation in [-delta, +delta],
-    //   with delta = 1.0 / 365.0
+  // We follow LeMieux et al (2021) and use
+  //
+  // - a Laplace prior on the growth rate, with mu 0.001/365 and scale 30.701135/365
+  //     pdf(g; mu, scale) = 1/(2*scale) exp(-|g - mu| / scale)
+  // - a random walk operator on the growth rate that adds a uniform perturbation in [-delta, +delta],
+  //   with delta = 1.0 / 365.0
     
-    auto window_size = 1.0 / 365.0;
-    auto mu = 0.001 / 365.0;
-    auto scale = 30.701135 / 365.0;
+  auto window_size = 1.0 / 365.0;
+  auto mu = 0.001 / 365.0;
+  auto scale = 30.701135 / 365.0;
     
-    auto delta = absl::Uniform(bitgen_, -window_size, +window_size);
-    auto old_g = exp_pop_model->growth_rate();
-    auto new_g = old_g + delta;
+  auto delta = absl::Uniform(bitgen_, -window_size, +window_size);
+  auto old_g = exp_pop_model->growth_rate();
+  auto new_g = old_g + delta;
     
-    // Laplace prior for g
-    //   pi(g) ~ exp(-|g - mu| / b)
-    auto log_prior_new_over_prior_old = (std::abs(old_g - mu) - std::abs(new_g - mu)) / scale;
+  // Laplace prior for g
+  //   pi(g) ~ exp(-|g - mu| / b)
+  auto log_prior_new_over_prior_old = (std::abs(old_g - mu) - std::abs(new_g - mu)) / scale;
     
-    auto old_log_coal = log_coalescent_prior_;
-    auto old_pop_model = exp_pop_model;
-    pop_model_ = std::make_shared<Exp_pop_model>(old_pop_model->t0(), old_pop_model->pop_at_t0(), new_g);
+  auto old_log_coal = log_coalescent_prior_;
+  auto old_pop_model = exp_pop_model;
+  pop_model_ = std::make_shared<Exp_pop_model>(old_pop_model->t0(), old_pop_model->pop_at_t0(), new_g);
+  coalescent_prior_.pop_model_changed(pop_model_);
+  auto new_log_coal = calc_cur_log_coalescent_prior();
+    
+  auto log_metropolis = (new_log_coal - old_log_coal) + log_prior_new_over_prior_old;
+  if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
+    // Accept
+    log_coalescent_prior_ = new_log_coal;
+    log_other_priors_ += log_prior_new_over_prior_old;
+  } else {
+    // Reject
+    pop_model_ = old_pop_model;
     coalescent_prior_.pop_model_changed(pop_model_);
-    auto new_log_coal = calc_cur_log_coalescent_prior();
+  }
+}
+
+auto Run::skygrid_tau_move() -> void {
+  CHECK(typeid(*pop_model_) == typeid(Skygrid_pop_model));
+  auto skygrid_pop_model = std::static_pointer_cast<const Skygrid_pop_model>(pop_model_);
+
+  // If all other parameters are fixed, tau follows a Gamma distribution:
+  //
+  // P(tau) \propto tau^(alpha-1) exp(-beta tau)
+  //                * tau^(M/2) exp(-tau sum_squared_delta_gammas/2)
+  //
+  // => tau ~ Gamma(alpha + M/2, beta + sum_squared_delta_gammas/2)
+  //
+  // We can Gibbs sample that directly
+
+  auto sum_squared_delta_gammas = 0.0;
+  for (auto k = 0; k != skygrid_pop_model->M(); ++k) {
+    auto delta_gamma = skygrid_pop_model->gamma(k+1) - skygrid_pop_model->gamma(k);
+    sum_squared_delta_gammas += delta_gamma*delta_gamma;
+  }
+
+  auto prior_tau_alpha = 0.001;  // Gill et al 2012, Eq. 15
+  auto prior_tau_beta = 0.001;
+  auto M = skygrid_pop_model->M();
+  
+  auto post_alpha = prior_tau_alpha + 0.5 * M;
+  auto post_beta = prior_tau_beta + 0.5 * sum_squared_delta_gammas;
+
+  // WARNING: C++ calls "beta" the *scale* of the distribution, i.e., the reciprocal of the rate
+  auto tau_dist = std::gamma_distribution<double>{
+      post_alpha,
+      1.0 / post_beta};
+  
+  auto old_tau = skygrid_tau_;
+  auto new_tau = tau_dist(bitgen_);
+  skygrid_tau_ = new_tau;
+  
+  log_other_priors_ +=
+      (post_alpha - 1) * std::log(new_tau/old_tau)
+      - post_beta * (new_tau - old_tau);
+}
+
+auto Run::skygrid_gammas_move() -> void {
+  CHECK(typeid(*pop_model_) == typeid(Skygrid_pop_model));
+  auto skygrid_pop_model = std::static_pointer_cast<const Skygrid_pop_model>(pop_model_);
+
+  // Here, the suggested move in Gill et al 2012 is super-smart but super-complicated.
+  // For now, we just displace one of the gamma_k's by a delta ~ N(0, 1/tau).
+  // Smarter moves might involve working in Fourier (DCT) space (e.g., the zeroth mode
+  // displaces all gamma_k's by the same amount, which costs nothing w.r.t to the GMRF prior),
+  // or making concerted displacements (e.g., adding delta to gamma_k for k_min <= k <= k_max)
+
+  auto M = skygrid_pop_model->M();
+  auto k = absl::Uniform(absl::IntervalClosedClosed, bitgen_, 0, M);
+  auto delta_sd = std::sqrt(1/skygrid_tau_);
+  
+  auto delta = absl::Gaussian(bitgen_, 0.0, delta_sd);
+
+  auto delta_sum_squared_delta_gammas = 0.0;
+  if (k > 0) {
+    auto old_delta_gamma = skygrid_pop_model->gamma(k) - skygrid_pop_model->gamma(k-1);
+    auto new_delta_gamma = old_delta_gamma + delta;
     
-    auto log_metropolis = (new_log_coal - old_log_coal) + log_prior_new_over_prior_old;
-    if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
-      // Accept
-      log_coalescent_prior_ = new_log_coal;
-      log_other_priors_ += log_prior_new_over_prior_old;
-    } else {
-      // Reject
-      pop_model_ = old_pop_model;
-      coalescent_prior_.pop_model_changed(pop_model_);
-    }
+    delta_sum_squared_delta_gammas +=
+        new_delta_gamma*new_delta_gamma - old_delta_gamma*old_delta_gamma;
+  }
+  if (k < M) {
+    auto old_delta_gamma = skygrid_pop_model->gamma(k+1) - skygrid_pop_model->gamma(k);
+    auto new_delta_gamma = old_delta_gamma - delta;
+    
+    delta_sum_squared_delta_gammas +=
+        new_delta_gamma*new_delta_gamma - old_delta_gamma*old_delta_gamma;
+  }
+
+  auto log_prior_new_over_prior_old =
+      - (skygrid_tau_/2.0) * delta_sum_squared_delta_gammas;
+  auto alpha_n_to_o_over_o_to_n = 1.0;  // Symmetric move
+  
+  auto old_log_coal = log_coalescent_prior_;
+  auto old_pop_model = skygrid_pop_model;
+  
+  auto new_gamma = std::vector<double>{skygrid_pop_model->gamma()};
+  new_gamma.at(k) += delta;
+  pop_model_ = std::make_shared<Skygrid_pop_model>(old_pop_model->x(), new_gamma, old_pop_model->type());
+  coalescent_prior_.pop_model_changed(pop_model_);
+  auto new_log_coal = calc_cur_log_coalescent_prior();
+    
+  auto log_metropolis =
+      (new_log_coal - old_log_coal) + log_prior_new_over_prior_old + std::log(alpha_n_to_o_over_o_to_n);
+  if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
+    // Accept
+    log_coalescent_prior_ = new_log_coal;
+    log_other_priors_ += log_prior_new_over_prior_old;
+  } else {
+    // Reject
+    pop_model_ = old_pop_model;
+    coalescent_prior_.pop_model_changed(pop_model_);
   }
 }
 
