@@ -929,82 +929,23 @@ auto delphy_run_set_hky_pi_T(Delphy_context& /*ctx*/, Run& run, double hky_pi_T)
   run.set_hky_pi(hky_pi);
 }
 
+// Delphy retains ownership of the returned Pop_model object
 EMSCRIPTEN_KEEPALIVE
 extern "C"
-auto delphy_run_get_pop_t0(Delphy_context& /*ctx*/, const Run& run) -> double {
-  const auto& pop_model = run.pop_model();
-  if (typeid(pop_model) == typeid(Exp_pop_model)) {
-    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
-    return exp_pop_model.t0();
-  } else {
-    std::cerr << "WARNING: call to delphy_run_get_pop_t0 but run.pop_model is of type " << typeid(pop_model).name() << '\n';
-    return 0.0;
-  }
+auto delphy_run_get_pop_model(Delphy_context& /*ctx*/, const Run& run) -> const Pop_model* {
+  return &run.pop_model();
 }
 
+// Delphy takes ownership of the Pop_model object
 EMSCRIPTEN_KEEPALIVE
 extern "C"
-auto delphy_run_set_pop_t0(Delphy_context& /*ctx*/, Run& run, double pop_t0) -> void {
-  const auto& old_pop_model = run.pop_model();
-  if (typeid(old_pop_model) == typeid(Exp_pop_model)) {
-    const auto& old_exp_pop_model = static_cast<const Exp_pop_model&>(old_pop_model);
-    run.set_pop_model(std::make_shared<Exp_pop_model>(
-        pop_t0, old_exp_pop_model.pop_at_t0(), old_exp_pop_model.growth_rate()));
-  } else {
-    std::cerr << "WARNING: call to delphy_run_set_pop_t0 but run.pop_model is of type " << typeid(old_pop_model).name() << '\n';
-  }
-}
-
-EMSCRIPTEN_KEEPALIVE
-extern "C"
-auto delphy_run_get_pop_n0(Delphy_context& /*ctx*/, const Run& run) -> double {
-  const auto& pop_model = run.pop_model();
-  if (typeid(pop_model) == typeid(Exp_pop_model)) {
-    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
-    return exp_pop_model.pop_at_t0();
-  } else {
-    std::cerr << "WARNING: call to delphy_run_get_pop_n0 but run.pop_model is of type " << typeid(pop_model).name() << '\n';
-    return 0.0;
-  }
-}
-
-EMSCRIPTEN_KEEPALIVE
-extern "C"
-auto delphy_run_set_pop_n0(Delphy_context& /*ctx*/, Run& run, double pop_n0) -> void {
-  const auto& old_pop_model = run.pop_model();
-  if (typeid(old_pop_model) == typeid(Exp_pop_model)) {
-    const auto& old_exp_pop_model = static_cast<const Exp_pop_model&>(old_pop_model);
-    run.set_pop_model(std::make_shared<Exp_pop_model>(
-        old_exp_pop_model.t0(), pop_n0, old_exp_pop_model.growth_rate()));
-  } else {
-    std::cerr << "WARNING: call to delphy_run_set_pop_n0 but run.pop_model is of type " << typeid(old_pop_model).name() << '\n';
-  }
-}
-
-EMSCRIPTEN_KEEPALIVE
-extern "C"
-auto delphy_run_get_pop_g(Delphy_context& /*ctx*/, const Run& run) -> double {
-  const auto& pop_model = run.pop_model();
-  if (typeid(pop_model) == typeid(Exp_pop_model)) {
-    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
-    return exp_pop_model.growth_rate();
-  } else {
-    std::cerr << "WARNING: call to delphy_run_get_pop_g but run.pop_model is of type " << typeid(pop_model).name() << '\n';
-    return 0.0;
-  }
-}
-
-EMSCRIPTEN_KEEPALIVE
-extern "C"
-auto delphy_run_set_pop_g(Delphy_context& /*ctx*/, Run& run, double pop_g) -> void {
-  const auto& old_pop_model = run.pop_model();
-  if (typeid(old_pop_model) == typeid(Exp_pop_model)) {
-    const auto& old_exp_pop_model = static_cast<const Exp_pop_model&>(old_pop_model);
-    run.set_pop_model(std::make_shared<Exp_pop_model>(
-        old_exp_pop_model.t0(), old_exp_pop_model.pop_at_t0(), pop_g));
-  } else {
-    std::cerr << "WARNING: call to delphy_run_set_pop_g but run.pop_model is of type " << typeid(old_pop_model).name() << '\n';
-  }
+auto delphy_run_set_pop_model(
+    Delphy_context& /*ctx*/,
+    Run& run,
+    const Pop_model* pop_model)
+    -> void {
+  
+  run.set_pop_model(std::shared_ptr<const Pop_model>{pop_model});
 }
 
 EMSCRIPTEN_KEEPALIVE
@@ -1363,6 +1304,151 @@ auto delphy_mcc_tree_export(
 
 // Population model
 // ================
+//
+// On the C++ side, `Pop_model` is an abstract base class with different concrete implementations.
+// This creates some unavoidable awkwardness in the WASM interface, which we try to limit to
+// the following section
+
+// Hard-coded IDs used only at the WASM/JS boundary (see InternalPopModelClass in delphy_api.ts)
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_pop_model_get_class(Delphy_context& /*ctx*/, Pop_model* pop_model) -> int32_t {
+  if (typeid(*pop_model) == typeid(Exp_pop_model)) {
+    return 1;
+  } else if (typeid(*pop_model) == typeid(Skygrid_pop_model)) {
+    return 2;
+  } else {
+    std::cerr << "Unknown Pop_model class: " << typeid(*pop_model).name() << std::endl;
+    return -1;
+  }
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_pop_model_delete(Delphy_context& /*ctx*/, Pop_model* pop_model) -> void {
+  delete pop_model;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_exp_pop_model_new(
+    Delphy_context& /*ctx*/, 
+    double t0,
+    double n0,
+    double g)
+    -> Pop_model* {
+  return new Exp_pop_model{t0, n0, g};
+}
+
+// Assumes that exp_pop_model really is an `Exp_pop_model` !
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_exp_pop_model_get_t0(Delphy_context& /*ctx*/, const Exp_pop_model& exp_pop_model) -> double {
+  return exp_pop_model.t0();
+}
+
+// Assumes that exp_pop_model really is an `Exp_pop_model` !
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_exp_pop_model_get_n0(Delphy_context& /*ctx*/, const Exp_pop_model& exp_pop_model) -> double {
+  return exp_pop_model.pop_at_t0();
+}
+
+// Assumes that exp_pop_model really is an `Exp_pop_model` !
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_exp_pop_model_get_g(Delphy_context& /*ctx*/, const Exp_pop_model& exp_pop_model) -> double {
+  return exp_pop_model.growth_rate();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_skygrid_pop_model_new(
+    Delphy_context& /*ctx*/,
+    int32_t num_knots,
+    double* in_x,      // array of `num_knots` values
+    double* in_gamma,  // array of `num_knots` values
+    Skygrid_pop_model::Type type)
+    -> Pop_model* {
+  return new Skygrid_pop_model{
+    std::vector<double>{in_x, in_x + num_knots},
+    std::vector<double>{in_gamma, in_gamma + num_knots},
+    type};
+}
+
+// Assumes that skygrid_pop_model really is an `Skygrid_pop_model` !
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_skygrid_pop_model_get_type(
+    Delphy_context& /*ctx*/,
+    const Skygrid_pop_model& skygrid_pop_model)
+    -> Skygrid_pop_model::Type {
+  
+  return skygrid_pop_model.type();
+}
+
+// Assumes that skygrid_pop_model really is an `Skygrid_pop_model` !
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_skygrid_pop_model_get_num_knots(
+    Delphy_context& /*ctx*/,
+    const Skygrid_pop_model& skygrid_pop_model)
+    -> int32_t {
+  
+  return std::ssize(skygrid_pop_model.x());
+}
+
+// Assumes that skygrid_pop_model really is an `Skygrid_pop_model` !
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_skygrid_pop_model_get_x(
+    Delphy_context& /*ctx*/,
+    const Skygrid_pop_model& skygrid_pop_model,
+    int32_t num_knots,
+    double* out_x)
+    -> void {
+
+  if (std::ssize(skygrid_pop_model.x()) != num_knots) {
+    std::cerr
+        << absl::StreamFormat(
+            "ERROR in delphy_skygrid_pop_model_get_x! "
+            "num_knots = %d differs from actual number of knots (%d)",
+            num_knots, std::ssize(skygrid_pop_model.x()))
+        << std::endl;
+    return;
+  }
+
+  for (auto k = 0; k != num_knots; ++k) {
+    out_x[k] = skygrid_pop_model.x(k);
+  }
+}
+
+// Assumes that skygrid_pop_model really is an `Skygrid_pop_model` !
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_skygrid_pop_model_get_gamma(
+    Delphy_context& /*ctx*/,
+    const Skygrid_pop_model& skygrid_pop_model,
+    int32_t num_knots,
+    double* out_gamma)
+    -> void {
+
+  if (std::ssize(skygrid_pop_model.gamma()) != num_knots) {
+    std::cerr
+        << absl::StreamFormat(
+            "ERROR in delphy_skygrid_pop_model_get_gamma! "
+            "num_knots = %d differs from actual number of knots (%d)",
+            num_knots, std::ssize(skygrid_pop_model.gamma()))
+        << std::endl;
+    return;
+  }
+
+  for (auto k = 0; k != num_knots; ++k) {
+    out_gamma[k] = skygrid_pop_model.gamma(k);
+  }
+}
+
+
 
 // For the given population model parameters, renders the population curve at discrete intervals.
 //
@@ -1378,9 +1464,7 @@ EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_pop_model_render_population_curve(
     Delphy_context& /*ctx*/,
-    double pop_t0,
-    double pop_n0,
-    double pop_g,
+    const Pop_model& pop_model,
     double t_start,
     double t_end,
     int32_t num_t_cells,
@@ -1389,7 +1473,7 @@ auto delphy_pop_model_render_population_curve(
   
   using namespace delphy;
   try {
-    api_render_population_curve(pop_t0, pop_n0, pop_g, t_start, t_end, num_t_cells, out_values);
+    api_render_population_curve(pop_model, t_start, t_end, num_t_cells, out_values);
   } catch (std::exception& e) {
     std::cerr << e.what() << std::endl;
   }
@@ -1417,9 +1501,7 @@ extern "C"
 auto delphy_pop_model_probe_site_states_on_tree(
     Delphy_context& /*ctx*/,
     const Phylo_tree& tree,
-    double pop_t0,
-    double pop_n0,
-    double pop_g,
+    const Pop_model& pop_model,
     int32_t site,
     double t_start,
     double t_end,
@@ -1429,7 +1511,7 @@ auto delphy_pop_model_probe_site_states_on_tree(
   
   using namespace delphy;
   try {
-    api_probe_site_states_on_tree(tree, pop_t0, pop_n0, pop_g, site, t_start, t_end, num_t_cells, out_values);
+    api_probe_site_states_on_tree(tree, pop_model, site, t_start, t_end, num_t_cells, out_values);
   } catch (std::exception& e) {
     std::cerr << e.what() << std::endl;
   }
@@ -1462,9 +1544,7 @@ extern "C"
 auto delphy_pop_model_probe_ancestors_on_tree(
     Delphy_context& /*ctx*/,
     const Phylo_tree& tree,
-    double pop_t0,
-    double pop_n0,
-    double pop_g,
+    const Pop_model& pop_model,
     const int32_t* marked_ancestors,
     int32_t num_marked_ancestors,
     double t_start,
@@ -1475,7 +1555,7 @@ auto delphy_pop_model_probe_ancestors_on_tree(
   
   using namespace delphy;
   try {
-    api_probe_ancestors_on_tree(tree, pop_t0, pop_n0, pop_g, marked_ancestors, num_marked_ancestors,
+    api_probe_ancestors_on_tree(tree, pop_model, marked_ancestors, num_marked_ancestors,
                                 t_start, t_end, num_t_cells, out_values);
   } catch (std::exception& e) {
     std::cerr << e.what() << std::endl;

@@ -376,9 +376,7 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
 
 auto api_probe_site_states_on_tree(
     const Phylo_tree& tree,
-    double pop_t0,
-    double pop_n0,
-    double pop_g,
+    const Pop_model& pop_model,
     int32_t site,
     double t_start,
     double t_end,
@@ -386,8 +384,6 @@ auto api_probe_site_states_on_tree(
     double* out_values)
     -> void {
   
-  auto pop_model = Exp_pop_model{pop_t0, pop_n0, pop_g};
-
   auto results = probe_site_states_on_tree(tree, pop_model, site, t_start, t_end, num_t_cells);
 
   for (auto s : k_all_real_seq_letters) {
@@ -400,9 +396,7 @@ auto api_probe_site_states_on_tree(
 
 auto api_probe_ancestors_on_tree(
     const Phylo_tree& tree,
-    double pop_t0,
-    double pop_n0,
-    double pop_g,
+    const Pop_model& pop_model,
     const int32_t* marked_ancestors,
     int32_t num_marked_ancestors,
     double t_start,
@@ -411,8 +405,6 @@ auto api_probe_ancestors_on_tree(
     double* out_values)
     -> void {
   
-  auto pop_model = Exp_pop_model{pop_t0, pop_n0, pop_g};
-
   if (num_marked_ancestors < 0) {
     throw std::invalid_argument(absl::StrFormat(
         "Number of marked ancestor cannot be negative (got %d)", num_marked_ancestors));
@@ -430,17 +422,13 @@ auto api_probe_ancestors_on_tree(
 }
 
 auto api_render_population_curve(
-    double pop_t0,
-    double pop_n0,
-    double pop_g,
+    const Pop_model& pop_model,
     double t_start,
     double t_end,
     int32_t num_t_cells,
     double* out_values)
     -> void {
   
-  auto pop_model = Exp_pop_model{pop_t0, pop_n0, pop_g};
-
   auto results = render_population_curve(pop_model, t_start, t_end, num_t_cells);
 
   for (auto cell = 0; cell != num_t_cells; ++cell) {
