@@ -929,6 +929,18 @@ auto delphy_run_set_hky_pi_T(Delphy_context& /*ctx*/, Run& run, double hky_pi_T)
   run.set_hky_pi(hky_pi);
 }
 
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_skygrid_tau(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.skygrid_tau();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_skygrid_tau(Delphy_context& /*ctx*/, Run& run, double skygrid_tau) -> void {
+  run.set_skygrid_tau(skygrid_tau);
+}
+
 // Delphy retains ownership of the returned Pop_model object
 EMSCRIPTEN_KEEPALIVE
 extern "C"
