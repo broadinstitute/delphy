@@ -24,9 +24,7 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void;
 
 auto api_probe_site_states_on_tree(
     const Phylo_tree& tree,
-    double pop_t0,
-    double pop_n0,
-    double pop_g,
+    const Pop_model& pop_model,
     int32_t site,
     double t_start,
     double t_end,
@@ -36,9 +34,7 @@ auto api_probe_site_states_on_tree(
 
 auto api_probe_ancestors_on_tree(
     const Phylo_tree& tree,
-    double pop_t0,
-    double pop_n0,
-    double pop_g,
+    const Pop_model& pop_model,
     const int32_t* marked_ancestors,
     int32_t num_marked_ancestors,
     double t_start,
@@ -48,9 +44,7 @@ auto api_probe_ancestors_on_tree(
     -> void;
 
 auto api_render_population_curve(
-    double pop_t0,
-    double pop_n0,
-    double pop_g,
+    const Pop_model& pop_model,
     double t_start,
     double t_end,
     int32_t num_t_cells,
