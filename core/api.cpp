@@ -218,6 +218,7 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   auto api_nu = flatbuffers::Offset<flatbuffers::Vector<double>>{};
   if (not std::ranges::all_of(run.nu(), [](auto nu_l) { return nu_l == 1.0; })) {
     api_nu = fbb.CreateVector(run.nu());
+  }
 
   auto pop_model_type = api::PopModel_NONE;
   auto pop_model_offset = flatbuffers::Offset<void>{};
