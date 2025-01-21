@@ -493,8 +493,9 @@ auto Run::calc_cur_log_other_priors() const -> double {
         - 0.5 * std::log(2 * M_PI * sigma_log_kappa * sigma_log_kappa) - std::log(hky_kappa());
   }
 
-  if (typeid(*pop_model_) == typeid(Exp_pop_model)) {
-    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(*pop_model_);
+  const Pop_model& raw_pop_model = *pop_model_;
+  if (typeid(raw_pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(raw_pop_model);
     
     // pop_n0 - 1/x prior
     log_prior -= std::log(exp_pop_model.pop_at_t0());
@@ -505,8 +506,8 @@ auto Run::calc_cur_log_other_priors() const -> double {
     const auto scale_g = 30.701135 / 365.0;
     log_prior += -std::abs(exp_pop_model.growth_rate() - mu_g) / scale_g - std::log(2 * scale_g);
     
-  } else if (typeid(*pop_model_) == typeid(Skygrid_pop_model)) {
-    const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(*pop_model_);
+  } else if (typeid(raw_pop_model) == typeid(Skygrid_pop_model)) {
+    const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(raw_pop_model);
 
     // tau - gamma prior (Gill et al 2012, Eq. 15)
     const auto prior_tau_alpha = 0.001;
@@ -682,7 +683,9 @@ auto Run::run_global_moves() -> void {
   // Depends only on tree topology; after enough MCMC moves, the
   // resulting population model parameters are practically Gibbs sampled
   for (auto i = 0; i != 50; ++i) {
-    if (typeid(*pop_model_) == typeid(Exp_pop_model)) {
+    const Pop_model& raw_pop_model = *pop_model_;
+    
+    if (typeid(raw_pop_model) == typeid(Exp_pop_model)) {
       if (final_pop_size_move_enabled_) {
         pop_size_move();
         check_derived_quantities();
@@ -692,7 +695,7 @@ auto Run::run_global_moves() -> void {
         check_derived_quantities();
       }
       
-    } else if (typeid(*pop_model_) == typeid(Skygrid_pop_model)) {
+    } else if (typeid(raw_pop_model) == typeid(Skygrid_pop_model)) {
       skygrid_tau_move();
       check_derived_quantities();
       
@@ -1153,7 +1156,8 @@ auto Run::alpha_moves() -> void {
 }
 
 auto Run::pop_size_move() -> void {
-  CHECK(typeid(*pop_model_) == typeid(Exp_pop_model));
+  const Pop_model& raw_pop_model = *pop_model_;
+  CHECK(typeid(raw_pop_model) == typeid(Exp_pop_model));
   auto exp_pop_model = std::static_pointer_cast<const Exp_pop_model>(pop_model_);
     
   // We follow LeMieux et al (2021) and use
@@ -1191,7 +1195,8 @@ auto Run::pop_size_move() -> void {
 }
 
 auto Run::pop_growth_rate_move() -> void {
-  CHECK(typeid(*pop_model_) == typeid(Exp_pop_model));
+  const Pop_model& raw_pop_model = *pop_model_;
+  CHECK(typeid(raw_pop_model) == typeid(Exp_pop_model));
   auto exp_pop_model = std::static_pointer_cast<const Exp_pop_model>(pop_model_);
     
   // We follow LeMieux et al (2021) and use
@@ -1232,7 +1237,8 @@ auto Run::pop_growth_rate_move() -> void {
 }
 
 auto Run::skygrid_tau_move() -> void {
-  CHECK(typeid(*pop_model_) == typeid(Skygrid_pop_model));
+  const Pop_model& raw_pop_model = *pop_model_;
+  CHECK(typeid(raw_pop_model) == typeid(Skygrid_pop_model));
   auto skygrid_pop_model = std::static_pointer_cast<const Skygrid_pop_model>(pop_model_);
 
   // If all other parameters are fixed, tau follows a Gamma distribution:
@@ -1272,7 +1278,8 @@ auto Run::skygrid_tau_move() -> void {
 }
 
 auto Run::skygrid_gammas_move() -> void {
-  CHECK(typeid(*pop_model_) == typeid(Skygrid_pop_model));
+  const Pop_model& raw_pop_model = *pop_model_;
+  CHECK(typeid(raw_pop_model) == typeid(Skygrid_pop_model));
   auto skygrid_pop_model = std::static_pointer_cast<const Skygrid_pop_model>(pop_model_);
 
   // Here, the suggested move in Gill et al 2012 is super-smart but super-complicated.
