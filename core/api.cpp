@@ -191,6 +191,12 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
     512    // Large enough initial buffer to avoid reallocations later
     + sizeof(api::Params)
     + sizeof(double) * tree.num_sites()};
+
+  // Create api_nu vector before starting Params object (can't nest object creation in flatbuffers)
+  auto api_nu = flatbuffers::Offset<flatbuffers::Vector<double>>{};
+  if (not std::ranges::all_of(run.nu(), [](auto nu_l) { return nu_l == 1.0; })) {
+    api_nu = fbb.CreateVector(run.nu());
+  }
   
   auto params_builder = api::ParamsBuilder{fbb};
 
@@ -199,10 +205,7 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   params_builder.add_num_parts(run.num_parts());
   params_builder.add_mu(run.mu());
   params_builder.add_alpha(run.alpha());
-  if (not std::ranges::all_of(run.nu(), [](auto nu_l) { return nu_l == 1.0; })) {
-    auto api_nu = fbb.CreateVector(run.nu());
-    params_builder.add_nu(api_nu);
-  }
+  params_builder.add_nu(api_nu);
   params_builder.add_hky_kappa(run.hky_kappa());
   params_builder.add_hky_pi_A(run.hky_pi()[Real_seq_letter::A]);
   params_builder.add_hky_pi_C(run.hky_pi()[Real_seq_letter::C]);
