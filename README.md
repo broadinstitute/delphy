@@ -27,6 +27,10 @@ Delphy can be compiled either as a native, standalone command-line program (`del
 
 Delphy was developed and is primarily tested under Linux (Ubuntu 22.04.4 LTS, x86-64).  [Delphy-web](https://github.com/fathominfo/delphy-web), deployed at [https://delphy.fathom.info](https://delphy.fathom.info), should work in any modern web browser; see the [Delphy-web README.md](https://github.com/fathominfo/delphy-web) for specific browsers and operating systems on which it has been tested.
 
+Google Colab Tutorials
+-------------------
+Ready-to-use Google Colab tutorials for downloading and formatting sequencing data from the [NCBI Virus database](https://www.ncbi.nlm.nih.gov/labs/virus/vssi/#/), as well as user-provided data, can be accessed [here](https://colab.research.google.com/github/broadinstitute/delphy/blob/main/tutorials/delphy_workflow.ipynb) (blank notebook) and [here](https://colab.research.google.com/github/broadinstitute/delphy/blob/main/tutorials/delphy_workflow_sars_example.ipynb) (SARS-CoV-2 example).  These notebooks streamline the uniform formatting of sequencing data and the associated metadata for input into Delphy, and then run Delphy using a pre-compiled binary.  The output files can be visualized on the [Delphy web interface](https://delphy.fathom.info).  
+
 Credits and Acknowledgements
 ----------------------------
 
