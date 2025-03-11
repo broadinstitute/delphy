@@ -186,8 +186,11 @@ static auto canonicalize_tree(T& tree) -> void {
     if (tree.at(node).is_inner_node()) {
       auto swap_cond = false;
       if (ladderize_tree) {
-        swap_cond = canonicalize_result[tree.at(node).left_child()].count >
-            canonicalize_result[tree.at(node).right_child()].count;
+        const auto& acc_left = canonicalize_result[tree.at(node).left_child()];
+        const auto& acc_right = canonicalize_result[tree.at(node).right_child()];
+        swap_cond =
+            (acc_left.count > acc_right.count) ||
+            ((acc_left.count == acc_right.count) && (acc_left.min > acc_right.min));
       } else {
         swap_cond = canonicalize_result[tree.at(node).left_child()].avg() >
             canonicalize_result[tree.at(node).right_child()].avg();
@@ -271,6 +274,12 @@ static auto render_tree() -> void {
   for (const auto& node : index_order_traversal(tree)) {
     if (tree.at(node).is_tip()) {
       auto half_side = 0.0025;
+
+      // Make uncertain tips stand out
+      if (tree.at(node).t_min != tree.at(node).t_max) {
+        half_side *= 3;
+      }
+      
       auto cx = x_for(tree.at(node).t);
       auto cy = node_ys[node];
 
@@ -458,6 +467,7 @@ static auto render_all() -> void {
   // Text
   color_3d(0.0, 0.0, 0.0);
   draw_text(absl::StrFormat("Step: %d", ui_run->step()).c_str(), 10, 10);
+  draw_text(absl::StrFormat("Muts: %d", ui_run->num_muts()).c_str(), 10, 25);
   
   // Define coordinates so (0,0) is bottom-left and (1,1) is top-right
   if (SDL_GetRendererOutputSize(sdl_renderer, &sdl_w, &sdl_h) != 0) {

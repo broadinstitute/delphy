@@ -355,15 +355,19 @@ auto export_beast_input(
 
   // Tip-date sampling (prior)
   // See https://www.beast2.org/2015/06/09/sampling-tip-dates.html
+  auto first_uncertain_tip = k_no_node;
   for (const auto& node : index_order_traversal(tree)) {
     if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+      if (first_uncertain_tip == k_no_node) {
+        first_uncertain_tip = node;
+      }
       os << "      <distribution id=\"tip-dist." << tree.at(node).name << "\" spec=\"beast.math.distributions.MRCAPrior\" tipsonly=\"true\" tree=\"@Tree.t:input_alignment\">\n";
       os << "        <taxonset id=\"tip-taxonset." << tree.at(node).name << "\" spec=\"TaxonSet\">\n";
       os << "          <taxon id=\"" << tree.at(node).name << "\" spec=\"Taxon\"/>\n";
       os << "        </taxonset>\n";
       os << "        <Uniform id=\"tip-uniform." << tree.at(node).name << "\" name=\"distr\" "
-         << "lower=\"" << to_linear_year(tree.at(node).t_min) << "\" "
-         << "upper=\"" << to_linear_year(tree.at(node).t_max) << "\"/>\n";
+         << "lower=\"" << absl::StreamFormat("%.5f", to_linear_year(tree.at(node).t_min)) << "\" "
+         << "upper=\"" << absl::StreamFormat("%.5f", to_linear_year(tree.at(node).t_max)) << "\"/>\n";
       os << "      </distribution>\n";
     }
   }
@@ -437,25 +441,33 @@ auto export_beast_input(
   os << "  </operator>\n";
 
   // Tip-date sampling (operators)
-  auto tot_weight_tip_date_sampling = 10.0;
-  auto per_tip_weight_tip_date_sampling = tot_weight_tip_date_sampling / ((std::ssize(tree) + 1)/2);
-  auto max_tip_date_sampling_window_size = 1.0 / (tree.num_sites()*run.mu()*365.0);
-  // ^^ max chosen so that a branch ending at a tip with a fixed number of mutations is rarely
-  //    overstretched or overcompressed
-  
+  auto num_uncertain_tips = 0;
   for (const auto& node : index_order_traversal(tree)) {
     if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
-      auto window_size = std::min(max_tip_date_sampling_window_size,
-                                  double{tree.at(node).t_max - tree.at(node).t_min} / 4);
-      os << "  <operator id=\"tip-operator." << tree.at(node).name << "\" "
-         << "windowSize=\"" << window_size << "\" "
-         << "spec=\"TipDatesRandomWalker\" "
-         << "taxonset=\"@tip-taxonset." << tree.at(node).name << "\" "
-         << "tree=\"@Tree.t:input_alignment\" "
-         << "weight=\"" << per_tip_weight_tip_date_sampling << "\"/>\n";
+      ++num_uncertain_tips;
     }
   }
-
+  if (num_uncertain_tips > 0) {
+    auto tot_weight_tip_date_sampling = 10.0;
+    auto per_tip_weight_tip_date_sampling = tot_weight_tip_date_sampling / num_uncertain_tips;
+    auto max_tip_date_sampling_window_size = 1.0 / (tree.num_sites()*run.mu()*365.0);
+    // ^^ max chosen so that a branch ending at a tip with a fixed number of mutations is rarely
+    //    overstretched or overcompressed
+    
+    for (const auto& node : index_order_traversal(tree)) {
+      if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+        auto window_size = std::min(max_tip_date_sampling_window_size,
+                                    double{tree.at(node).t_max - tree.at(node).t_min} / 4);
+        os << "  <operator id=\"tip-operator." << tree.at(node).name << "\" "
+           << "windowSize=\"" << window_size << "\" "
+           << "spec=\"TipDatesRandomWalker\" "
+           << "taxonset=\"@tip-taxonset." << tree.at(node).name << "\" "
+           << "tree=\"@Tree.t:input_alignment\" "
+           << "weight=\"" << per_tip_weight_tip_date_sampling << "\"/>\n";
+      }
+    }
+  }
+  
   os << "\n";
 
   // Loggers
@@ -480,6 +492,9 @@ auto export_beast_input(
     os << "    <log idref=\"growthRate.t:input_alignment\"/>\n";
   }
   os << "    <log idref=\"freqParameter.s:input_alignment\"/>\n";
+  if (first_uncertain_tip != k_no_node) {
+    os << "    <log idref=\"tip-dist." << tree.at(first_uncertain_tip).name << "\"/>\n";
+  }
   os << "  </logger>\n";
   os << "\n";
   
