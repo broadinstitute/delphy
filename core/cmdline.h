@@ -40,6 +40,7 @@ struct Processed_cmd_line {
   std::optional<std::string> trees_filename;
   int64_t tree_every;
   std::optional<std::string> delphy_output_filename;
+  std::optional<std::string> delphy_output_metadata;
   int64_t delphy_snapshot_every;
   bool alpha_move_enabled;
   bool mu_move_enabled;

@@ -141,6 +141,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<int64_t>())
       ("v0-out-delphy-file", "Filename for .dphy run file",
        cxxopts::value<std::string>())
+      ("v0-out-delphy-metadata-file", "Filename for JSON metadata blob to append to .dphy run file",
+       cxxopts::value<std::string>())
       ("v0-delphy-snapshot-every", "Steps between run snapshots in .dphy run file (default: steps / 100)",
        cxxopts::value<int64_t>())
       ("v0-site-rate-heterogeneity", "Enable site rate heterogeneity",
@@ -325,6 +327,21 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       delphy_output_filename = opts["v0-out-delphy-file"].as<std::string>();
     }
 
+    auto delphy_output_metadata = std::optional<std::string>{};
+    if (opts.count("v0-out-delphy-metadata-file")) {
+      auto delphy_output_metadata_filename = opts["v0-out-delphy-metadata-file"].as<std::string>();
+      auto fs = std::ifstream{delphy_output_metadata_filename};
+      if (not fs) {
+        std::cerr << "ERROR: Could not open .dphy metadata file " << delphy_output_metadata_filename << "\n";
+        std::exit(EXIT_FAILURE);
+      }
+
+      auto sstr = std::ostringstream{};
+      sstr << fs.rdbuf();
+      delphy_output_metadata = std::move(sstr).str();
+      std::cerr << *delphy_output_metadata << "\n";
+    }
+
     auto delphy_snapshot_every = steps / 1000;
     if (opts.count("v0-delphy-snapshot-every")) {
       delphy_snapshot_every = opts["v0-delphy-snapshot-every"].as<int64_t>();
@@ -402,6 +419,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       .trees_filename = std::move(trees_filename),
       .tree_every = tree_every,
       .delphy_output_filename = std::move(delphy_output_filename),
+      .delphy_output_metadata = std::move(delphy_output_metadata),
       .delphy_snapshot_every = delphy_snapshot_every,
       .alpha_move_enabled = alpha_move_enabled,
       .mu_move_enabled = not fix_mutation_rate,

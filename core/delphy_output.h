@@ -14,6 +14,8 @@ class Delphy_output {
   ~Delphy_output();
 
   auto os() -> std::ostream* { return os_; }
+
+  auto set_dphy_metadata_blob(std::string dphy_metadata_blob) -> void;
   
   auto output_preamble(const Run& run, int64_t steps_per_sample) -> void;
   auto output_state(const Run& run) -> void;
@@ -23,6 +25,7 @@ class Delphy_output {
  private:
   std::ostream* os_;
   bool own_stream_;
+  std::string dphy_metadata_blob_;
 
   auto write_string(std::string_view sv) -> void;
   auto write_uint32(uint32_t num) -> void;

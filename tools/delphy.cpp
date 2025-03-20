@@ -141,6 +141,9 @@ auto cli_main_loop(Processed_cmd_line& c) -> int {
     auto os_ptr = std::make_unique<std::ofstream>(c.delphy_output_filename.value(), std::ios::binary);
     delphy_output = std::make_unique<Delphy_output>(os_ptr.get(), true);
     os_ptr.release();
+    if (c.delphy_output_metadata.has_value()) {
+      delphy_output->set_dphy_metadata_blob(c.delphy_output_metadata.value());
+    }
     delphy_output->output_preamble(*c.run, c.delphy_snapshot_every);
   }
 

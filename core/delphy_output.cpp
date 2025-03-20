@@ -28,12 +28,17 @@ static const auto k_default_dphy_config = std::string{
     "}"};
 
 Delphy_output::Delphy_output(std::ostream* os, bool own_stream)
-    : os_{os}, own_stream_{own_stream} {}
+    : os_{os}, own_stream_{own_stream}, dphy_metadata_blob_{k_default_dphy_config} {}
 
 Delphy_output::~Delphy_output() {
   if (own_stream_) {
     delete os_;
   }
+}
+
+auto
+Delphy_output::set_dphy_metadata_blob(std::string dphy_metadata_blob) -> void {
+  dphy_metadata_blob_ = std::move(dphy_metadata_blob);
 }
 
 auto
@@ -121,7 +126,7 @@ auto Delphy_output::output_epilog() -> void {
   auto tree_end_position = os_->tellp();
 
   write_uint32(k_no_more_trees);
-  write_string(k_default_dphy_config);
+  write_string(dphy_metadata_blob_);
   write_uint64(tree_end_position);
 }
 
