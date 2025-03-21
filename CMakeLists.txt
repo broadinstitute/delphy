@@ -25,7 +25,11 @@ CheckGitSetup()
 add_library(common INTERFACE)
 
 # Set up compiler and linker flags
-target_compile_options(common INTERFACE -Wall -Wextra -Werror)  # Treat all warnings as errors
+target_compile_options(
+  common INTERFACE -Wall -Wextra
+  -Werror                            # Treat all warnings as errors
+  -Wno-error=maybe-uninitialized     # Except something in abseil's raw_hash_set.hpp that I cannot fix
+)
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)  # Sane stack traces
 if(NOT DEFINED EMSCRIPTEN)
   add_compile_options(-ffast-math)
