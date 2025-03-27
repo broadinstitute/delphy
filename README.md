@@ -17,15 +17,15 @@ collaboration with [Fathom Information Design](https://fathom.info), and its sep
 References
 ----------
 
-* [Whitepaper with overview of key ideas and accuracy+speed benchmarks](delphywp.pdf)
+* Preprint - [Delphy: scalable, near-real-time Bayesian phylogenetics for outbreaks](https://www.biorxiv.org/content/10.1101/2025.03.25.645253v1).  See [here](https://github.com/broadinstitute/delphy-2025-paper-data) for accompanying data and scripts.
 
-* _TO COME_: Preprint with full details and benchmarking (expected: late July 2024)
+* [Whitepaper with overview of key ideas and accuracy+speed benchmarks](delphywp.pdf)
 
 System Requirements
 -------------------
 Delphy can be compiled either as a native, standalone command-line program (`delphy` and its graphical cousin, `delphy_ui`), or as a WebAssembly bundle that lies at the core of [`delphy-web`](https://github.com/fathominfo/delphy-web).  Build instructions for both can be found in [`INSTALL.md`](INSTALL.md).  Delphy does not require special hardware, such as a GPU.
 
-Delphy was developed and is primarily tested under Linux (Ubuntu 22.04.4 LTS, x86-64).  [Delphy-web](https://github.com/fathominfo/delphy-web), deployed at [https://delphy.fathom.info](https://delphy.fathom.info), should work in any modern web browser; see the [Delphy-web README.md](https://github.com/fathominfo/delphy-web) for specific browsers and operating systems on which it has been tested.
+Delphy was developed and is primarily tested under Linux (Ubuntu 22.04.4 LTS and Ubuntu 24.04 LTS, x86-64).  [Delphy-web](https://github.com/fathominfo/delphy-web), deployed at [https://delphy.fathom.info](https://delphy.fathom.info), should work in any modern web browser; see the [Delphy-web README.md](https://github.com/fathominfo/delphy-web) for specific browsers and operating systems on which it has been tested.
 
 Google Colab Tutorials
 -------------------
@@ -45,4 +45,4 @@ Delphy draws a lot of inspiration from:
 - [MAPLE](https://github.com/NicolaDM/MAPLE)
 - [IQ-TREE2](github.com/iqtree/iqtree2/)
 
-Copyright (c) 2022-2024 Broad Institute, Inc.  See [LICENSE](LICENSE) for details.
+Copyright (c) 2022-2025 Broad Institute, Inc.  See [LICENSE](LICENSE) for details.
