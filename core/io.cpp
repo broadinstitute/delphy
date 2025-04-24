@@ -19,7 +19,6 @@ auto read_fasta(
   
   auto in_seq = false;
   auto cur_id = std::string{};
-  auto cur_comments = std::string{};
   auto cur_seq = Sequence{};
   auto ignore_this_seq = false;
   auto seqs_so_far = 0;
@@ -41,7 +40,7 @@ auto read_fasta(
     if (line[0] == '>') {
       if (in_seq) {
         if (not ignore_this_seq) {
-          result.push_back(Fasta_entry{std::move(cur_id), std::move(cur_comments), std::move(cur_seq)});
+          result.push_back(Fasta_entry{std::move(cur_id), std::move(cur_seq)});
         }
         ++seqs_so_far;
         progress_hook(seqs_so_far, bytes_so_far);
@@ -49,13 +48,17 @@ auto read_fasta(
         ignore_this_seq = false;
       }
 
-      auto id_begin = std::find_if_not(line.begin() + 1, line.end(), [](auto c) { return std::isspace(c); });
-      auto id_end = std::find_if(id_begin, line.end(), [](auto c) { return std::isspace(c); });
+      // 2025-04-24: We used to find the first space, if any, and treat everything
+      // beyond that as a comment (as in https://www.ncbi.nlm.nih.gov/genbank/fastaformat/).
+      // However, this has caused no end of complaints as people produce FASTA files with
+      // sequence IDs that contain spaces.  Moreover, both BEAST and IQ-Tree
+      // read IDs as everything between the '>' and the end of the line.  So from now on,
+      // we'll behave like BEAST and IQ-Tree
+      auto id_begin = line.begin();
+      auto id_end = line.end();
+      while (id_begin < id_end && std::isspace(*id_begin)) { ++id_begin; }
+      while (id_begin < id_end && std::isspace(*(id_end-1))) { --id_end; }
       cur_id.assign(id_begin, id_end);
-
-      auto comments_begin = (id_end != line.end()) ? (id_end + 1) : id_end;
-      auto comments_end = line.end();
-      cur_comments.assign(comments_begin, comments_end);
 
       in_seq = true;
       continue;
@@ -84,7 +87,7 @@ auto read_fasta(
   }
   if (in_seq) {
     if (not ignore_this_seq) {
-      result.push_back(Fasta_entry{std::move(cur_id), std::move(cur_comments), std::move(cur_seq)});
+      result.push_back(Fasta_entry{std::move(cur_id), std::move(cur_seq)});
     }
     ++seqs_so_far;
     progress_hook(seqs_so_far, bytes_so_far);
@@ -160,9 +163,12 @@ auto read_maple(
 
     auto tip_desc = Tip_desc{};
     auto ignore_this_tip = false;
-    
-    auto id_begin = std::find_if_not(line.begin() + 1, line.end(), [](auto c) { return std::isspace(c); });
-    auto id_end = std::find_if(id_begin, line.end(), [](auto c) { return std::isspace(c); });
+
+    // 2025-04-24: See analogous comment in read_fasta above wrt ID vs comment in FASTA files
+    auto id_begin = line.begin();
+    auto id_end = line.end();
+    while (id_begin < id_end && std::isspace(*id_begin)) { ++id_begin; }
+    while (id_begin < id_end && std::isspace(*(id_end-1))) { --id_end; }
     tip_desc.name.assign(id_begin, id_end);
 
     auto maybe_t_range = extract_date_range_from_sequence_id(tip_desc.name);

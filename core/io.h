@@ -11,7 +11,6 @@ namespace delphy {
 
 struct Fasta_entry {
   std::string id;
-  std::string comments;
   Sequence sequence;
 };
 
