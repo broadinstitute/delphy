@@ -28,10 +28,12 @@ add_library(common INTERFACE)
 target_compile_options(
   common INTERFACE -Wall -Wextra
   -Werror                            # Treat all warnings as errors
-  -Wno-error=maybe-uninitialized     # Except something in abseil's raw_hash_set.hpp that I cannot fix
 )
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)  # Sane stack traces
 if(NOT DEFINED EMSCRIPTEN)
+  add_compile_options(
+    -Wno-error=maybe-uninitialized   # Ignore something in abseil's raw_hash_set.hpp that I cannot fix
+  )
   add_compile_options(-ffast-math)
   #if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")  # detects macOS, but still some Intel out there
   if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
@@ -135,8 +137,16 @@ if(EMSCRIPTEN)
     $<$<CONFIG:DEBUG>:-gsource-map --source-map-base ./>
     -pthread -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
     -sEXPORTED_FUNCTIONS=_malloc,_free
-    -sEXPORTED_RUNTIME_METHODS=UTF8ToString
-    -sWASM_BIGINT             # Don't mess up 64-bit integers; see https://v8.dev/features/wasm-bigint
+    -sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8OnStack
+
+    # Don't mess up 64-bit integers; see https://v8.dev/features/wasm-bigint
+    -sWASM_BIGINT
     -sINITIAL_MEMORY=16mb
-    -sALLOW_MEMORY_GROWTH=1)
+    -sALLOW_MEMORY_GROWTH=1
+
+    # Avoid grief with decoding UTF-8 strings in SharedArrayBuffers (which is what
+    # the WASM linear memory looks like from the JS side).  See here for details:
+    # https://github.com/emscripten-core/emscripten/issues/18034
+    -sTEXTDECODER=0
+    )
 endif()
