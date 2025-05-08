@@ -179,6 +179,12 @@ auto export_beast_input(
     -> void {
   
   const auto& tree = run.tree();
+
+  if (run.mpox_hack_enabled()) {
+    std::cerr << "ERROR: BEAST2 input XML generation not currently supported when enabling APOBEC3 treatment (mpox)\n";
+    os << "ERROR: BEAST2 input XML generation not currently supported when enabling APOBEC3 treatment (mpox)\n";
+    return;
+  }
   
   os << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n"
      << "\n"
@@ -308,9 +314,15 @@ auto export_beast_input(
     }
     os << "\"/>\n";
     
+  } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+    // Make invalid XML tag on purpose to stop this BEAST2 XML file from running (with God knows what population model...)
+    std::cerr << "ERROR: BEAST2 doesn't implement a Skygrid model!\n";
+    os << absl::StreamFormat("<ERROR>BEAST2 doesn't implement a Skygrid model</ERROR>");
+    
   } else {
+    // Make invalid XML tag on purpose to stop this BEAST2 XML file from running (with God knows what population model...)
     std::cerr << "ERROR: Unrecognized population model type " << typeid(pop_model).name() << '\n';
-    os << absl::StreamFormat("<!-- ERROR: UNRECOGNIZED POPULATION MODEL TYPE: %s -->", typeid(pop_model).name());
+    os << absl::StreamFormat("<ERROR>UNRECOGNIZED POPULATION MODEL TYPE: %s</ERROR>", typeid(pop_model).name());
   }
   
   os << "        <treeIntervals id=\"TreeIntervals.t:input_alignment\" spec=\"TreeIntervals\" tree=\"@Tree.t:input_alignment\"/>\n";

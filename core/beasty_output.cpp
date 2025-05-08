@@ -16,6 +16,20 @@ Beasty_log_output::~Beasty_log_output() {
   }
 }
 
+static auto output_skygrid_headers(std::ostream& os, const Skygrid_pop_model& pop_model) -> void {
+  // Even though we don't support BEAST2 XML input files with Skygrid, having the Skygrid results in the
+  // log files is still useful
+  os << "skygrid.isloglinear\t"
+     << "skygrid.precision\t"     // tau
+     << "skygrid.cutOff\t";        // K
+  for (auto k = 0; k != (pop_model.M()+1); ++k) {
+    os << "skygrid.x" << (k+1) << "\t";
+  }
+  for (auto k = 0; k != (pop_model.M()+1); ++k) {
+    os << "skygrid.logPopSize" << (k+1) << "\t";
+  }
+}
+
 auto Beasty_log_output::output_headers(const Run& run) -> void {
   if (not run.mpox_hack_enabled()) {
     // WARNING: Ensure this matches the logger output from export_beast_input (beasty_input.cpp)
@@ -35,6 +49,7 @@ auto Beasty_log_output::output_headers(const Run& run) -> void {
     }
     *os_ << "kappa\t";
     *os_ << "Coalescent\t";
+    
     const auto& pop_model = run.pop_model();
     if (typeid(pop_model) == typeid(Exp_pop_model)) {
       if (run.final_pop_size_move_enabled()) {
@@ -43,7 +58,15 @@ auto Beasty_log_output::output_headers(const Run& run) -> void {
       if (run.pop_growth_rate_move_enabled()) {
         *os_ << "growthRate\t";
       }
+      
+    } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+      const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(run.pop_model());
+      output_skygrid_headers(*os_, skygrid_pop_model);
+      
+    } else {
+      std::cerr << "ERROR (output_headers): Unrecognized population model type " << typeid(pop_model).name() << '\n';
     }
+    
     *os_ << "freqParameter.1\t"
          << "freqParameter.2\t"
          << "freqParameter.3\t"
@@ -58,15 +81,42 @@ auto Beasty_log_output::output_headers(const Run& run) -> void {
          << "treeModel.rootHeight\t"
          << "age(root)\t"
          << "treeLength\t";
+    
     const auto& pop_model = run.pop_model();
     if (typeid(pop_model) == typeid(Exp_pop_model)) {
       *os_ << "exponential.popSize\t"
            << "exponential.growthRate\t";
+      
+    } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+      const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(run.pop_model());
+      output_skygrid_headers(*os_, skygrid_pop_model);
+      
+    } else {
+      std::cerr << "ERROR (output_headers): Unrecognized population model type " << typeid(pop_model).name() << '\n';
     }
+    
     *os_ << "apobec3.clock.rate\t"
          << "non_apobec3.clock.rate\t"
          << "coalescent.all\t"
          << "\n";
+  }
+}
+
+static auto output_skygrid_results(std::ostream& os, const Run& run, const Skygrid_pop_model& pop_model, double beast_t0) -> void {
+  switch (pop_model.type()) {
+    case Skygrid_pop_model::Type::k_staircase:  os << "0\t"; break;
+    case Skygrid_pop_model::Type::k_log_linear: os << "1\t"; break;
+    default:                                    os << "-1\t"; break;
+  }
+  os << run.skygrid_tau() << "\t";
+  os << (pop_model.K() / 365.0) << "\t";         // years
+  for (auto k = 0; k != (pop_model.M()+1); ++k) {
+    // Time measured backwards in time from t0, in years (hence ./365.0 and (M-k))
+    os << (beast_t0 - pop_model.x(pop_model.M() - k))/365.0 << "\t";
+  }
+  for (auto k = 0; k != (pop_model.M()+1); ++k) {
+    // gamma = ln(N(t)), where N(t) is measured in days in Delphy, in years in BEAST (hence -ln(365.0) and (M-k))
+    os << pop_model.gamma(pop_model.M() - k) - std::log(365.0) << "\t";
   }
 }
 
@@ -103,22 +153,13 @@ auto Beasty_log_output::output_log(const Run& run) -> void {
         // We measure time in days since 2020; ref BEAST run in years since time of latest tip
          << (beast_t0 - tree.at_root().t) / 365 << "\t";
     
-    if (run.mpox_hack_enabled()) {
-      if (run.mu_move_enabled()) {
-        *os_ << (run.mpox_mu() * 365.0) << "\t";
-      }
-      *os_ << (run.mpox_mu_star() * 365.0) << "\t";
-    } else {
-      if (run.mu_move_enabled()) {
-        *os_ << (run.mu() * 365.0) << "\t";
-      }
+    if (run.mu_move_enabled()) {
+      *os_ << (run.mu() * 365.0) << "\t";
     }
     if (run.alpha_move_enabled()) {
       *os_ << run.alpha() << "\t";
     }
-    if (not run.mpox_hack_enabled()) {
-      *os_ << run.hky_kappa() << "\t";
-    }
+    *os_ << run.hky_kappa() << "\t";
     
     // Coalescent prior has units of (1/time)^(# coalescences)
     // We measure time in days since 2020; ref BEAST run in years since time of latest tip
@@ -138,14 +179,16 @@ auto Beasty_log_output::output_log(const Run& run) -> void {
         // We measure time in days since 2020; ref BEAST run in years since time of latest tip
         *os_ << pop_growth_rate*365 << "\t";
       }
+      
+    } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+      const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(run.pop_model());
+      output_skygrid_results(*os_, run, skygrid_pop_model, beast_t0);
     }
     
-    if (not run.mpox_hack_enabled()) {
-      *os_ << run.hky_pi()[Real_seq_letter::A] << "\t"
-           << run.hky_pi()[Real_seq_letter::C] << "\t"
-           << run.hky_pi()[Real_seq_letter::G] << "\t"
-           << run.hky_pi()[Real_seq_letter::T] << "\t";
-    }
+    *os_ << run.hky_pi()[Real_seq_letter::A] << "\t"
+         << run.hky_pi()[Real_seq_letter::C] << "\t"
+         << run.hky_pi()[Real_seq_letter::G] << "\t"
+         << run.hky_pi()[Real_seq_letter::T] << "\t";
     
     *os_ << "\n";
   
@@ -161,6 +204,7 @@ auto Beasty_log_output::output_log(const Run& run) -> void {
          << (beast_t0 - tree.at_root().t) / 365 << "\t"
          << to_beast_date(tree.at_root().t) << "\t"
          << calc_T(tree) / 365.0 << "\t";
+    
     const auto& pop_model = run.pop_model();
     if (typeid(pop_model) == typeid(Exp_pop_model)) {
       const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
@@ -171,7 +215,12 @@ auto Beasty_log_output::output_log(const Run& run) -> void {
           << run.pop_model().pop_at_time(beast_t0)/365 << "\t"
           // We measure time in days since 2020; ref BEAST run in years since time of latest tip
           << pop_growth_rate*365 << "\t";
+      
+    } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+      const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(run.pop_model());
+      output_skygrid_results(*os_, run, skygrid_pop_model, beast_t0);
     }
+    
     *os_ << run.mpox_mu_star() * 365 << "\t"
          << run.mpox_mu() * 365 << "\t"
         // Coalescent prior has units of (1/time)^(# coalescences)
