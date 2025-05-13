@@ -155,6 +155,10 @@ class Skygrid_pop_model : public Pop_model {
   auto pop_integral(double a, double b) const -> double override;
   auto intensity_integral(double a, double b) const -> double override;
 
+  // Log-space value and Gradient calculation (for supporting HMC)
+  auto log_N(double t) const -> double;  // == std::log(pop_at_time(t))
+  auto d_log_N_d_gamma(double t, int k) const -> double;
+
  private:
   std::vector<double> x_;
   std::vector<double> gamma_;
