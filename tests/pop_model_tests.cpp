@@ -203,6 +203,19 @@ TEST(Pop_model_test, skygrid_pop_model_normal_staircase) {
   EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 1), testing::DoubleNear(0, 1e-6));
   EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 2), testing::DoubleNear(0, 1e-6));
   EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 3), testing::DoubleNear(1, 1e-6));
+  
+  EXPECT_THAT(pop_model.support_of_d_log_N_d_gamma(0), testing::FieldsAre(
+      testing::DoubleNear(-std::numeric_limits<double>::infinity(), 1e-6),
+      testing::DoubleNear(1.0, 1e-6)));
+  EXPECT_THAT(pop_model.support_of_d_log_N_d_gamma(1), testing::FieldsAre(
+      testing::DoubleNear(1.0, 1e-6),
+      testing::DoubleNear(2.0, 1e-6)));
+  EXPECT_THAT(pop_model.support_of_d_log_N_d_gamma(2), testing::FieldsAre(
+      testing::DoubleNear(2.0, 1e-6),
+      testing::DoubleNear(4.0, 1e-6)));
+  EXPECT_THAT(pop_model.support_of_d_log_N_d_gamma(3), testing::FieldsAre(
+      testing::DoubleNear(4.0, 1e-6),
+      testing::DoubleNear(+std::numeric_limits<double>::infinity(), 1e-6)));
 
   // Interval wholly before SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(0.0, 0.5), testing::DoubleNear(
@@ -335,6 +348,19 @@ TEST(Pop_model_test, skygrid_pop_model_normal_log_linear) {
   EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 1), testing::DoubleNear(   0, 1e-6));
   EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 2), testing::DoubleNear(   0, 1e-6));
   EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 3), testing::DoubleNear(   1, 1e-6));
+  
+  EXPECT_THAT(pop_model.support_of_d_log_N_d_gamma(0), testing::FieldsAre(
+      testing::DoubleNear(-std::numeric_limits<double>::infinity(), 1e-6),
+      testing::DoubleNear(2.0, 1e-6)));
+  EXPECT_THAT(pop_model.support_of_d_log_N_d_gamma(1), testing::FieldsAre(
+      testing::DoubleNear(1.0, 1e-6),
+      testing::DoubleNear(4.0, 1e-6)));
+  EXPECT_THAT(pop_model.support_of_d_log_N_d_gamma(2), testing::FieldsAre(
+      testing::DoubleNear(2.0, 1e-6),
+      testing::DoubleNear(8.0, 1e-6)));
+  EXPECT_THAT(pop_model.support_of_d_log_N_d_gamma(3), testing::FieldsAre(
+      testing::DoubleNear(4.0, 1e-6),
+      testing::DoubleNear(+std::numeric_limits<double>::infinity(), 1e-6)));
 
   // Interval wholly before SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(0.0, 0.5), testing::DoubleNear(

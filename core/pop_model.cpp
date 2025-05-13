@@ -137,6 +137,26 @@ auto Skygrid_pop_model::d_log_N_d_gamma(double t, int k) const -> double {
   }
 }
 
+auto Skygrid_pop_model::support_of_d_log_N_d_gamma(int k) const -> std::pair<double, double> {
+  switch (type_) {
+    
+    case Type::k_staircase: {
+      auto lo = (k ==   0) ? -std::numeric_limits<double>::infinity() : x_[k-1];
+      auto hi = (k == M()) ? +std::numeric_limits<double>::infinity() : x_[k];
+      return {lo, hi};
+    }
+      
+    case Type::k_log_linear: {
+      auto lo = (k ==   0) ? -std::numeric_limits<double>::infinity() : x_[k-1];
+      auto hi = (k == M()) ? +std::numeric_limits<double>::infinity() : x_[k+1];
+      return {lo, hi};
+    }
+      
+    default:
+      CHECK(false) << "unrecognized type " << static_cast<int>(type_);
+  }
+}
+
 auto Skygrid_pop_model::integral_core(double a, double b, const std::vector<double>& gamma_eff) const -> double {
   CHECK_LE(a, b);
 

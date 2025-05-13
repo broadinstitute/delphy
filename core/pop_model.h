@@ -158,6 +158,7 @@ class Skygrid_pop_model : public Pop_model {
   // Log-space value and Gradient calculation (for supporting HMC)
   auto log_N(double t) const -> double;  // == std::log(pop_at_time(t))
   auto d_log_N_d_gamma(double t, int k) const -> double;
+  auto support_of_d_log_N_d_gamma(int k) const -> std::pair<double, double>;  // range of (inclusive) over which d_log_N_d_gamma(t,k) might be non-zero
 
  private:
   std::vector<double> x_;
