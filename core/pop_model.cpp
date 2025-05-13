@@ -89,7 +89,7 @@ Skygrid_pop_model::Skygrid_pop_model(
   }
 }
 
-auto Skygrid_pop_model::pop_at_time(double t) const -> double {
+auto Skygrid_pop_model::log_N(double t) const -> double {
   auto [k, c] = k_and_c(t);
   switch (type_) {
     
@@ -97,13 +97,40 @@ auto Skygrid_pop_model::pop_at_time(double t) const -> double {
       if (t <= x_[0]) {
         // here, [k,c] == [1,0.0] by design, but we want "[0,1.0]"
         // (but there's no x[-1] here to make that statement make sense)
-        return std::exp(gamma(0));
+        return gamma(0);
       } else {
-        return std::exp(gamma(k));
+        return gamma(k);
       }
       
     case Type::k_log_linear:
-      return std::exp((1-c)*gamma(k-1) + c*gamma(k));
+      return (1-c)*gamma(k-1) + c*gamma(k);
+      
+    default:
+      CHECK(false) << "unrecognized type " << static_cast<int>(type_);
+  }
+}
+
+auto Skygrid_pop_model::pop_at_time(double t) const -> double {
+  return std::exp(log_N(t));
+}
+
+auto Skygrid_pop_model::d_log_N_d_gamma(double t, int k) const -> double {
+  auto [kk, cc] = k_and_c(t);
+  switch (type_) {
+    
+    case Type::k_staircase:
+      if (t <= x_[0]) {
+        // here, [kk,cc] == [1,0.0] by design, but we want "[0,1.0]"
+        // (but there's no x[-1] here to make that statement make sense)
+        return (k == 0) ? 1 : 0;
+      } else {
+        return (k == kk) ? 1 : 0;
+      }
+      
+    case Type::k_log_linear:
+      if      (k == kk-1) { return (1-cc); }
+      else if (k == kk)   { return cc;     }
+      else                { return 0;      }
       
     default:
       CHECK(false) << "unrecognized type " << static_cast<int>(type_);

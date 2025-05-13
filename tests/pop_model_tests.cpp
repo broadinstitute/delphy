@@ -137,6 +137,73 @@ TEST(Pop_model_test, skygrid_pop_model_normal_staircase) {
   EXPECT_THAT(pop_model.pop_at_time(8.0), testing::DoubleNear(std::exp(+1.0), 1e-6));
   EXPECT_THAT(pop_model.pop_at_time(9.0), testing::DoubleNear(std::exp(+1.0), 1e-6));
 
+  EXPECT_THAT(pop_model.log_N(0.0), testing::DoubleNear(-4.0, 1e-6));
+  EXPECT_THAT(pop_model.log_N(1.0), testing::DoubleNear(-4.0, 1e-6));
+  EXPECT_THAT(pop_model.log_N(1.5), testing::DoubleNear(+7.0, 1e-6));
+  EXPECT_THAT(pop_model.log_N(2.0), testing::DoubleNear(+7.0, 1e-6));
+  EXPECT_THAT(pop_model.log_N(3.0), testing::DoubleNear(+3.0, 1e-6));
+  EXPECT_THAT(pop_model.log_N(4.0), testing::DoubleNear(+3.0, 1e-6));
+  EXPECT_THAT(pop_model.log_N(5.0), testing::DoubleNear(+1.0, 1e-6));
+  EXPECT_THAT(pop_model.log_N(6.0), testing::DoubleNear(+1.0, 1e-6));
+  EXPECT_THAT(pop_model.log_N(7.0), testing::DoubleNear(+1.0, 1e-6));
+  EXPECT_THAT(pop_model.log_N(8.0), testing::DoubleNear(+1.0, 1e-6));
+  EXPECT_THAT(pop_model.log_N(9.0), testing::DoubleNear(+1.0, 1e-6));
+
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(0.0, 0), testing::DoubleNear(1, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(0.0, 1), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(0.0, 2), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(0.0, 3), testing::DoubleNear(0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.0, 0), testing::DoubleNear(1, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.0, 1), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.0, 2), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.0, 3), testing::DoubleNear(0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.5, 0), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.5, 1), testing::DoubleNear(1, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.5, 2), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.5, 3), testing::DoubleNear(0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(2.0, 0), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(2.0, 1), testing::DoubleNear(1, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(2.0, 2), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(2.0, 3), testing::DoubleNear(0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(3.0, 0), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(3.0, 1), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(3.0, 2), testing::DoubleNear(1, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(3.0, 3), testing::DoubleNear(0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(4.0, 0), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(4.0, 1), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(4.0, 2), testing::DoubleNear(1, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(4.0, 3), testing::DoubleNear(0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(5.0, 0), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(5.0, 1), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(5.0, 2), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(5.0, 3), testing::DoubleNear(1, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(6.0, 0), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(6.0, 1), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(6.0, 2), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(6.0, 3), testing::DoubleNear(1, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(7.0, 0), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(7.0, 1), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(7.0, 2), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(7.0, 3), testing::DoubleNear(1, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(8.0, 0), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(8.0, 1), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(8.0, 2), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(8.0, 3), testing::DoubleNear(1, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 0), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 1), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 2), testing::DoubleNear(0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 3), testing::DoubleNear(1, 1e-6));
+
   // Interval wholly before SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(0.0, 0.5), testing::DoubleNear(
       std::exp(-4.0)*(0.5-0.0), 1e-6));
@@ -213,6 +280,61 @@ TEST(Pop_model_test, skygrid_pop_model_normal_log_linear) {
   EXPECT_THAT(pop_model.pop_at_time(7.0), testing::DoubleNear(std::exp(+1.5), 1e-6));
   EXPECT_THAT(pop_model.pop_at_time(8.0), testing::DoubleNear(std::exp(+1.0), 1e-6));
   EXPECT_THAT(pop_model.pop_at_time(9.0), testing::DoubleNear(std::exp(+1.0), 1e-6));
+
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(0.0, 0), testing::DoubleNear(   1, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(0.0, 1), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(0.0, 2), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(0.0, 3), testing::DoubleNear(   0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.0, 0), testing::DoubleNear(   1, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.0, 1), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.0, 2), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.0, 3), testing::DoubleNear(   0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.5, 0), testing::DoubleNear( 0.5, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.5, 1), testing::DoubleNear( 0.5, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.5, 2), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(1.5, 3), testing::DoubleNear(   0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(2.0, 0), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(2.0, 1), testing::DoubleNear(   1, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(2.0, 2), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(2.0, 3), testing::DoubleNear(   0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(3.0, 0), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(3.0, 1), testing::DoubleNear( 0.5, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(3.0, 2), testing::DoubleNear( 0.5, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(3.0, 3), testing::DoubleNear(   0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(4.0, 0), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(4.0, 1), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(4.0, 2), testing::DoubleNear(   1, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(4.0, 3), testing::DoubleNear(   0, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(5.0, 0), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(5.0, 1), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(5.0, 2), testing::DoubleNear(0.75, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(5.0, 3), testing::DoubleNear(0.25, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(6.0, 0), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(6.0, 1), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(6.0, 2), testing::DoubleNear( 0.5, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(6.0, 3), testing::DoubleNear( 0.5, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(7.0, 0), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(7.0, 1), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(7.0, 2), testing::DoubleNear(0.25, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(7.0, 3), testing::DoubleNear(0.75, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(8.0, 0), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(8.0, 1), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(8.0, 2), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(8.0, 3), testing::DoubleNear(   1, 1e-6));
+  
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 0), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 1), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 2), testing::DoubleNear(   0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_N_d_gamma(9.0, 3), testing::DoubleNear(   1, 1e-6));
 
   // Interval wholly before SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(0.0, 0.5), testing::DoubleNear(
