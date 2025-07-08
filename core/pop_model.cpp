@@ -155,7 +155,7 @@ auto Skygrid_pop_model::support_of_d_log_N_d_gamma(int k) const -> std::pair<dou
   }
 }
 
-auto Skygrid_pop_model::log_integral_core(double a, double b, const std::vector<double>& gamma_eff) const -> double {
+auto Skygrid_pop_model::log_int_N_core(double a, double b, const std::vector<double>& gamma_eff) const -> double {
   CHECK_LE(a, b);
 
   auto M = this->M();
@@ -174,7 +174,7 @@ auto Skygrid_pop_model::log_integral_core(double a, double b, const std::vector<
     bias = std::max(bias, gamma_eff.at(k));
   }
 
-  auto result = 0.0; // == integral_core(a,b,gamma_eff) / std::exp(bias)
+  auto result = 0.0; // == int_N_core(a,b,gamma_eff) / std::exp(bias)
   
   // Decompose integral into one piece per overlapping interval
   for (auto k = ka; k <= kb; ++k) { // k == kb is _included_
@@ -212,12 +212,18 @@ auto Skygrid_pop_model::log_integral_core(double a, double b, const std::vector<
           //  = exp[-bias + gamma_lo] * (hi-lo) * { expm1(dg) / dg }
 
           if (gamma_eff[k] == gamma_eff[k-1]) {
-            result += std::exp(-bias + gamma_eff[k]) * (hi - lo);
+            result += std::exp(-bias + gamma_eff[k]) * (hi-lo);
           } else {
-            auto gamma_lo = gamma_eff[k-1] + (lo - x(k-1)) * (gamma_eff[k] - gamma_eff[k-1]) / (x(k) - x(k-1));
-            auto gamma_hi = gamma_eff[k-1] + (hi - x(k-1)) * (gamma_eff[k] - gamma_eff[k-1]) / (x(k) - x(k-1));
-            auto dg = gamma_hi - gamma_lo;
-            result += std::exp(-bias + gamma_lo) * (hi - lo) * (std::expm1(dg) / dg);
+            auto c_lo = (lo - x(k-1)) / (x(k) - x(k-1));
+            auto c_hi = (hi - x(k-1)) / (x(k) - x(k-1));
+            
+            auto Gamma_lo = (1-c_lo) * gamma_eff[k-1] + c_lo * gamma_eff[k];
+            auto Gamma_hi = (1-c_hi) * gamma_eff[k-1] + c_hi * gamma_eff[k];
+            
+            auto Delta = Gamma_hi - Gamma_lo;
+
+            // We exploit the subtle property that std::expm1(x)/x is accurate for all small non-zero x
+            result += std::exp(-bias + Gamma_lo) * (hi - lo) * (std::expm1(Delta) / Delta);
           }
           break;
           
@@ -230,12 +236,209 @@ auto Skygrid_pop_model::log_integral_core(double a, double b, const std::vector<
   return std::log(result) + bias;
 }
 
+
+auto Skygrid_pop_model::d_log_int_N_d_gamma_core(
+    double a,
+    double b,
+    int kp,
+    const std::vector<double>& gamma_eff) const
+    -> double {
+  
+  CHECK_LE(a, b);
+
+  auto M = this->M();
+  CHECK_EQ(std::ssize(gamma_eff), M+1);
+
+  auto ka = interval_containing_t(a);
+  auto kb = interval_containing_t(b);
+
+  // Bias ln(integral) by maximum gamma that enters the integral
+  // (bias is compensated for at the end of the calculation)
+  // NOTE: Subtracting and adding `bias` is just a convenience for avoiding
+  // numerical errors; for the purposes of the d/d_gamma derivative,
+  // `bias` is an arbitrary constant
+  //
+  auto kka = std::max(ka-1, 0);
+  auto kkb = std::min(kb,   M);
+  CHECK_LE(kka, kkb);
+  auto bias = -std::numeric_limits<double>::infinity();
+  for (auto k = kka; k <= kkb; ++k) {  // k == kkb is _included_
+    bias = std::max(bias, gamma_eff.at(k));
+  }
+
+  auto biased_int = 0.0; // == int_N_core(a,b,gamma_eff) / std::exp(bias)
+  auto biased_deriv = 0.0; // == d(int_N_core(a,b,gamma_eff))/dgamma_kp / std::exp(bias)
+
+  // d(ln(integral))/dgamma_kp = [d(integral)/dgamma_kp] / integral = biased_deriv / biased_int
+  
+  // Decompose integrals into one piece per overlapping interval
+  for (auto k = ka; k <= kb; ++k) { // k == kb is _included_
+
+    // Intersect [a,b] with limits of interval k
+    auto lo = std::max(a, (k > 0 ) ? x(k-1) : -std::numeric_limits<double>::infinity());
+    auto hi = std::min(b, (k <= M) ? x(k)   : +std::numeric_limits<double>::infinity());
+    CHECK_LE(lo, hi);
+    
+    // Integrate N(t) dt over this intersection:
+    //
+    //    biased_int += int_lo^hi dt * N(t)/exp(bias)
+    //    biased_deriv += int_lo^hi dt * d(N(t))/dgamma_kp / exp(bias)
+
+    if (k == 0) {
+      biased_int += std::exp(-bias + gamma_eff[0]) * (hi-lo);
+      biased_deriv += (kp == 0) ? std::exp(-bias + gamma_eff[0]) * (hi-lo) : 0;
+      
+    } else if (k == M+1) {
+      biased_int += std::exp(-bias + gamma_eff[M]) * (hi-lo);
+      biased_deriv += (kp == M) ? std::exp(-bias + gamma_eff[M]) * (hi-lo) : 0;
+
+    } else {
+      
+      switch (type_) {
+        
+        case Type::k_staircase:
+          biased_int += std::exp(-bias + gamma_eff[k]) * (hi-lo);
+          biased_deriv += (kp == k) ? std::exp(-bias + gamma_eff[k]) * (hi-lo) : 0;
+          break;
+          
+        case Type::k_log_linear: {
+          // We have,
+          //
+          //   I = int_lo^hi dt exp[-bias + gamma(t)]
+          //
+          // where gamma(t) linearly interpolates from gamma_{k-1} at x_{k-1} to gamma_k at x_k.
+          // Alternatively, it interpolates linearly from Gamma_lo at t=lo to Gamma_hi at t=hi,
+          // where
+          //
+          //                     1 - c_lo                                 c_lo
+          //              /--------------------\               /------------------------\          |
+          //   Gamma_lo = (x_k-lo)/(x_k-x_{k-1}) gamma_{k-1} + (lo-x_{k-1})/(x_k-x_{k-1}) gamma_k,
+          //   Gamma_hi = (x_k-hi)/(x_k-x_{k-1}) gamma_{k-1} + (hi-x_{k-1})/(x_k-x_{k-1}) gamma_k.
+          //              \--------------------/               \------------------------/
+          //                     1 - c_hi                                 c_hi
+          //
+          // We use Gamma_{lo/hi} to avoid confusion with the various {gamma_k} parameters in the
+          // differentiation below.  Rearranging, we get
+          //
+          //   I = int_lo^hi dt exp[-bias + Gamma_lo + (t-lo)/(hi-lo) (Gamma_hi-Gamma_lo)].
+          //     = exp[-bias] (hi-lo) {exp(Gamma_hi) - exp(Gamma_lo)}/(Gamma_hi - Gamma_lo).
+          //     = exp[-bias + Gamma_lo] (hi-lo) {exp(Delta) - 1} / Delta.
+          //
+          // where
+          //
+          //   Delta := Gamma_hi - Gamma_lo.
+          //
+          // The third of these expressions for I is exactly what is used in log_int_N_core.
+          // The second form, however, is more symmetric w.r.t. hi and lo.  Taking partial derivatives of it
+          // w.r.t. Gamma_hi and Gamma_lo, we get,
+          //
+          //     del I                          (Gamma_hi - Gamma_lo) exp(Gamma_hi) - (exp(Gamma_hi) - exp(Gamma_lo))
+          //  ------------ = exp[-bias] (hi-lo) --------------------------------------------------------------------- .
+          //  del Gamma_hi                                            (Gamma_hi - Gamma_lo)^2
+          // 
+          // Pulling out a common factor of Gamma_lo and introducing Delta, we get
+          //
+          //     del I                                     Delta exp(Delta) - (exp(Delta) - 1)
+          //  ------------ = exp[-bias + Gamma_lo] (hi-lo) ----------------------------------- .
+          //  del Gamma_hi                                            Delta^2
+          //
+          // Let
+          //
+          //   J(Delta) := (Delta exp(Delta) - (exp(Delta) - 1)) / Delta^2.
+          //
+          // Then, exploting the hi/lo symmetry, we obtain
+          //
+          //   del I / del Gamma_hi = exp[-bias + Gamma_lo] (hi-lo) J(+Delta),
+          //   del I / del Gamma_lo = exp[-bias + Gamma_hi] (hi-lo) J(-Delta).
+          //
+          // A complication arises when Delta is very small, and calculating J(Delta) becomes
+          // numerically unstable.  A Taylor expansion around Delta = 0 yields,
+          //
+          //   J(Delta) = 1/2 + Delta/3 + O(Delta^2)      (Delta -> 0),
+          //
+          // and experimentally, we find this Taylor expansion to be better than evaluating the
+          // original expression for |Delta| < ~1e-5.
+          //
+          // Finally, taking derivatives of Gamma_{hi,lo} w.r.t. gamma_kp, we obtain
+          //
+          //   del Gamma_lo / del gamma_kp = (1-c_lo) delta_{kp,k-1} + c_lo delta_{kp,k},
+          //   del Gamma_hi / del gamma_kp = (1-c_hi) delta_{kp,k-1} + c_hi delta_{kp,k}.
+          //
+          // Puttng it all together, we find
+          //
+          //   del I / del gamma_kp
+          //     = (del I / del Gamma_hi) (del Gamma_hi / del gamma_kp) +
+          //       (del I / del Gamma_lo) (del Gamma_lo / del gamma_kp)
+          //     = exp[-bias] (hi-lo) { exp(Gamma_lo) J(+Delta) [(1-c_hi) delta_{kp,k-1} + c_hi delta_{kp,k}]
+          //                          + exp(Gamma_hi) J(-Delta) [(1-c_lo) delta_{kp,k-1} + c_lo delta_{kp,k}] }
+          //     = exp[-bias] (hi-lo) { delta_{kp,k-1} [(1-c_hi) exp(Gamma_lo) J(+Delta) + (1-c_lo) exp(Gamma_hi) J(-Delta)]
+          //                          + delta_{kp,k}   [   c_hi  exp(Gamma_lo) J(+Delta) +    c_lo  exp(Gamma_hi) J(-Delta)] }
+          //
+          //
+          // Check
+          // -----
+          // If lo = x_{k-1} and hi = x_k, then
+          // * c_lo = 0.0 and c_hi = 1.0
+          // * Gamma_lo = gamma_{k-1} and Gamma_hi = gamma_k
+          // * Delta = gamma_k - gamma_{k-1}  (assume Delta != 0)
+          // * I = exp[-bias] (hi-lo) {exp(gamma_k) - exp(gamma_{k-1})} / (gamma_k - gamma_{k-1})
+          // * del I / del gamma_k = exp[-bias + Gamma_lo] (hi-lo) J(+Delta)
+          // * del I / del gamma_{k-1} = exp[-bias + Gamma_hi] (hi-lo) J(-Delta)
+
+          auto c_lo = (lo - x(k-1)) / (x(k) - x(k-1));
+          auto c_hi = (hi - x(k-1)) / (x(k) - x(k-1));
+          
+          auto Gamma_lo = (1-c_lo) * gamma_eff[k-1] + c_lo * gamma_eff[k];
+          auto Gamma_hi = (1-c_hi) * gamma_eff[k-1] + c_hi * gamma_eff[k];
+            
+          auto Delta = Gamma_hi - Gamma_lo;
+          auto JPlusDelta = 0.0;
+          auto JMinusDelta = 0.0;
+
+          if (fabs(Delta) < 1e-5) {
+            biased_int += std::exp(-bias + Gamma_lo) * (hi-lo) * (1 + 0.5*Delta);
+            JPlusDelta = 0.5 + Delta/3;
+            JMinusDelta = 0.5 - Delta/3;
+            
+          } else {
+            biased_int += std::exp(-bias + Gamma_lo) * (hi-lo) * (std::expm1(Delta) / Delta);
+            JPlusDelta =  (+Delta * std::exp(+Delta) - std::expm1(+Delta)) / (Delta*Delta);
+            JMinusDelta = (-Delta * std::exp(-Delta) - std::expm1(-Delta)) / (Delta*Delta);
+          }
+
+          if (kp == k) {
+            biased_deriv += (hi-lo) * (
+                c_hi * std::exp(-bias + Gamma_lo) * JPlusDelta +
+                c_lo * std::exp(-bias + Gamma_hi) * JMinusDelta);
+            
+          } else if (kp == (k-1)) {
+            biased_deriv += (hi-lo) * (
+                (1-c_hi) * std::exp(-bias + Gamma_lo) * JPlusDelta +
+                (1-c_lo) * std::exp(-bias + Gamma_hi) * JMinusDelta);
+          }
+          
+          break;
+        }
+          
+        default:
+          CHECK(false) << "unrecognized type " << static_cast<int>(type_);
+      }
+    }
+  }
+  
+  return biased_deriv / biased_int;
+}
+
 auto Skygrid_pop_model::pop_integral(double a, double b) const -> double {
-  return std::exp(log_integral_core(a, b, gamma_));
+  return std::exp(log_int_N_core(a, b, gamma_));
 }
 
 auto Skygrid_pop_model::intensity_integral(double a, double b) const -> double {
-  return std::exp(log_integral_core(a, b, minus_gamma_));
+  return std::exp(log_int_N_core(a, b, minus_gamma_));
+}
+
+auto Skygrid_pop_model::d_log_int_N_d_gamma(double a, double b, int k) const -> double {
+  return d_log_int_N_d_gamma_core(a, b, k, gamma_);
 }
 
 auto Skygrid_pop_model::print_to(std::ostream& os) const -> void {

@@ -217,39 +217,39 @@ TEST(Pop_model_test, skygrid_pop_model_normal_staircase) {
       testing::DoubleNear(4.0, 1e-6),
       testing::DoubleNear(+std::numeric_limits<double>::infinity(), 1e-6)));
 
-  // Interval wholly before SkyGrid time range
+  // A. Interval wholly before SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(0.0, 0.5), testing::DoubleNear(
       std::exp(-4.0)*(0.5-0.0), 1e-6));
 
-  // Interval covering before SkyGrid time range and part of first cell
+  // B. Interval covering before SkyGrid time range and part of first cell
   EXPECT_THAT(pop_model.pop_integral(0.5, 1.5), testing::DoubleNear(
       std::exp(-4.0)*(1.0-0.5) + std::exp(+7.0)*(1.5-1.0), 1e-6));
   
-  // Interval covering before SkyGrid time range, first cell and part of second cell
+  // C. Interval covering before SkyGrid time range, first cell and part of second cell
   EXPECT_THAT(pop_model.pop_integral(0.5, 2.5), testing::DoubleNear(
       std::exp(-4.0)*(1.0-0.5) + std::exp(+7.0)*(2.0-1.0) + std::exp(+3.0)*(2.5-2.0), 1e-6));
   
-  // Interval completely inside a single cell
+  // D. Interval completely inside a single cell
   EXPECT_THAT(pop_model.pop_integral(2.5, 3.5), testing::DoubleNear(
       std::exp(+3.0)*(3.5-2.5), 1e-6));
   
-  // Interval straddling two consecutive cells
+  // E. Interval straddling two consecutive cells
   EXPECT_THAT(pop_model.pop_integral(1.5, 2.5), testing::DoubleNear(
       std::exp(+7.0)*(2.0-1.5) + std::exp(+3.0)*(2.5-2.0), 1e-6));
   
-  // Interval straddling three consecutive cells
+  // F. Interval straddling three consecutive cells
   EXPECT_THAT(pop_model.pop_integral(1.5, 4.5), testing::DoubleNear(
       std::exp(+7.0)*(2.0-1.5) + std::exp(+3.0)*(4.0-2.0) + std::exp(+1.0)*(4.5-4.0), 1e-6));
 
-  // Interval covering part of second-to-last cell, last cell, and after SkyGrid time range
+  // G. Interval covering part of second-to-last cell, last cell, and after SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(2.5, 9.0), testing::DoubleNear(
       std::exp(+3.0)*(4.0-2.5) + std::exp(+1.0)*(8.0-4.0) + std::exp(+1.0)*(9.0-8.0), 1e-6));
   
-  // Interval covering part of final cell and after SkyGrid time range
+  // H. Interval covering part of final cell and after SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(6.0, 9.0), testing::DoubleNear(
       std::exp(+1.0)*(8.0-6.0) + std::exp(+1.0)*(9.0-8.0), 1e-6));
   
-  // Interval wholly after SkyGrid time range
+  // I. Interval wholly after SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(9.5, 10.5), testing::DoubleNear(
       std::exp(+1.0)*(10.5-9.5), 1e-6));
 
@@ -273,6 +273,98 @@ TEST(Pop_model_test, skygrid_pop_model_normal_staircase) {
       std::exp(-1.0)*(8.0-6.0) + std::exp(-1.0)*(9.0-8.0), 1e-6));
   EXPECT_THAT(pop_model.intensity_integral(9.5, 10.5), testing::DoubleNear(
       std::exp(-1.0)*(10.5-9.5), 1e-6));
+
+  // Derivatives of log-integrals above
+
+  // A. Interval wholly before SkyGrid time range
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.0, 0.5, 0), testing::DoubleNear(1.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.0, 0.5, 1), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.0, 0.5, 2), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.0, 0.5, 3), testing::DoubleNear(0.0, 1e-6));
+  
+  // B. Interval covering before SkyGrid time range and part of first cell
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 1.5, 0), testing::DoubleNear(
+      (std::exp(-4.0)*(1.0-0.5))
+      / (std::exp(-4.0)*(1.0-0.5) + std::exp(+7.0)*(1.5-1.0)),
+      1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 1.5, 1), testing::DoubleNear(
+      (std::exp(+7.0)*(1.5-1.0))
+      / (std::exp(-4.0)*(1.0-0.5) + std::exp(+7.0)*(1.5-1.0)),
+      1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 1.5, 2), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 1.5, 3), testing::DoubleNear(0.0, 1e-6));
+  
+  // C. Interval covering before SkyGrid time range, first cell and part of second cell
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 2.5, 0), testing::DoubleNear(
+      (std::exp(-4.0)*(1.0-0.5))
+      / (std::exp(-4.0)*(1.0-0.5) + std::exp(+7.0)*(2.0-1.0) + std::exp(+3.0)*(2.5-2.0)),
+      1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 2.5, 1), testing::DoubleNear(
+      (std::exp(+7.0)*(2.0-1.0))
+      / (std::exp(-4.0)*(1.0-0.5) + std::exp(+7.0)*(2.0-1.0) + std::exp(+3.0)*(2.5-2.0)),
+      1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 2.5, 2), testing::DoubleNear(
+      (std::exp(+3.0)*(2.5-2.0))
+      / (std::exp(-4.0)*(1.0-0.5) + std::exp(+7.0)*(2.0-1.0) + std::exp(+3.0)*(2.5-2.0)),
+      1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 2.5, 3), testing::DoubleNear(0.0, 1e-6));
+  
+  // D. Interval completely inside a single cell
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 3.5, 0), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 3.5, 1), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 3.5, 2), testing::DoubleNear(1.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 3.5, 3), testing::DoubleNear(0.0, 1e-6));
+  
+  // E. Interval straddling two consecutive cells
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 2.5, 0), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 2.5, 1), testing::DoubleNear(
+      (std::exp(+7.0)*(2.0-1.5))
+      / (std::exp(+7.0)*(2.0-1.5) + std::exp(+3.0)*(2.5-2.0)),
+      1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 2.5, 2), testing::DoubleNear(
+      (std::exp(+3.0)*(2.5-2.0))
+      / (std::exp(+7.0)*(2.0-1.5) + std::exp(+3.0)*(2.5-2.0)),
+      1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 2.5, 3), testing::DoubleNear(0.0, 1e-6));
+  
+  // F. Interval straddling three consecutive cells
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 4.5, 0), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 4.5, 1), testing::DoubleNear(
+      (std::exp(+7.0)*(2.0-1.5))
+      / (std::exp(+7.0)*(2.0-1.5) + std::exp(+3.0)*(4.0-2.0) + std::exp(+1.0)*(4.5-4.0)),
+      1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 4.5, 2), testing::DoubleNear(
+      (std::exp(+3.0)*(4.0-2.0))
+      / (std::exp(+7.0)*(2.0-1.5) + std::exp(+3.0)*(4.0-2.0) + std::exp(+1.0)*(4.5-4.0)),
+      1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 4.5, 3), testing::DoubleNear(
+      (std::exp(+1.0)*(4.5-4.0))
+      / (std::exp(+7.0)*(2.0-1.5) + std::exp(+3.0)*(4.0-2.0) + std::exp(+1.0)*(4.5-4.0)),
+      1e-6));
+
+  // G. Interval covering part of second-to-last cell, last cell, and after SkyGrid time range
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 9.0, 0), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 9.0, 1), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 9.0, 2), testing::DoubleNear(
+      (std::exp(+3.0)*(4.0-2.5))
+      / (std::exp(+3.0)*(4.0-2.5) + std::exp(+1.0)*(8.0-4.0) + std::exp(+1.0)*(9.0-8.0)),
+      1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 9.0, 3), testing::DoubleNear(
+      (std::exp(+1.0)*(8.0-4.0) + std::exp(+1.0)*(9.0-8.0))
+      / (std::exp(+3.0)*(4.0-2.5) + std::exp(+1.0)*(8.0-4.0) + std::exp(+1.0)*(9.0-8.0)),
+      1e-6));
+  
+  // H. Interval covering part of final cell and after SkyGrid time range
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(6.0, 9.0, 0), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(6.0, 9.0, 1), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(6.0, 9.0, 2), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(6.0, 9.0, 3), testing::DoubleNear(1.0, 1e-6));
+  
+  // I. Interval wholly after SkyGrid time range
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(9.5, 10.5, 0), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(9.5, 10.5, 1), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(9.5, 10.5, 2), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(9.5, 10.5, 3), testing::DoubleNear(1.0, 1e-6));
 }
 
 TEST(Pop_model_test, skygrid_pop_model_normal_log_linear) {
@@ -362,56 +454,56 @@ TEST(Pop_model_test, skygrid_pop_model_normal_log_linear) {
       testing::DoubleNear(4.0, 1e-6),
       testing::DoubleNear(+std::numeric_limits<double>::infinity(), 1e-6)));
 
-  // Interval wholly before SkyGrid time range
+  // A. Interval wholly before SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(0.0, 0.5), testing::DoubleNear(
       std::exp(-4.0)*(0.5-0.0),
       1e-6));
   
-  // Interval covering before SkyGrid time range and part of first cell
+  // B. Interval covering before SkyGrid time range and part of first cell
   EXPECT_THAT(pop_model.pop_integral(0.5, 1.5), testing::DoubleNear(
       std::exp(-4.0)*(1.0-0.5) +
       1.0 * std::exp(-4.0) * std::exp((+7.0 - -4.0) * 0.0) * std::expm1((+7.0 - -4.0) * (0.5-0.0)) / (+7.0 - -4.0),
       1e-6));
   
-  // Interval covering before SkyGrid time range, first cell and part of second cell
+  // C. Interval covering before SkyGrid time range, first cell and part of second cell
   EXPECT_THAT(pop_model.pop_integral(0.5, 2.5), testing::DoubleNear(
       std::exp(-4.0)*(1.0-0.5) +
       1.0 * std::exp(-4.0) * std::exp((+7.0 - -4.0) * 0.0) * std::expm1((+7.0 - -4.0) * (1.0 -0.0)) / (+7.0 - -4.0) +
       2.0 * std::exp(+7.0) * std::exp((+3.0 - +7.0) * 0.0) * std::expm1((+3.0 - +7.0) * (0.25-0.0)) / (+3.0 - +7.0),
       1e-6));
   
-  // Interval completely inside a single cell
+  // D. Interval completely inside a single cell
   EXPECT_THAT(pop_model.pop_integral(2.5, 3.5), testing::DoubleNear(
       2.0 * std::exp(+7.0) * std::exp((+3.0 - +7.0) * 0.25) * std::expm1((+3.0 - +7.0) * (0.75-0.25)) / (+3.0 - +7.0),
       1e-6));
 
-  // Interval straddling two consecutive cells
+  // E. Interval straddling two consecutive cells
   EXPECT_THAT(pop_model.pop_integral(1.5, 2.5), testing::DoubleNear(
       1.0 * std::exp(-4.0) * std::exp((+7.0 - -4.0) * 0.5) * std::expm1((+7.0 - -4.0) * (1.0 -0.5)) / (+7.0 - -4.0) +
       2.0 * std::exp(+7.0) * std::exp((+3.0 - +7.0) * 0.0) * std::expm1((+3.0 - +7.0) * (0.25-0.0)) / (+3.0 - +7.0),
       1e-6));
   
-  // Interval straddling three consecutive cells
+  // F. Interval straddling three consecutive cells
   EXPECT_THAT(pop_model.pop_integral(1.5, 4.5), testing::DoubleNear(
       1.0 * std::exp(-4.0) * std::exp((+7.0 - -4.0) * 0.5) * std::expm1((+7.0 - -4.0) * (1.0  -0.5)) / (+7.0 - -4.0) +
       2.0 * std::exp(+7.0) * std::exp((+3.0 - +7.0) * 0.0) * std::expm1((+3.0 - +7.0) * (1.0  -0.0)) / (+3.0 - +7.0) +
       4.0 * std::exp(+3.0) * std::exp((+1.0 - +3.0) * 0.0) * std::expm1((+1.0 - +3.0) * (0.125-0.0)) / (+1.0 - +3.0),
       1e-6));
 
-  // Interval covering part of second-to-last cell, last cell, and after SkyGrid time range
+  // G. Interval covering part of second-to-last cell, last cell, and after SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(2.5, 9.0), testing::DoubleNear(
       2.0 * std::exp(+7.0) * std::exp((+3.0 - +7.0) * 0.25) * std::expm1((+3.0 - +7.0) * (1.0  -0.25)) / (+3.0 - +7.0) +
       4.0 * std::exp(+3.0) * std::exp((+1.0 - +3.0) * 0.0 ) * std::expm1((+1.0 - +3.0) * (1.0  -0.0 )) / (+1.0 - +3.0) +
       std::exp(+1.0)*(9.0-8.0),
       1e-6));
 
-  // Interval covering part of final cell and after SkyGrid time range
+  // H. Interval covering part of final cell and after SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(6.0, 9.0), testing::DoubleNear(
       4.0 * std::exp(+3.0) * std::exp((+1.0 - +3.0) * 0.5) * std::expm1((+1.0 - +3.0) * (1.0-0.5)) / (+1.0 - +3.0) +
       std::exp(+1.0)*(9.0-8.0),
       1e-6));
   
-  // Interval wholly after SkyGrid time range
+  // I. Interval wholly after SkyGrid time range
   EXPECT_THAT(pop_model.pop_integral(9.5, 10.5), testing::DoubleNear(
       std::exp(+1.0)*(10.5-9.5),
       1e-6));
@@ -454,6 +546,77 @@ TEST(Pop_model_test, skygrid_pop_model_normal_log_linear) {
   EXPECT_THAT(pop_model.intensity_integral(9.5, 10.5), testing::DoubleNear(
       std::exp(-1.0)*(10.5-9.5),
       1e-6));
+
+  // Derivatives of log-integrals above
+  //
+  // The analytical expressions here are so messy that getting the test right is almost as
+  // hard as writing the original calculation.  So instead we independently test the
+  // derivative by comparing it to a numerical estimate
+  auto numerical_deriv = [&](double a, double b, int k) -> double {
+    const auto& old_gamma = pop_model.gamma();
+    auto new_gamma = std::vector{old_gamma};
+
+    const auto delta = 1e-4;
+    new_gamma[k] += delta;
+
+    auto new_pop_model = Skygrid_pop_model{
+      pop_model.x(),
+      new_gamma,
+      Skygrid_pop_model::Type::k_log_linear
+    };
+
+    auto old_log_int = std::log(pop_model.pop_integral(a, b));
+    auto new_log_int = std::log(new_pop_model.pop_integral(a, b));
+    return (new_log_int - old_log_int) / delta;
+  };
+
+  // A. Interval wholly before SkyGrid time range
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.0, 0.5, 0), testing::DoubleNear(numerical_deriv(0.0, 0.5, 0), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.0, 0.5, 1), testing::DoubleNear(numerical_deriv(0.0, 0.5, 1), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.0, 0.5, 2), testing::DoubleNear(numerical_deriv(0.0, 0.5, 2), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.0, 0.5, 3), testing::DoubleNear(numerical_deriv(0.0, 0.5, 3), 1e-4));
+  
+  // B. Interval covering before SkyGrid time range and part of first cell
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 1.5, 0), testing::DoubleNear(numerical_deriv(0.5, 1.5, 0), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 1.5, 1), testing::DoubleNear(numerical_deriv(0.5, 1.5, 1), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 1.5, 2), testing::DoubleNear(numerical_deriv(0.5, 1.5, 2), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 1.5, 3), testing::DoubleNear(numerical_deriv(0.5, 1.5, 3), 1e-4));
+  
+  // C. Interval covering before SkyGrid time range, first cell and part of second cell
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 2.5, 0), testing::DoubleNear(numerical_deriv(0.5, 2.5, 0), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 2.5, 1), testing::DoubleNear(numerical_deriv(0.5, 2.5, 1), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 2.5, 2), testing::DoubleNear(numerical_deriv(0.5, 2.5, 2), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(0.5, 2.5, 3), testing::DoubleNear(numerical_deriv(0.5, 2.5, 3), 1e-4));
+  
+  // D. Interval completely inside a single cell
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 3.5, 0), testing::DoubleNear(numerical_deriv(2.5, 3.5, 0), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 3.5, 1), testing::DoubleNear(numerical_deriv(2.5, 3.5, 1), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 3.5, 2), testing::DoubleNear(numerical_deriv(2.5, 3.5, 2), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 3.5, 3), testing::DoubleNear(numerical_deriv(2.5, 3.5, 3), 1e-4));
+
+  // E. Interval straddling two consecutive cells
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 2.5, 0), testing::DoubleNear(numerical_deriv(1.5, 2.5, 0), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 2.5, 1), testing::DoubleNear(numerical_deriv(1.5, 2.5, 1), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 2.5, 2), testing::DoubleNear(numerical_deriv(1.5, 2.5, 2), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 2.5, 3), testing::DoubleNear(numerical_deriv(1.5, 2.5, 3), 1e-4));
+
+  // F. Interval straddling three consecutive cells
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 4.5, 0), testing::DoubleNear(numerical_deriv(1.5, 4.5, 0), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 4.5, 1), testing::DoubleNear(numerical_deriv(1.5, 4.5, 1), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 4.5, 2), testing::DoubleNear(numerical_deriv(1.5, 4.5, 2), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(1.5, 4.5, 3), testing::DoubleNear(numerical_deriv(1.5, 4.5, 3), 1e-4));
+
+  // G. Interval covering part of second-to-last cell, last cell, and after SkyGrid time range
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 9.0, 0), testing::DoubleNear(numerical_deriv(2.5, 9.0, 0), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 9.0, 1), testing::DoubleNear(numerical_deriv(2.5, 9.0, 1), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 9.0, 2), testing::DoubleNear(numerical_deriv(2.5, 9.0, 2), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(2.5, 9.0, 3), testing::DoubleNear(numerical_deriv(2.5, 9.0, 3), 1e-4));
+
+  // H. Interval covering part of final cell and after SkyGrid time range
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(6.0, 9.0, 0), testing::DoubleNear(numerical_deriv(6.0, 9.0, 0), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(6.0, 9.0, 1), testing::DoubleNear(numerical_deriv(6.0, 9.0, 1), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(6.0, 9.0, 2), testing::DoubleNear(numerical_deriv(6.0, 9.0, 2), 1e-4));
+  EXPECT_THAT(pop_model.d_log_int_N_d_gamma(6.0, 9.0, 3), testing::DoubleNear(numerical_deriv(6.0, 9.0, 3), 1e-4));
 }
 
 TEST(Pop_model_test, skygrid_pop_model_staircase_print) {
