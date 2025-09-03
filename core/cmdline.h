@@ -31,7 +31,6 @@ auto build_rough_initial_tree_from_maple(
     -> Phylo_tree;
 
 struct Processed_cmd_line {
-  std::unique_ptr<std::mt19937> prng;
   std::unique_ptr<ctpl::thread_pool> thread_pool;
   std::shared_ptr<Run> run;
   int64_t steps;
@@ -42,15 +41,6 @@ struct Processed_cmd_line {
   std::optional<std::string> delphy_output_filename;
   std::optional<std::string> delphy_output_metadata;
   int64_t delphy_snapshot_every;
-  bool alpha_move_enabled;
-  bool mu_move_enabled;
-  double init_mu;
-  bool mpox_hack_enabled;
-  bool final_pop_size_move_enabled;
-  double init_final_pop_size;
-  bool pop_growth_rate_move_enabled;
-  double init_pop_growth_rate;
-  int target_coal_prior_cells;
 };
 auto process_args(int argc, char** argv) -> Processed_cmd_line;
 

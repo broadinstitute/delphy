@@ -202,7 +202,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     } else {
       seed = std::random_device{}();
     }
-    auto prng = std::make_unique<std::mt19937>(seed);
+    auto prng = std::mt19937{seed};
     std::cerr << "# Seed: " << seed << "\n";
     
     if (opts.count("v0-init-heuristic") > 0 && opts.count("v0-init-random") > 0) {
@@ -276,7 +276,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     
     std::cerr << (init_random ? "Building random initial tree..." : "Building rough initial tree...") << "\n";
     tree = build_rough_initial_tree_from_maple(
-        std::move(maple_file), init_random, *prng,
+        std::move(maple_file), init_random, prng,
         [](int tips_so_far, int total_tips) {
           std::cerr << absl::StreamFormat("- added %d / %d tips\n", tips_so_far, total_tips);
         });
@@ -382,7 +382,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     
     // Create and configure initial run
     auto t0 = calc_max_tip_time(tree);
-    auto run = std::make_shared<Run>(*thread_pool, *prng, std::move(tree));
+    auto run = std::make_shared<Run>(*thread_pool, prng, std::move(tree));
     run->set_mpox_hack_enabled(mpox_hack_enabled);
     run->set_alpha_move_enabled(alpha_move_enabled);
     run->set_mu_move_enabled(not fix_mutation_rate);
@@ -411,7 +411,6 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     }
     
     return {
-      .prng = std::move(prng),
       .thread_pool = std::move(thread_pool),
       .run = std::move(run),
       .steps = steps,
@@ -421,16 +420,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       .tree_every = tree_every,
       .delphy_output_filename = std::move(delphy_output_filename),
       .delphy_output_metadata = std::move(delphy_output_metadata),
-      .delphy_snapshot_every = delphy_snapshot_every,
-      .alpha_move_enabled = alpha_move_enabled,
-      .mu_move_enabled = not fix_mutation_rate,
-      .init_mu = init_mu,
-      .mpox_hack_enabled = mpox_hack_enabled,
-      .final_pop_size_move_enabled = not fix_final_pop_size,
-      .init_final_pop_size = init_final_pop_size,
-      .pop_growth_rate_move_enabled = not fix_pop_growth_rate,
-      .init_pop_growth_rate = init_pop_growth_rate,
-      .target_coal_prior_cells = target_coal_prior_cells
+      .delphy_snapshot_every = delphy_snapshot_every
     };
     
   } catch (cxxopts::exceptions::exception& x) {
