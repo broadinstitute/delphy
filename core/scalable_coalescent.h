@@ -15,7 +15,13 @@ class Scalable_coalescent_prior {
   Scalable_coalescent_prior(std::shared_ptr<const Pop_model> pop_model, Node_index num_nodes, double t_ref, double t_step);
 
   auto t_step() const -> double { return t_step_; }
+  auto k_bars() const -> const std::deque<double>& { return k_bars_; }
+  auto popsize_bars() const -> const std::deque<double>& { return popsize_bars_; }
 
+  auto cell_for(double t) const -> int;
+  auto cell_lbound(int cell) const -> double { return t_ref_ + ((cell - cells_before_t_ref_) * t_step_); }
+  auto cell_ubound(int cell) const -> double { return cell_lbound(cell) + t_step_; }
+  
   auto reset(double t_step) -> void;
 
   auto mark_as_tip(Node_index node) -> void { node_infos_.at(node).is_tip = true; }
@@ -41,9 +47,6 @@ class Scalable_coalescent_prior {
   double t_step_;
   int cells_before_t_ref_;
 
-  auto cell_for(double t) const -> int;
-  auto cell_lbound(int cell) const -> double { return t_ref_ + ((cell - cells_before_t_ref_) * t_step_); }
-  auto cell_ubound(int cell) const -> double { return cell_lbound(cell) + t_step_; }
   auto assert_space(double t) -> void;
   auto ensure_space(double t) -> void;
   auto add_interval(double t_start, double t_end, double delta_k) -> void;
