@@ -54,7 +54,7 @@ auto read_fasta(
       // sequence IDs that contain spaces.  Moreover, both BEAST and IQ-Tree
       // read IDs as everything between the '>' and the end of the line.  So from now on,
       // we'll behave like BEAST and IQ-Tree
-      auto id_begin = line.begin();
+      auto id_begin = line.begin() + 1;  // + 1 => skip over initial '>'
       auto id_end = line.end();
       while (id_begin < id_end && std::isspace(*id_begin)) { ++id_begin; }
       while (id_begin < id_end && std::isspace(*(id_end-1))) { --id_end; }
@@ -165,7 +165,7 @@ auto read_maple(
     auto ignore_this_tip = false;
 
     // 2025-04-24: See analogous comment in read_fasta above wrt ID vs comment in FASTA files
-    auto id_begin = line.begin();
+    auto id_begin = line.begin() + 1;  // + 1 => skip over initial '>'
     auto id_end = line.end();
     while (id_begin < id_end && std::isspace(*id_begin)) { ++id_begin; }
     while (id_begin < id_end && std::isspace(*(id_end-1))) { --id_end; }
