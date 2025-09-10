@@ -460,6 +460,39 @@ static auto render_mcc() -> void {
   }
 }
 
+static auto render_pop_curve() -> void {
+  // Temporarily use only left half of screen
+  dx *= 0.5;
+  defer { dx *= 2.0; };
+
+  color_3d(0.0, 0.0, 0.0);  // black lines
+
+  rescale_axes();
+
+  auto gamma_max = 12.0;
+  auto y_min = 0.90;
+  auto y_scale = 0.10 / gamma_max;
+
+  const auto& N_c = ui_run->coalescent_prior().popsize_bars();
+  auto C = std::ssize(N_c);
+  
+  draw_line(x_for(ui_run->coalescent_prior().cell_ubound(C-1)), y_min,
+            x_for(ui_run->coalescent_prior().cell_ubound(C-1)), y_min + y_scale * gamma_max);
+  draw_line(x_for(ui_run->coalescent_prior().cell_lbound(0)), y_min,
+            x_for(ui_run->coalescent_prior().cell_ubound(C-1)), y_min);
+
+  for (auto c = 0; c != C; ++c) {
+    auto a = ui_run->coalescent_prior().cell_lbound(c);
+    auto b = ui_run->coalescent_prior().cell_ubound(c);
+    auto gamma = std::log(N_c[c]);
+
+    auto y = y_min + y_scale * gamma;
+    
+    draw_line(x_for(a), y,
+              x_for(b), y);
+  }
+}
+
 static auto render_all() -> void {
   color_3d(1.0, 1.0, 1.0); // white background
   SDL_RenderClear(sdl_renderer);
@@ -483,6 +516,8 @@ static auto render_all() -> void {
 
   render_tree();
   render_mcc();
+
+  render_pop_curve();
 
   SDL_RenderPresent(sdl_renderer);
 }
@@ -542,6 +577,15 @@ static auto print_stats_line() -> void {
     const auto& exp_pop_model = static_cast<const Exp_pop_model&>(ui_run->pop_model());
     std::cerr << absl::StreamFormat("n0 = %.4g, ", exp_pop_model.pop_at_t0())
               << absl::StreamFormat("g = %.4g, ", exp_pop_model.growth_rate());
+  } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+    const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(ui_run->pop_model());
+    std::cerr << absl::StreamFormat("tau = %.4g, ", ui_run->skygrid_tau());
+    std::cerr << absl::StreamFormat("gamma_k = %s---[", to_iso_date(skygrid_pop_model.x_lo()));
+    for (auto k = 0; k != skygrid_pop_model.M(); ++k) {
+      if (k != 0) { std::cerr << ", "; }
+      std::cerr << absl::StreamFormat("%.4g", skygrid_pop_model.gamma(k));
+    }
+    std::cerr << absl::StreamFormat("]---%s, ", to_iso_date(skygrid_pop_model.x_hi()));
   }
   if (not ui_run->mpox_hack_enabled()) {
     std::cerr << absl::StreamFormat("mu = %.2g * 10^-3 subst / site / year, ", ui_run->mu() * 365 * 1000)
@@ -746,6 +790,22 @@ auto keyboard_func(char key) -> void {
       randomize_tree_times(ui_run->tree());
       ui_run->tree_modified();
       std::cerr << "*** TREE TIMES RANDOMIZED ***" << std::endl;
+      break;
+    }
+    case 'K': {
+      const auto& pop_model = ui_run->pop_model();
+      if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+        const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(ui_run->pop_model());
+        auto M = skygrid_pop_model.M();
+        auto new_gamma_k = std::vector<double>(M+1, 0.0);
+        for (auto k = 0; k <= M; ++k) {
+          new_gamma_k[k] = absl::Uniform(absl::IntervalOpenClosed, ui_run->bitgen(), 0.0, 12.0);
+        }
+        ui_run->set_pop_model(std::make_shared<Skygrid_pop_model>(skygrid_pop_model.x(), new_gamma_k, skygrid_pop_model.type()));
+        std::cerr << "*** SKYGRID POPULATION CURVE RANDOMIZED ***" << std::endl;
+      } else {
+        std::cerr << "*** (ignoring request to randomize Skygrid population curve; not using Skygrid) ***" << std::endl;
+      }
       break;
     }
     case 'T':

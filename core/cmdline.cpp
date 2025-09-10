@@ -158,13 +158,32 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<bool>()->default_value("false"))
       ("v0-target-coal-prior-cells", "Target number of cells to use in parallelized coalescent prior (coalescent prior resolution is adjusted if actual number is more than 33% away from target); higher is more accurate but more expensive",
        cxxopts::value<int>()->default_value("400"))
-      ("v0-fix-final-pop-size", "Fix effective population size at time of last tip",
+
+      // Popultation model
+      ("v0-pop-model", "Type of population model to use - exponential or skygrid",
+       cxxopts::value<std::string>()->default_value("exponential"))
+      
+      // The following only make sense for an exponential population model
+      ("v0-fix-final-pop-size", "[pop-model == exponential] Fix effective population size at time of last tip",
        cxxopts::value<bool>()->default_value("false"))
-      ("v0-init-final-pop-size", "Initial (or fixed) value of effective population size at time of last time, in years (the effective population size includes a factor of the generation time)",
+      ("v0-init-final-pop-size", "[pop-model == exponential] Initial (or fixed) value of effective population size at time of last tip, in years (the effective population size includes a factor of the generation time)",
        cxxopts::value<double>()->default_value("3.0"))
-      ("v0-fix-pop-growth-rate", "Fix effective population size growth rate",
+      ("v0-fix-pop-growth-rate", "[pop-model == exponential] Fix effective population size growth rate",
        cxxopts::value<bool>()->default_value("false"))
-      ("v0-init-pop-growth-rate", "Initial (or fixed) value of effective population size growth rate, in e-foldings / year",
+      ("v0-init-pop-growth-rate", "[pop-model == exponential] Initial (or fixed) value of effective population size growth rate, in e-foldings / year",
+       cxxopts::value<double>()->default_value("0.0"))
+
+      // The following only make sense for a Skygrid population model
+      ("v0-skygrid-type",
+       "[pop-model == skygrid] Type of Skygrid model: \n"
+       "* 'staircase' (default) = log N(t) is piecewise flat (standard Gill et al 2012)\n"
+       "* 'log-linear' = log N(t) is piecewise linear and continuous\n",
+       cxxopts::value<std::string>()->default_value("staircase"))
+      ("v0-skygrid-num-parameters",
+       "[pop-model == skygrid] Number of parameters used to parametrize N(t) (what BEAUTi calls 'Number of parameters' == one more than what Gill et al 2012 call `M`)",
+       cxxopts::value<int>()->default_value("50"))
+      ("v0-skygrid-cutoff",
+       "[pop-model == skygrid] Time before time of last tip for final transition, in years (what BEAUTi calls 'Time of last transition point' == what Gill et al 2012 calls `x_M`)",
        cxxopts::value<double>()->default_value("0.0"))
       ;
 
@@ -363,23 +382,10 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     }
     init_mu /= 365.0;  // convert to subst / site / day
 
-    auto fix_final_pop_size = opts["v0-fix-final-pop-size"].as<bool>();
-    auto init_final_pop_size = opts["v0-init-final-pop-size"].as<double>();
-    if (init_final_pop_size <= 0.0) {
-      std::cerr << "ERROR: Initial effective population size at time of last tip must be positive, got "
-                << init_final_pop_size << " years"  << "\n";
-      std::exit(EXIT_FAILURE);
-    }
-    init_final_pop_size *= 365.0;  // convert to days
-    
-    auto fix_pop_growth_rate = opts["v0-fix-pop-growth-rate"].as<bool>();
-    auto init_pop_growth_rate = opts["v0-init-pop-growth-rate"].as<double>();
-    init_pop_growth_rate /= 365.0;  // convert to e-foldings / day
-    
     auto mpox_hack_enabled = opts["v0-mpox-hack"].as<bool>();
 
     auto target_coal_prior_cells = opts["v0-target-coal-prior-cells"].as<int>();
-    
+
     // Create and configure initial run
     auto t0 = calc_max_tip_time(tree);
     auto run = std::make_shared<Run>(*thread_pool, prng, std::move(tree));
@@ -388,9 +394,90 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     run->set_mu_move_enabled(not fix_mutation_rate);
     run->set_mu(init_mu);
     run->set_target_coal_prior_cells(target_coal_prior_cells);
-    run->set_pop_model(std::make_unique<Exp_pop_model>(t0, init_final_pop_size, init_pop_growth_rate));
-    run->set_final_pop_size_move_enabled(not fix_final_pop_size);
-    run->set_pop_growth_rate_move_enabled(not fix_pop_growth_rate);
+
+    // Population model
+    auto has_exp_pop_model_parameters =
+        (opts.count("v0-fix-final-pop-size") > 0) ||
+        (opts.count("v0-init-final-pop-size") > 0) ||
+        (opts.count("v0-fix-pop-growth-rate") > 0) ||
+        (opts.count("v0-init-pop-growth-rate") > 0);
+    auto has_skygrid_pop_model_parameters =
+        (opts.count("v0-skygrid-type") > 0) ||
+        (opts.count("v0-skygrid-num-parameters") > 0) ||
+        (opts.count("v0-skygrid-cutoff") > 0);
+
+    if (opts["v0-pop-model"].as<std::string>() == "exponential") {
+      
+      // Exponential population model
+      
+      if (has_skygrid_pop_model_parameters) {
+        std::cerr << "ERROR: Cannot specify parameters for 'skygrid' model when pop-model is 'exponential'\n";
+        std::exit(EXIT_FAILURE);
+      }
+      
+      auto fix_final_pop_size = opts["v0-fix-final-pop-size"].as<bool>();
+      auto init_final_pop_size = opts["v0-init-final-pop-size"].as<double>();
+      if (init_final_pop_size <= 0.0) {
+        std::cerr << "ERROR: Initial effective population size at time of last tip must be positive, got "
+                  << init_final_pop_size << " years"  << "\n";
+        std::exit(EXIT_FAILURE);
+      }
+      init_final_pop_size *= 365.0;  // convert to days
+      
+      auto fix_pop_growth_rate = opts["v0-fix-pop-growth-rate"].as<bool>();
+      auto init_pop_growth_rate = opts["v0-init-pop-growth-rate"].as<double>();
+      init_pop_growth_rate /= 365.0;  // convert to e-foldings / day
+
+      // Configure run
+      run->set_pop_model(std::make_unique<Exp_pop_model>(t0, init_final_pop_size, init_pop_growth_rate));
+      run->set_final_pop_size_move_enabled(not fix_final_pop_size);
+      run->set_pop_growth_rate_move_enabled(not fix_pop_growth_rate);
+    
+    } else if (opts["v0-pop-model"].as<std::string>() == "skygrid") {
+      if (has_exp_pop_model_parameters) {
+        std::cerr << "ERROR: Cannot specify parameters for 'exponential' model when pop-model is 'skygrid'\n";
+        std::exit(EXIT_FAILURE);
+      }
+
+      auto skygrid_type = Skygrid_pop_model::Type::k_staircase;
+      if (opts["v0-skygrid-type"].as<std::string>() == "staircase") {
+        skygrid_type = Skygrid_pop_model::Type::k_staircase;
+      } else if (opts["v0-skygrid-type"].as<std::string>() == "log-linear") {
+        skygrid_type = Skygrid_pop_model::Type::k_log_linear;
+      } else {
+        std::cerr << "ERROR: Unknown Skygrid model type '" << opts["v0-skygrid-type"].as<std::string>() << "'\n";
+        std::exit(EXIT_FAILURE);
+      }
+
+      auto num_parameters = opts["v0-skygrid-num-parameters"].as<int>();
+      if (num_parameters < 2) {
+        std::cerr << "ERROR: Number of Skygrid parameters must be at least 2\n";
+        std::exit(EXIT_FAILURE);
+      }
+
+      auto skygrid_cutoff = opts["v0-skygrid-cutoff"].as<double>();
+      if (skygrid_cutoff < 0.0) {
+        std::cerr << "ERROR: Skygrid cutoff must be positive\n";
+        std::exit(EXIT_FAILURE);
+      }
+      skygrid_cutoff *= 365.0;  // convert to days
+
+      auto M = num_parameters - 1;
+      auto x_k = std::vector<double>(M+1, 0.0);
+      for (auto k = 0; k <= M; ++k) {
+        x_k[k] = (t0 - skygrid_cutoff) + k * (skygrid_cutoff / M);
+      }
+
+      // Hard-code default initial pop to 3 years for now
+      auto gamma_k = std::vector<double>(M+1, std::log(3.0 * 365.0));
+
+      // Configure run
+      run->set_pop_model(std::make_unique<Skygrid_pop_model>(std::move(x_k), std::move(gamma_k), skygrid_type));
+      
+    } else {
+      std::cerr << "ERROR: Unknown population model '" << opts["v0-pop-model"].as<std::string>() << "'\n";
+      std::exit(EXIT_FAILURE);
+    }
 
     // Output BEAST input XML if needed
     if (opts.count("v0-out-beast-xml")) {

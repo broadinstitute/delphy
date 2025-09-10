@@ -3,6 +3,7 @@
 #include "distributions.h"
 #include "tree_partitioning.h"
 #include "phylo_tree_calc.h"
+#include "dates.h"
 
 #include <numbers>
 #include <boost/math/special_functions/gamma.hpp>
@@ -683,10 +684,10 @@ auto Run::run_global_moves() -> void {
   // 4. Pseudo-Gibbs sampling of population parameters
   // Depends only on tree topology; after enough MCMC moves, the
   // resulting population model parameters are practically Gibbs sampled
-  for (auto i = 0; i != 50; ++i) {
-    const Pop_model& raw_pop_model = *pop_model_;
-    
-    if (typeid(raw_pop_model) == typeid(Exp_pop_model)) {
+  const Pop_model& raw_pop_model = *pop_model_;
+  
+  if (typeid(raw_pop_model) == typeid(Exp_pop_model)) {
+    for (auto i = 0; i != 50; ++i) {
       if (final_pop_size_move_enabled_) {
         pop_size_move();
         check_derived_quantities();
@@ -695,17 +696,19 @@ auto Run::run_global_moves() -> void {
         pop_growth_rate_move();
         check_derived_quantities();
       }
-      
-    } else if (typeid(raw_pop_model) == typeid(Skygrid_pop_model)) {
+    }
+    
+  } else if (typeid(raw_pop_model) == typeid(Skygrid_pop_model)) {
+    for (auto i = 0; i != 5; ++i) {  // With HMC, each move likely samples each quantity quite well already
       skygrid_tau_move();
       check_derived_quantities();
       
       //skygrid_gammas_move();
       //check_derived_quantities();
-
+      
       skygrid_gammas_zero_mode_gibbs_move();
       check_derived_quantities();
-
+      
       skygrid_gammas_hmc_move();
       check_derived_quantities();
     }
@@ -1773,7 +1776,7 @@ auto Run::skygrid_gammas_hmc_move() -> void {
       auto a = coalescent_prior_.cell_lbound(c);
       auto b = coalescent_prior_.cell_ubound(c);
       B += 0.5 * std::pow(Delta, 2) * k_c[c] * (k_c[c] - 1.0)
-          / new_pop_model->pop_integral(a, b);
+          / (new_pop_model->pop_integral(a, b) * I_0);
     }
     
     F_s[0] = -B + (N_inner - 1) / I_0;
@@ -1786,12 +1789,19 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   };
 
   auto calc_f_k_s_from_gamma_k_s = [&]() -> void {
+
+    auto t_min_coal = coalescent_prior_.cell_lbound(0);
+    auto t_max_coal = coalescent_prior_.cell_ubound(C-1);
     
     for (auto k = 0; k <= M; ++k) {
       f_k[k] = 0.0;
+
+      // Careful: support can go down to -inf for k = 0, and up to +inf for k = M
       auto [t_min, t_max] = new_pop_model->support_of_d_log_N_d_gamma(k);
-      auto c_min = std::max(0, coalescent_prior_.cell_for(t_max));  // Remember, increasing c's span decreasing times
-      auto c_max = std::min(C-1, coalescent_prior_.cell_for(t_min));
+
+      // And careful: support can be fully outside range of coalescent prior cells
+      auto c_min = (t_min < t_min_coal) ? 0   : std::clamp(coalescent_prior_.cell_for(t_min), 0, C-1);
+      auto c_max = (t_max > t_max_coal) ? C-1 : std::clamp(coalescent_prior_.cell_for(t_max), 0, C-1);
       
       for (auto c = c_min; c <= c_max; ++c) {
         auto a = coalescent_prior_.cell_lbound(c);
@@ -1802,7 +1812,7 @@ auto Run::skygrid_gammas_hmc_move() -> void {
       }
 
       for (const auto& node : index_order_traversal(tree_)) {
-        if (tree_.at(node).is_tip()) {
+        if (not tree_.at(node).is_tip()) {
           f_k[k] -= new_pop_model->d_log_N_d_gamma(tree_.at(node).t, k);
         }
       }
@@ -1811,25 +1821,39 @@ auto Run::skygrid_gammas_hmc_move() -> void {
 
   
   // Start of Leapfrog integrator
+  constexpr auto debug_hmc = false;
+
+  // Initial "positions"
+  set_A_s_s_from_gamma_k_s();
+  set_I_0_from_A_0();
+
+  // Initial "momenta"
+  J_0 = absl::Gaussian(bitgen_, 0.0, std::sqrt(m_s[0]));
+  for (auto s = 1; s <= M; ++s) {  // Note: s == 0 excluded
+    P_s[s] = absl::Gaussian(bitgen_, 0.0, std::sqrt(m_s[s]));
+  }
   
   auto old_K = calc_K();
   auto old_U_prior = calc_U_prior_from_gamma_k_s();
   auto old_U_coal = -log_coalescent_prior_;
   auto old_H = old_K + old_U_prior + old_U_coal;
 
-  set_A_s_s_from_gamma_k_s();
-  set_I_0_from_A_0();
+  if (debug_hmc) {
+    // Debugging
+    CHECK_LE(abs(calc_U_prior_from_gamma_k_s() - calc_U_prior_from_A_s_s()), 1e-5);
+    std::cerr << absl::StrFormat(
+        "Initial:       K = %10.1f, U_prior = %10.1f, U_coal = %10.1f, H = %10.1f\n",
+        old_K, old_U_prior, old_U_coal, old_H);
+  }
 
-  // Debugging
-  CHECK_LE(abs(calc_U_prior_from_gamma_k_s() - calc_U_prior_from_A_s_s()), 1e-5);
-  std::cerr << absl::StrFormat(
-      "Initial:       K = %.3g, U_prior = %.3g, U_coal = %.3g, H = %.3g\n",
-      old_K, old_U_prior, old_U_coal, old_H);
-  
-  // Pick initial momenta
-  J_0 = absl::Gaussian(bitgen_, 0.0, m_s[0]);
-  for (auto s = 1; s <= M; ++s) {  // Note: s == 0 excluded
-    P_s[s] = absl::Gaussian(bitgen_, 0.0, m_s[s]);
+  // Reject outright if initial momenta are outrageously high (see comments in analogous check mid-loop below)
+  if (calc_K() > (10.0 * (M+1))) {
+    if (debug_hmc) {
+      std::cerr << "Rejecting Skygrid HMC because it's initial K is too high: K = " << calc_K() << "...\n";
+    }
+    pop_model_ = old_pop_model;
+    coalescent_prior_.pop_model_changed(old_pop_model);
+    return;
   }
   
   // Leapfrog algorithm:
@@ -1850,20 +1874,62 @@ auto Run::skygrid_gammas_hmc_move() -> void {
     for (auto s = 1; s <= M; ++s) {  // Note: s == 0 excluded!
       A_s[s] += 0.5 * dt * P_s[s] * inv_m_s[s];
     }
-
-    // Force calculation
     set_A_0_from_I_0();
     set_gamma_k_s_from_A_s_s();
     update_new_pop_model_from_gamma_k_s();
-    
+    coalescent_prior_.pop_model_changed(new_pop_model);  // Updates N_c
+
+    // Force calculation
     calc_f_k_s_from_gamma_k_s();
     set_F_s_s_from_f_k_s();
     set_F_s_zero_from_gamma_k_s_and_I_0();
+
+    if (debug_hmc) {
+      // Check force calculation
+      auto d_gamma = 1e-4;
+      for (auto k = 0; k <= M; ++k) {
+        auto old_gamma_k = gamma_k[k];
+        
+        gamma_k[k] = old_gamma_k + d_gamma;
+        update_new_pop_model_from_gamma_k_s();
+        coalescent_prior_.pop_model_changed(new_pop_model);
+        auto U_plus = -calc_cur_log_coalescent_prior();
+
+        gamma_k[k] = old_gamma_k - d_gamma;
+        update_new_pop_model_from_gamma_k_s();
+        coalescent_prior_.pop_model_changed(new_pop_model);
+        auto U_minus = -calc_cur_log_coalescent_prior();
+
+        auto slow_f_k = -(U_plus - U_minus) / (2 * d_gamma);
+        CHECK_LE(std::abs(slow_f_k - f_k[k]), std::max(1e-5, 1e-2 * std::max(std::abs(f_k[k]), std::abs(slow_f_k))))
+            << k << " " << old_gamma_k << " " << f_k[k] << " " << slow_f_k;
+
+        gamma_k[k] = old_gamma_k;
+      }
+
+      // Return to original gamma_k's
+      update_new_pop_model_from_gamma_k_s();
+      coalescent_prior_.pop_model_changed(new_pop_model);
+    }
 
     // "Momentum" full-step
     J_0 += dt * F_s[0];
     for (auto s = 1; s <= M; ++s) {  // Note: s == 0 excluded!
       P_s[s] += dt * F_s[s];
+    }
+
+    // Sanity check: if kinetic energy starts exploding, reject move prematurely
+    // (numerics say this is simply going to crash).
+    // At equilibrium, K =~ (M+1) / 2.
+    // To ensure detailed balance, we also apply this rejection criteria at the very beginning;
+    // thus, we _never_ propose trajectories where K > 10 (M+1) at any point.
+    if (calc_K() > (10.0 * (M+1))) {
+      if (debug_hmc) {
+        std::cerr << "Rejecting Skygrid HMC because it's blowing up: K = " << calc_K() << "...\n";
+      }
+      pop_model_ = old_pop_model;
+      coalescent_prior_.pop_model_changed(old_pop_model);
+      return;
     }
 
     // "Position" half-step
@@ -1872,21 +1938,23 @@ auto Run::skygrid_gammas_hmc_move() -> void {
       A_s[s] += 0.5 * dt * P_s[s] * inv_m_s[s];
     }
 
-    // Debugging (all of the below can go away if debug trace is not needed)
-    set_A_0_from_I_0();
-    set_gamma_k_s_from_A_s_s();
-    update_new_pop_model_from_gamma_k_s();
-    coalescent_prior_.pop_model_changed(new_pop_model);
-
-    auto cur_K = calc_K();
-    auto cur_U_prior = calc_U_prior_from_gamma_k_s();
-    auto cur_U_coal = -calc_cur_log_coalescent_prior();
-    auto cur_H = cur_K + cur_U_prior + cur_U_coal;
-    
-    CHECK_LE(abs(calc_U_prior_from_gamma_k_s() - calc_U_prior_from_A_s_s()), 1e-5);
-    std::cerr << absl::StrFormat(
-        "Post step %3d: K = %.3g, U_prior = %.3g, U_coal = %.3g, H = %.3g\n",
-        step, cur_K, cur_U_prior, cur_U_coal, cur_H);
+    if (debug_hmc) {
+      // Debugging (all of the below can go away if debug trace is not needed)
+      set_A_0_from_I_0();
+      set_gamma_k_s_from_A_s_s();
+      update_new_pop_model_from_gamma_k_s();
+      coalescent_prior_.pop_model_changed(new_pop_model);
+      
+      auto cur_K = calc_K();
+      auto cur_U_prior = calc_U_prior_from_gamma_k_s();
+      auto cur_U_coal = -calc_cur_log_coalescent_prior();
+      auto cur_H = cur_K + cur_U_prior + cur_U_coal;
+      
+      CHECK_LE(abs(calc_U_prior_from_gamma_k_s() - calc_U_prior_from_A_s_s()), 1e-5);
+      std::cerr << absl::StrFormat(
+          "Post step %3d: K = %10.1f, U_prior = %10.1f, U_coal = %10.1f, H = %10.1f\n",
+          step, cur_K, cur_U_prior, cur_U_coal, cur_H);
+    }
   }
 
   set_A_0_from_I_0();
@@ -1899,15 +1967,25 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   auto new_U_coal = -calc_cur_log_coalescent_prior();
   auto new_H = new_K + new_U_prior + new_U_coal;
   
-  auto log_metropolis = new_H - old_H;  // HMC => this should be close to 0.0
+  auto log_metropolis = old_H - new_H;  // HMC => this should be close to 0.0
   
   if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
     // Accept
+    if (debug_hmc) {
+      std::cerr << "Accept!\n";
+      for (auto k = 0; k <= M; ++k) {
+        std::cerr << absl::StreamFormat("* gamma_k[%2d] = %10.5f  ( at x_k[%2d] = %s)\n",
+                                        k, gamma_k[k], k, to_iso_date(new_pop_model->x(k)));
+      }
+    }
     pop_model_ = new_pop_model;
     log_coalescent_prior_ = -new_U_coal;
     log_other_priors_ += (-new_U_prior) - (-old_U_prior);
   } else {
     // Reject
+    if (debug_hmc) {
+      std::cerr << "Reject!\n";
+    }
     pop_model_ = old_pop_model;
     coalescent_prior_.pop_model_changed(pop_model_);
   }

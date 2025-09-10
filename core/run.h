@@ -38,6 +38,7 @@ class Run {
   auto do_mcmc_steps(int steps) -> void;
 
   auto tree_modified() -> void { partition_stencils_valid_ = false; invalidate_derived_quantities(); }
+  auto coalescent_prior() const -> const Scalable_coalescent_prior& { return coalescent_prior_; }
   auto coalescent_prior_t_step() const -> double { return coalescent_prior_.t_step(); }
   auto set_coalescent_prior_t_step(double t_step) -> void;
   auto mu() const -> double { return hky_model_.mu; }
