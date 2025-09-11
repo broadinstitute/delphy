@@ -1816,6 +1816,13 @@ auto Run::skygrid_gammas_hmc_move() -> void {
           f_k[k] -= new_pop_model->d_log_N_d_gamma(tree_.at(node).t, k);
         }
       }
+
+      if (k > 0) {
+        f_k[k] -= tau * (gamma_k[k] - gamma_k[k-1]);
+      }
+      if (k < M) {
+        f_k[k] -= tau * (gamma_k[k] - gamma_k[k+1]);
+      }
     }
   };
 
@@ -1847,7 +1854,7 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   }
 
   // Reject outright if initial momenta are outrageously high (see comments in analogous check mid-loop below)
-  if (calc_K() > (10.0 * (M+1))) {
+  if (calc_K() > (100.0 * (M+1))) {
     if (debug_hmc) {
       std::cerr << "Rejecting Skygrid HMC because it's initial K is too high: K = " << calc_K() << "...\n";
     }
@@ -1893,12 +1900,12 @@ auto Run::skygrid_gammas_hmc_move() -> void {
         gamma_k[k] = old_gamma_k + d_gamma;
         update_new_pop_model_from_gamma_k_s();
         coalescent_prior_.pop_model_changed(new_pop_model);
-        auto U_plus = -calc_cur_log_coalescent_prior();
+        auto U_plus = -calc_cur_log_coalescent_prior() + calc_U_prior_from_gamma_k_s();
 
         gamma_k[k] = old_gamma_k - d_gamma;
         update_new_pop_model_from_gamma_k_s();
         coalescent_prior_.pop_model_changed(new_pop_model);
-        auto U_minus = -calc_cur_log_coalescent_prior();
+        auto U_minus = -calc_cur_log_coalescent_prior() + calc_U_prior_from_gamma_k_s();
 
         auto slow_f_k = -(U_plus - U_minus) / (2 * d_gamma);
         CHECK_LE(std::abs(slow_f_k - f_k[k]), std::max(1e-5, 1e-2 * std::max(std::abs(f_k[k]), std::abs(slow_f_k))))
@@ -1922,8 +1929,8 @@ auto Run::skygrid_gammas_hmc_move() -> void {
     // (numerics say this is simply going to crash).
     // At equilibrium, K =~ (M+1) / 2.
     // To ensure detailed balance, we also apply this rejection criteria at the very beginning;
-    // thus, we _never_ propose trajectories where K > 10 (M+1) at any point.
-    if (calc_K() > (10.0 * (M+1))) {
+    // thus, we _never_ propose trajectories where K > 100 (M+1) at any point.
+    if (calc_K() > (100.0 * (M+1))) {
       if (debug_hmc) {
         std::cerr << "Rejecting Skygrid HMC because it's blowing up: K = " << calc_K() << "...\n";
       }
