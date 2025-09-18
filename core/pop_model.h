@@ -200,6 +200,9 @@ class Skygrid_pop_model : public Pop_model {
   auto support_of_d_log_N_d_gamma(int k) const -> std::pair<double, double>;  // range of (inclusive) over which d_log_N_d_gamma(t,k) might be non-zero
   auto d_log_int_N_d_gamma(double a, double b, int k) const -> double;
 
+  // Interval(t) in the top-level comment for Skygrid_pop_model
+  auto interval_containing_t(double t) const -> int;
+
  private:
   std::vector<double> x_;
   std::vector<double> gamma_;
@@ -207,9 +210,6 @@ class Skygrid_pop_model : public Pop_model {
   Type type_;
   
   auto print_to(std::ostream& os) const -> void override;
-
-  // Interval(t) in the top-level comment for Skygrid_pop_model
-  auto interval_containing_t(double t) const -> int;
 
   // pop_integral and intensity_integral are identical except for a flip in the sign of gamma_k
   auto log_int_N_core(double a, double b, const std::vector<double>& gamma_eff) const -> double;

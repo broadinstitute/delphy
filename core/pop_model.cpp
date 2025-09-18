@@ -456,7 +456,7 @@ auto Skygrid_pop_model::print_to(std::ostream& os) const -> void {
 }
 
 auto Skygrid_pop_model::interval_containing_t(double t) const -> int {
-  auto it = std::ranges::lower_bound(x_, t);  // upper_bound means *(it-1) < t <= *it
+  auto it = std::ranges::lower_bound(x_, t);  // lower_bound means *(it-1) < t <= *it
   if (it == x_.begin()) {
     return 0;
   } else if (it == x_.end()) {

@@ -116,6 +116,14 @@ TEST(Pop_model_test, skygrid_pop_model_accessors) {
   EXPECT_THAT(([&] { pop_model.x(5); }), testing::Throws<std::out_of_range>());
   EXPECT_THAT(([&] { pop_model.gamma(-1); }), testing::Throws<std::out_of_range>());
   EXPECT_THAT(([&] { pop_model.gamma(5); }), testing::Throws<std::out_of_range>());
+
+  EXPECT_THAT(pop_model.interval_containing_t(0.0), testing::Eq(0));
+  EXPECT_THAT(pop_model.interval_containing_t(1.0), testing::Eq(0));
+  EXPECT_THAT(pop_model.interval_containing_t(1.5), testing::Eq(1));
+  EXPECT_THAT(pop_model.interval_containing_t(2.0), testing::Eq(1));
+  EXPECT_THAT(pop_model.interval_containing_t(2.5), testing::Eq(2));
+  EXPECT_THAT(pop_model.interval_containing_t(4.0), testing::Eq(2));
+  EXPECT_THAT(pop_model.interval_containing_t(4.5), testing::Eq(3));
 }
 
 TEST(Pop_model_test, skygrid_pop_model_normal_staircase) {
