@@ -465,17 +465,55 @@ static auto render_pop_curve() -> void {
   dx *= 0.5;
   defer { dx *= 2.0; };
 
-  color_3d(0.0, 0.0, 0.0);  // black lines
-
   rescale_axes();
 
   auto gamma_max = 12.0;
   auto y_min = 0.90;
   auto y_scale = 0.10 / gamma_max;
-
+  
   const auto& N_c = ui_run->coalescent_prior().popsize_bars();
   auto C = std::ssize(N_c);
   
+  // Target exponential for sims: N(t) = N_0 exp(g (t - t0)),
+  // where N_0 = 6.0 years              = 6*365 days,
+  //         g = 10.0 e-foldings / year = 10/365.0 e-foldings / day
+  //        t0 = 2024-07-31
+  auto N_0 = 6.0 * 365;
+  auto g = 10.0 / 365;
+  auto t0 = parse_iso_date("2024-07-31");
+  
+  color_3d(1.0, 0.0, 0.0);
+
+  auto t_min = ui_run->coalescent_prior().cell_lbound(0);
+  auto t_max = ui_run->coalescent_prior().cell_lbound(C-1);
+  draw_line(x_for(t_min), y_min + y_scale * (std::log(N_0) + g * (t_min - t0)),
+            x_for(t_max), y_min + y_scale * (std::log(N_0) + g * (t_max - t0)));
+
+  // Target constant for sims: N(t) = N_0
+  // where N_0 = 2.0 years              = 2*365 days,
+  auto N_0_const = 2.0 * 365;
+  
+  color_3d(1.0, 0.0, 0.0);
+
+  draw_line(x_for(t_min), y_min + y_scale * (std::log(N_0_const)),
+            x_for(t_max), y_min + y_scale * (std::log(N_0_const)));
+
+  // Lower bound
+  const auto min_gamma_k = std::log(1.0 /* day */ / 365.0);
+  
+  // Barrier on low N(t) is quadratic: for each gamma_k, whenever is drops below min_gamma_k
+  // by barrier_scale, accumulate 1/2 nat of penalty
+  const auto barrier_scale = std::log(1.3);  // 1/2 a nat when N(x_k) = e^min_gamma_k / 1.3
+  
+  draw_line(x_for(t_min), y_min + y_scale * min_gamma_k,
+            x_for(t_max), y_min + y_scale * min_gamma_k);
+  draw_line(x_for(t_min), y_min + y_scale * (min_gamma_k - barrier_scale),
+            x_for(t_max), y_min + y_scale * (min_gamma_k - barrier_scale));
+  
+
+  // Actual pop curve
+  color_3d(0.0, 0.0, 0.0);  // black lines
+
   draw_line(x_for(ui_run->coalescent_prior().cell_ubound(C-1)), y_min,
             x_for(ui_run->coalescent_prior().cell_ubound(C-1)), y_min + y_scale * gamma_max);
   draw_line(x_for(ui_run->coalescent_prior().cell_lbound(0)), y_min,
@@ -792,17 +830,23 @@ auto keyboard_func(char key) -> void {
       std::cerr << "*** TREE TIMES RANDOMIZED ***" << std::endl;
       break;
     }
-    case 'K': {
+    case 'K':
+    case 'k': {
       const auto& pop_model = ui_run->pop_model();
       if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
         const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(ui_run->pop_model());
         auto M = skygrid_pop_model.M();
-        auto new_gamma_k = std::vector<double>(M+1, 0.0);
-        for (auto k = 0; k <= M; ++k) {
-          new_gamma_k[k] = absl::Uniform(absl::IntervalOpenClosed, ui_run->bitgen(), 0.0, 12.0);
+        auto new_avg_gamma = absl::Uniform(absl::IntervalOpenClosed, ui_run->bitgen(), -20.0, 20.0);
+        auto new_gamma_k = std::vector<double>(M+1, new_avg_gamma);
+        if (key == 'K') {
+          for (auto k = 0; k <= M; ++k) {
+            new_gamma_k[k] = new_avg_gamma + absl::Uniform(absl::IntervalOpenClosed, ui_run->bitgen(), -5.0, 5.0);
+          }
+          std::cerr << "*** SKYGRID POPULATION CURVE RANDOMIZED ***" << std::endl;
+        } else {
+          std::cerr << "*** SKYGRID POPULATION CURVE RESET TO RANDOM-CONSTANT ***" << std::endl;
         }
         ui_run->set_pop_model(std::make_shared<Skygrid_pop_model>(skygrid_pop_model.x(), new_gamma_k, skygrid_pop_model.type()));
-        std::cerr << "*** SKYGRID POPULATION CURVE RANDOMIZED ***" << std::endl;
       } else {
         std::cerr << "*** (ignoring request to randomize Skygrid population curve; not using Skygrid) ***" << std::endl;
       }

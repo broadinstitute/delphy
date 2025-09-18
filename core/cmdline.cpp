@@ -434,6 +434,9 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       run->set_pop_growth_rate_move_enabled(not fix_pop_growth_rate);
     
     } else if (opts["v0-pop-model"].as<std::string>() == "skygrid") {
+      
+      // Skygrid population model
+      
       if (has_exp_pop_model_parameters) {
         std::cerr << "ERROR: Cannot specify parameters for 'exponential' model when pop-model is 'skygrid'\n";
         std::exit(EXIT_FAILURE);
@@ -464,15 +467,31 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
 
       auto M = num_parameters - 1;
       auto x_k = std::vector<double>(M+1, 0.0);
+      auto dt = (skygrid_cutoff / M);
       for (auto k = 0; k <= M; ++k) {
-        x_k[k] = (t0 - skygrid_cutoff) + k * (skygrid_cutoff / M);
+        x_k[k] = (t0 - skygrid_cutoff) + k * dt;
       }
 
       // Hard-code default initial pop to 3 years for now
       auto gamma_k = std::vector<double>(M+1, std::log(3.0 * 365.0));
 
+      // Hard-code value of skygrid tau to something sensible Setting tau = 1 / (2 D dt),
+      // the prior for the log-population curve looks like a 1D random walk with diffusion
+      // constant D.  Hence, on average, a starting log-population changes after a time T
+      // by a root-mean-square deviation of `sqrt(2 D T)`.  We parametrize D such that
+      // after T = 30 days, the rms deviation is log(2), i.e., population changes by up to
+      // a factor of ~2 in 30 days with 68% probability:
+      //
+      //   sqrt(2 D T) = log(2)  => D = log^2(2) / (2 T).
+      //
+      const auto T = 30.0;  // days
+      const auto D = std::pow(std::log(2.0), 2) / (2 * T);
+    
+      auto skygrid_tau = 1.0 / (2 * D * dt);
+
       // Configure run
       run->set_pop_model(std::make_unique<Skygrid_pop_model>(std::move(x_k), std::move(gamma_k), skygrid_type));
+      run->set_skygrid_tau(skygrid_tau);
       
     } else {
       std::cerr << "ERROR: Unknown population model '" << opts["v0-pop-model"].as<std::string>() << "'\n";

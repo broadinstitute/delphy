@@ -253,7 +253,9 @@ class Run {
   auto pop_growth_rate_move() -> void;
   auto skygrid_tau_move() -> void;
   auto skygrid_gammas_move() -> void;
+  auto skygrid_gammas_move_2() -> void;
   auto skygrid_gammas_hmc_move() -> void;
+  auto skygrid_gammas_hmc_move_2() -> void;
   auto skygrid_gammas_zero_mode_gibbs_move() -> void;
 };
 
