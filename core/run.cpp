@@ -12,8 +12,8 @@ namespace delphy {
 
 // Highly discourage values of gamma_k which are too low
 constexpr auto enable_low_gamma_barrier = true;
-constexpr auto skygrid_gamma_min = std::log(1.0 /* day */ / 365.0);
-constexpr auto skygrid_delta_gamma = std::log(1.3);  // penalty of 1 to log-posterior N(x_k) = e^gamma_min / 1.3
+static const auto skygrid_gamma_min = std::log(1.0 /* day */ / 365.0);
+static const auto skygrid_delta_gamma = std::log(1.3);  // penalty of 1 to log-posterior N(x_k) = e^gamma_min / 1.3
 
 // tau can either be fixed, or inferred with a gamma prior (as in Gill et al 2012, Eq. 15)
 constexpr auto enable_skygrid_tau_move = false;
