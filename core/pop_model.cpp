@@ -223,7 +223,7 @@ auto Skygrid_pop_model::log_int_N_core(double a, double b, const std::vector<dou
             auto Delta = Gamma_hi - Gamma_lo;
 
             // We exploit the subtle property that std::expm1(x)/x is accurate for all small non-zero x
-            if (Delta != 0.0) {
+            if (Delta == 0.0) {
               result += std::exp(-bias + Gamma_lo) * (hi - lo);
             } else {
               result += std::exp(-bias + Gamma_lo) * (hi - lo) * (std::expm1(Delta) / Delta);
