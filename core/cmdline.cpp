@@ -475,12 +475,14 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       // Hard-code default initial pop to 3 years for now
       auto gamma_k = std::vector<double>(M+1, std::log(3.0 * 365.0));
 
-      // Hard-code value of skygrid tau to something sensible Setting tau = 1 / (2 D dt),
-      // the prior for the log-population curve looks like a 1D random walk with diffusion
-      // constant D.  Hence, on average, a starting log-population changes after a time T
-      // by a root-mean-square deviation of `sqrt(2 D T)`.  We parametrize D such that
-      // after T = 30 days, the rms deviation is log(2), i.e., population changes by up to
-      // a factor of ~2 in 30 days with 68% probability:
+      // Hard-code value of skygrid tau to something sensible
+      //
+      // Setting tau = 1 / (2 D dt), the prior for the log-population curve looks like a
+      // 1D random walk with diffusion constant D.  Hence, on average, a starting
+      // log-population changes after a time T by a root-mean-square deviation of `sqrt(2
+      // D T)`.  We parametrize D such that after T = 30 days, the rms deviation is
+      // log(2), i.e., population changes by up to a factor of ~2 in 30 days with 68%
+      // probability:
       //
       //   sqrt(2 D T) = log(2)  => D = log^2(2) / (2 T).
       //
