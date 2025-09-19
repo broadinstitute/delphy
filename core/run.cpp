@@ -1876,7 +1876,20 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   auto log_metropolis = old_H - new_H;  // HMC => this should be close to 0.0
 
   // Defend against horrible NaN's and overflow errors
-  if (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
+  auto something_blew_up = false;
+  for (auto k = 0; k <= M; ++k) {
+    if (std::isnan(gamma_k[k])) {
+      something_blew_up = true;
+    }
+  }
+  if (std::isnan(log_metropolis)) {
+    something_blew_up = true;
+  }
+  if (something_blew_up && debug_hmc) {
+    std::cerr << "About to reject because a NaN appeared somewhere\n";
+  }
+  
+  if (not something_blew_up && (log_metropolis > 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis))) {
     // Accept
     if (debug_hmc) {
       std::cerr << "Accept!\n";
@@ -1983,8 +1996,9 @@ auto Run::skygrid_gammas_zero_mode_gibbs_move() -> void {
   auto N_inner = (tree_.size() - 1) / 2;
   auto B = 0.0;
   for (auto c = 0; c < C; ++c) {
-    B += 0.5 * Delta * k_c[c] * (k_c[c] - 1.0) / (N_c[c] * I_bar);
+    B += 0.5 * Delta * k_c[c] * (k_c[c] - 1.0) / N_c[c];
   }
+  B /= I_bar;
 
   // WARNING: C++ calls "beta" the *scale* of the distribution, i.e., 1/rate
   auto I_bar_dist = std::gamma_distribution<double>{
@@ -2018,6 +2032,24 @@ auto Run::skygrid_gammas_zero_mode_gibbs_move() -> void {
   }
 
   auto delta_log_posterior = new_log_prior_bound - old_log_prior_bound;  // Otherwise, this is a Gibbs move
+
+  // Reject if anything becomes a NaN
+  auto something_blew_up = false;
+  for (auto k = 0; k <= M; ++k) {
+    if (std::isnan(new_gamma_k[k])) {
+      something_blew_up = true;
+    }
+  }
+  if (std::isnan(delta_log_posterior)) {
+    something_blew_up = true;
+  }
+  if (something_blew_up) {
+    if (false) {
+      std::cerr << "Rejecting zero-mode Gibbs move because a NaN appeared somewhere\n";
+    }
+    return;
+  }
+  
   auto log_metropolis = delta_log_posterior;
   if (log_metropolis >= 0 || absl::Uniform(bitgen_, 0.0, 1.0) < std::exp(log_metropolis)) {
     // Accept

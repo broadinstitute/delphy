@@ -148,6 +148,7 @@ auto Scalable_coalescent_prior::pop_model_changed(std::shared_ptr<const Pop_mode
     auto t_max = t_min + t_step_;
 
     auto popsize_bar = pop_model_->pop_integral(t_min, t_max) / t_step_;
+    CHECK(not std::isnan(popsize_bar));
     if (popsize_bar == 0.0) {
       popsize_bar = 1e-100;  // Stopgap
     }

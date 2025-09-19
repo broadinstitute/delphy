@@ -663,6 +663,21 @@ TEST(Pop_model_test, skygrid_pop_model_log_linear_print) {
       pop_model.x(3), pop_model.gamma(3))));
 }
 
+TEST(Pop_model_test, extraneous_NaN_in_Skygrid) {
+  // Taken from a real run that triggered this bug
+  auto pop_model = Skygrid_pop_model{
+    {2.000, 8.350, 14.700, 21.050, 27.400, 33.750, 40.100, 46.450, 52.800, 59.150, 65.500, 71.850, 78.200, 84.550, 90.900, 97.250, 103.600, 109.950, 116.300, 122.650, 129.000},
+    {5.410, 5.859, 5.952, 5.975, 6.161, 6.789, 7.032, 7.134, 7.261, 8.745, 9.984, 10.012, 9.037, 8.122, 7.214, 8.392, 9.377, 7.492, 7.385, 8.065, 8.067},
+    Skygrid_pop_model::Type::k_log_linear
+  };
+
+  auto t_min = 129.000;
+  auto t_max = 129.868;
+
+  auto N_c = pop_model.pop_integral(t_min, t_max) / (t_max - t_min);
+  EXPECT_THAT(N_c, testing::Not(testing::IsNan()));
+}
+
 TEST(Pop_model_test, render_population_curve_const_pop_model) {
   auto pop_model = Const_pop_model{20.0};
 

@@ -34,7 +34,7 @@ if(NOT DEFINED EMSCRIPTEN)
   add_compile_options(
     -Wno-error=maybe-uninitialized   # Ignore something in abseil's raw_hash_set.hpp that I cannot fix
   )
-  add_compile_options(-ffast-math)
+  #add_compile_options(-ffast-math)  # This is dangerous!  It mangles the behaviour of NaN's.  Never enable it!
   #if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")  # detects macOS, but still some Intel out there
   if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
     add_compile_options(-msse3)
