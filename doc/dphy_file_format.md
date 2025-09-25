@@ -113,8 +113,38 @@ root_type Tree;
 ### Params flatbuffer
 
 ```
+// Population models
+// -----------------
+
+table ExpPopModel {
+  t0: float64    (id: 0); // Reference time t0 for population model [units: days since 2020-01-01]
+  n0: float64    (id: 1); // Population model effective pop size at t = t0 [units of 1/day (it's obscure...), > 0]
+  g: float64     (id: 2); // Population model growth rate [units of 1 / day, > 0]
+}
+
+enum SkygridType : byte {
+  Staircase = 1,          // See pop_model.h, Skygrid_pop_model::Type::k_staircase
+  LogLinear = 2           // See pop_model.h, Skygrid_pop_model::Type::k_log_linear
+}
+
+table SkygridPopModel {
+  type: SkygridType = Staircase
+                     (id: 0);
+  x_k: [float64]     (id: 1);  // Times of M+1 knots [units: days since 2020-01-01, strictly increasing]
+  gamma_k: [float64] (id: 2);  // gamma_k = ln(N(t_k)/(1 day)) [unitless]
+}
+
+union PopModel {
+  ExpPopModel,
+  SkygridPopModel
+}
+
+
+// Run parameters
+// --------------
+
 table Params {
-  // Next free id: 29
+  // Next free id: 35
   
   step: int64   (id:  0);      // MCMC steps taken so far [unitless, >= 0]
   num_local_moves_per_global_move: int64 = -1 (id: 1);  // [unitless, >= 1].  -1 => use reasonable default
@@ -127,6 +157,13 @@ table Params {
   hky_pi_C: float64  (id:  8); // Stationary state frequency of C (should roughly match proportion of C's in root sequence)
   hky_pi_G: float64  (id:  9); // Stationary state frequency of G (should roughly match proportion of G's in root sequence)
   hky_pi_T: float64  (id: 10); // Stationary state frequency of T (should roughly match proportion of T's in root sequence)
+  pop_model: PopModel (id: 30);// Population model type and parameters (union-type => uses up two ids)
+  skygrid_tau: float64 (id: 31);// `tau` parameter of Skygrid model (if in use) [unitless, >= 0]
+  skygrid_tau_prior_alpha: float64 (id: 32);// alpha parameter of Skygrid `tau` prior (if in use) [unitless, >= 0]
+  skygrid_tau_prior_beta: float64 (id: 33);// beta parameter of Skygrid `tau` prior (if in use) [unitless, >= 0]
+
+  // Deprecated hard-coded ExpPopModel parameters.  If pop_model is missing, assume exponential model with these
+  // parameters; otherwise, ignore these
   pop_t0: float64    (id: 26); // Reference time t0 for population model [units: days since 2020-01-01]
   pop_n0: float64    (id: 11); // Population model effective pop size at t = t0 [units of 1/day (it's obscure...), > 0]
   pop_g: float64     (id: 12); // Population model growth rate [units of 1 / day, > 0]
@@ -139,6 +176,7 @@ table Params {
   mu_move_enabled: bool = true (id: 25);
   final_pop_size_move_enabled: bool = true (id: 27);
   pop_growth_rate_move_enabled: bool = true (id: 28);
+  skygrid_tau_move_enabled: bool = false (id: 34);
 
   // Read-only (setting these has no effect)
   log_posterior: float64 (id: 17);

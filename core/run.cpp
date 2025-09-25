@@ -15,11 +15,6 @@ constexpr auto enable_low_gamma_barrier = true;
 static const auto skygrid_gamma_min = std::log(1.0 /* day */ / 365.0);
 static const auto skygrid_delta_gamma = std::log(1.3);  // penalty of 1 to log-posterior N(x_k) = e^gamma_min / 1.3
 
-// tau can either be fixed, or inferred with a gamma prior (as in Gill et al 2012, Eq. 15)
-constexpr auto enable_skygrid_tau_move = false;
-constexpr auto skygrid_tau_prior_alpha = 0.001;
-constexpr auto skygrid_tau_prior_beta = 0.001;
-
 Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
     : thread_pool_{&thread_pool},
       bitgen_{bitgen},
@@ -28,6 +23,8 @@ Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
       target_coal_prior_cells_{400},
       pop_model_{std::make_shared<Exp_pop_model>(calc_max_tip_time(tree_), 1000.0, 0.0)},
       skygrid_tau_{1.0},  // Prior mean, Gill et al 2012 Eq. 15
+      skygrid_tau_prior_alpha_{0.001},  // Prior, Gill et al 2012 discussion below Eq. 16
+      skygrid_tau_prior_beta_{0.001},
       alpha_{10.0},
       nu_(tree_.num_sites(), 1.0),
       evo_{make_single_partition_global_evo_model(tree_.num_sites())},
@@ -525,11 +522,11 @@ auto Run::calc_cur_log_other_priors() const -> double {
     const auto log_tau = std::log(tau);
     const auto M = skygrid_pop_model.M();
     
-    if (enable_skygrid_tau_move) {
+    if (skygrid_tau_move_enabled_) {
       // tau - gamma prior (Gill et al 2012, Eq. 15)
       log_prior +=
-          (skygrid_tau_prior_alpha - 1) * log_tau
-          - skygrid_tau_prior_beta * tau;
+          (skygrid_tau_prior_alpha_ - 1) * log_tau
+          - skygrid_tau_prior_beta_ * tau;
     }
     
     // gamma - GMRF prior (Gill et al 2012, Eq. 13)
@@ -731,7 +728,7 @@ auto Run::run_global_moves() -> void {
     
   } else if (typeid(raw_pop_model) == typeid(Skygrid_pop_model)) {
     for (auto i = 0; i != 5; ++i) {  // With HMC, each move likely samples each quantity quite well already
-      if (enable_skygrid_tau_move) {
+      if (skygrid_tau_move_enabled_) {
         skygrid_tau_move();
         check_derived_quantities();
       }
@@ -1298,8 +1295,8 @@ auto Run::skygrid_tau_move() -> void {
     sum_squared_delta_gammas += std::pow(delta_gamma, 2);
   }
 
-  auto post_alpha = skygrid_tau_prior_alpha + 0.5 * M;
-  auto post_beta = skygrid_tau_prior_beta + 0.5 * sum_squared_delta_gammas;
+  auto post_alpha = skygrid_tau_prior_alpha_ + 0.5 * M;
+  auto post_beta = skygrid_tau_prior_beta_ + 0.5 * sum_squared_delta_gammas;
 
   // WARNING: C++ calls "beta" the *scale* of the distribution, i.e., the reciprocal of the rate
   auto tau_dist = std::gamma_distribution<double>{

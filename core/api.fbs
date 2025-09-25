@@ -92,7 +92,7 @@ union PopModel {
 // --------------
 
 table Params {
-  // Next free id: 32
+  // Next free id: 35
   
   step: int64   (id:  0);      // MCMC steps taken so far [unitless, >= 0]
   num_local_moves_per_global_move: int64 = -1 (id: 1);  // [unitless, >= 1].  -1 => use reasonable default
@@ -107,6 +107,8 @@ table Params {
   hky_pi_T: float64  (id: 10); // Stationary state frequency of T (should roughly match proportion of T's in root sequence)
   pop_model: PopModel (id: 30);// Population model type and parameters (union-type => uses up two ids)
   skygrid_tau: float64 (id: 31);// `tau` parameter of Skygrid model (if in use) [unitless, >= 0]
+  skygrid_tau_prior_alpha: float64 (id: 32);// alpha parameter of Skygrid `tau` prior (if in use) [unitless, >= 0]
+  skygrid_tau_prior_beta: float64 (id: 33);// beta parameter of Skygrid `tau` prior (if in use) [unitless, >= 0]
 
   // Deprecated hard-coded ExpPopModel parameters.  If pop_model is missing, assume exponential model with these
   // parameters; otherwise, ignore these
@@ -122,6 +124,7 @@ table Params {
   mu_move_enabled: bool = true (id: 25);
   final_pop_size_move_enabled: bool = true (id: 27);
   pop_growth_rate_move_enabled: bool = true (id: 28);
+  skygrid_tau_move_enabled: bool = false (id: 34);
 
   // Read-only (setting these has no effect)
   log_posterior: float64 (id: 17);

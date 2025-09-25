@@ -680,7 +680,10 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_POP_GROWTH_RATE_MOVE_ENABLED = 60,
     VT_POP_MODEL_TYPE = 62,
     VT_POP_MODEL = 64,
-    VT_SKYGRID_TAU = 66
+    VT_SKYGRID_TAU = 66,
+    VT_SKYGRID_TAU_PRIOR_ALPHA = 68,
+    VT_SKYGRID_TAU_PRIOR_BETA = 70,
+    VT_SKYGRID_TAU_MOVE_ENABLED = 72
   };
   int64_t step() const {
     return GetField<int64_t>(VT_STEP, 0);
@@ -785,6 +788,15 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   double skygrid_tau() const {
     return GetField<double>(VT_SKYGRID_TAU, 0.0);
   }
+  double skygrid_tau_prior_alpha() const {
+    return GetField<double>(VT_SKYGRID_TAU_PRIOR_ALPHA, 0.0);
+  }
+  double skygrid_tau_prior_beta() const {
+    return GetField<double>(VT_SKYGRID_TAU_PRIOR_BETA, 0.0);
+  }
+  bool skygrid_tau_move_enabled() const {
+    return GetField<uint8_t>(VT_SKYGRID_TAU_MOVE_ENABLED, 0) != 0;
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int64_t>(verifier, VT_STEP, 8) &&
@@ -821,6 +833,9 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyOffset(verifier, VT_POP_MODEL) &&
            VerifyPopModel(verifier, pop_model(), pop_model_type()) &&
            VerifyField<double>(verifier, VT_SKYGRID_TAU, 8) &&
+           VerifyField<double>(verifier, VT_SKYGRID_TAU_PRIOR_ALPHA, 8) &&
+           VerifyField<double>(verifier, VT_SKYGRID_TAU_PRIOR_BETA, 8) &&
+           VerifyField<uint8_t>(verifier, VT_SKYGRID_TAU_MOVE_ENABLED, 1) &&
            verifier.EndTable();
   }
 };
@@ -933,6 +948,15 @@ struct ParamsBuilder {
   void add_skygrid_tau(double skygrid_tau) {
     fbb_.AddElement<double>(Params::VT_SKYGRID_TAU, skygrid_tau, 0.0);
   }
+  void add_skygrid_tau_prior_alpha(double skygrid_tau_prior_alpha) {
+    fbb_.AddElement<double>(Params::VT_SKYGRID_TAU_PRIOR_ALPHA, skygrid_tau_prior_alpha, 0.0);
+  }
+  void add_skygrid_tau_prior_beta(double skygrid_tau_prior_beta) {
+    fbb_.AddElement<double>(Params::VT_SKYGRID_TAU_PRIOR_BETA, skygrid_tau_prior_beta, 0.0);
+  }
+  void add_skygrid_tau_move_enabled(bool skygrid_tau_move_enabled) {
+    fbb_.AddElement<uint8_t>(Params::VT_SKYGRID_TAU_MOVE_ENABLED, static_cast<uint8_t>(skygrid_tau_move_enabled), 0);
+  }
   explicit ParamsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -977,8 +1001,13 @@ inline ::flatbuffers::Offset<Params> CreateParams(
     bool pop_growth_rate_move_enabled = true,
     delphy::api::PopModel pop_model_type = delphy::api::PopModel_NONE,
     ::flatbuffers::Offset<void> pop_model = 0,
-    double skygrid_tau = 0.0) {
+    double skygrid_tau = 0.0,
+    double skygrid_tau_prior_alpha = 0.0,
+    double skygrid_tau_prior_beta = 0.0,
+    bool skygrid_tau_move_enabled = false) {
   ParamsBuilder builder_(_fbb);
+  builder_.add_skygrid_tau_prior_beta(skygrid_tau_prior_beta);
+  builder_.add_skygrid_tau_prior_alpha(skygrid_tau_prior_alpha);
   builder_.add_skygrid_tau(skygrid_tau);
   builder_.add_pop_t0(pop_t0);
   builder_.add_mpox_mu_star(mpox_mu_star);
@@ -1002,6 +1031,7 @@ inline ::flatbuffers::Offset<Params> CreateParams(
   builder_.add_pop_model(pop_model);
   builder_.add_nu(nu);
   builder_.add_num_parts(num_parts);
+  builder_.add_skygrid_tau_move_enabled(skygrid_tau_move_enabled);
   builder_.add_pop_model_type(pop_model_type);
   builder_.add_pop_growth_rate_move_enabled(pop_growth_rate_move_enabled);
   builder_.add_final_pop_size_move_enabled(final_pop_size_move_enabled);
@@ -1047,7 +1077,10 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
     bool pop_growth_rate_move_enabled = true,
     delphy::api::PopModel pop_model_type = delphy::api::PopModel_NONE,
     ::flatbuffers::Offset<void> pop_model = 0,
-    double skygrid_tau = 0.0) {
+    double skygrid_tau = 0.0,
+    double skygrid_tau_prior_alpha = 0.0,
+    double skygrid_tau_prior_beta = 0.0,
+    bool skygrid_tau_move_enabled = false) {
   auto nu__ = nu ? _fbb.CreateVector<double>(*nu) : 0;
   return delphy::api::CreateParams(
       _fbb,
@@ -1082,7 +1115,10 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
       pop_growth_rate_move_enabled,
       pop_model_type,
       pop_model,
-      skygrid_tau);
+      skygrid_tau,
+      skygrid_tau_prior_alpha,
+      skygrid_tau_prior_beta,
+      skygrid_tau_move_enabled);
 }
 
 inline bool VerifyPopModel(::flatbuffers::Verifier &verifier, const void *obj, PopModel type) {

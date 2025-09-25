@@ -58,6 +58,10 @@ class Run {
     invalidate_derived_quantities(); }
   auto skygrid_tau() const -> double { return skygrid_tau_; }
   auto set_skygrid_tau(double skygrid_tau) -> void { skygrid_tau_ = skygrid_tau, invalidate_derived_quantities(); }
+  auto skygrid_tau_prior_alpha() const -> double { return skygrid_tau_prior_alpha_; }
+  auto set_skygrid_tau_prior_alpha(double skygrid_tau_prior_alpha) -> void { skygrid_tau_prior_alpha_ = skygrid_tau_prior_alpha, invalidate_derived_quantities(); }
+  auto skygrid_tau_prior_beta() const -> double { return skygrid_tau_prior_beta_; }
+  auto set_skygrid_tau_prior_beta(double skygrid_tau_prior_beta) -> void { skygrid_tau_prior_beta_ = skygrid_tau_prior_beta, invalidate_derived_quantities(); }
 
   auto evo() const -> const Global_evo_model& {
     return validate_derived_quantities(), evo_; }
@@ -167,6 +171,9 @@ class Run {
   auto pop_growth_rate_move_enabled() const -> bool { return pop_growth_rate_move_enabled_; }
   auto set_pop_growth_rate_move_enabled(bool enabled) -> void {
     pop_growth_rate_move_enabled_ = enabled; }
+  auto skygrid_tau_move_enabled() const -> bool { return skygrid_tau_move_enabled_; }
+  auto set_skygrid_tau_move_enabled(bool enabled) -> void {
+    skygrid_tau_move_enabled_ = enabled; }
 
  private:
   ctpl::thread_pool* thread_pool_;
@@ -200,10 +207,13 @@ class Run {
   bool mu_move_enabled_ = true;
   bool final_pop_size_move_enabled_ = true;
   bool pop_growth_rate_move_enabled_ = true;
+  bool skygrid_tau_move_enabled_ = false;  // tau can either be fixed, or inferred with a gamma prior (as in Gill et al 2012, Eq. 15)
 
   // Parameters
   std::shared_ptr<const Pop_model> pop_model_;
   double skygrid_tau_;
+  double skygrid_tau_prior_alpha_;
+  double skygrid_tau_prior_beta_;
   double alpha_;
   Site_vector<double> nu_;
   Hky_model hky_model_;

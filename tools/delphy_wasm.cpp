@@ -941,6 +941,30 @@ auto delphy_run_set_skygrid_tau(Delphy_context& /*ctx*/, Run& run, double skygri
   run.set_skygrid_tau(skygrid_tau);
 }
 
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_skygrid_tau_prior_alpha(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.skygrid_tau_prior_alpha();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_skygrid_tau_prior_alpha(Delphy_context& /*ctx*/, Run& run, double skygrid_tau_prior_alpha) -> void {
+  run.set_skygrid_tau_prior_alpha(skygrid_tau_prior_alpha);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_skygrid_tau_prior_beta(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.skygrid_tau_prior_beta();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_skygrid_tau_prior_beta(Delphy_context& /*ctx*/, Run& run, double skygrid_tau_prior_beta) -> void {
+  run.set_skygrid_tau_prior_beta(skygrid_tau_prior_beta);
+}
+
 // Delphy retains ownership of the returned Pop_model object
 EMSCRIPTEN_KEEPALIVE
 extern "C"
@@ -1114,6 +1138,18 @@ EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_set_pop_growth_rate_move_enabled(Delphy_context& /*ctx*/, Run& run, bool pop_growth_rate_move_enabled) -> void {
   run.set_pop_growth_rate_move_enabled(pop_growth_rate_move_enabled);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_is_skygrid_tau_move_enabled(Delphy_context& /*ctx*/, const Run& run) -> bool {
+  return run.skygrid_tau_move_enabled();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_skygrid_tau_move_enabled(Delphy_context& /*ctx*/, Run& run, bool skygrid_tau_move_enabled) -> void {
+  run.set_skygrid_tau_move_enabled(skygrid_tau_move_enabled);
 }
 
 // Caller is responsible for freeing the flatbuffer (using fb_holder_delete).  Root object type: `Params`

@@ -185,6 +185,21 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       ("v0-skygrid-cutoff",
        "[pop-model == skygrid] Time before time of last tip for final transition, in years (what BEAUTi calls 'Time of last transition point' == what Gill et al 2012 calls `x_M`)",
        cxxopts::value<double>()->default_value("0.0"))
+      ("v0-skygrid-infer-prior-smoothness",
+       "[pop-model == skygrid] Whether to fix the log-population curve's prior smoothness (Delphy default; see --v0-skygrid-prior-double-half-time) or infer it (BEAST default; see --v0-skygrid--tau-prior-alpha and --v0-skygrid-tau-prior-beta)",
+       cxxopts::value<bool>()->default_value("false"))
+      ("v0-skygrid-prior-double-half-time",
+       "[pop-model == skygrid] Typical timescale (in years) over which the a priori population curve fluctuates by a factor of 2 (default = 30 days = 0.0822 years).  Applies only if --v0-skygrid-infer-prior-smoothness is `false`.  More precisely, the log-population curve prior is a 1D random walk with diffusion constant D, such that after after a time T, the log-population is offset by a Gaussian random variable with mean zero and variance 2 D T.  Setting sqrt(2 D T) = log(2) at the 'double-half time' T yields D = log^2(2) / (2 T); at this diffusion rate, after one month, there's a 68% chance that the population has changed by a factor of 2 or less.  In Gill et al's 2012 formulation, this fixes the smoothness precision tau = 1 /(D dt), where dt = cutoff / (num_parameters - 1)",
+       cxxopts::value<double>()->default_value("0.0822"))
+      ("v0-skygrid-tau",
+       "[pop-model == skygrid] Fixed value of Skygrid precision parameter `tau`; mutually exclusive with --v0-skygrid-prior-double-half-time",
+       cxxopts::value<double>())
+      ("v0-skygrid-tau-prior-alpha",
+       "[pop-model == skygrid] When inferring the log-population curve's prior smoothness `tau`, the hyperprior on tau is ~ tau^{alpha - 1} exp[-beta tau]",
+       cxxopts::value<double>()->default_value("0.001"))
+      ("v0-skygrid-tau-prior-beta",
+       "[pop-model == skygrid] When inferring the log-population curve's prior smoothness `tau`, the hyperprior on tau is ~ tau^{alpha - 1} exp[-beta tau]",
+       cxxopts::value<double>()->default_value("0.001"))
       ;
 
   try {
@@ -404,7 +419,12 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     auto has_skygrid_pop_model_parameters =
         (opts.count("v0-skygrid-type") > 0) ||
         (opts.count("v0-skygrid-num-parameters") > 0) ||
-        (opts.count("v0-skygrid-cutoff") > 0);
+        (opts.count("v0-skygrid-cutoff") > 0) ||
+        (opts.count("v0-skygrid-infer-prior-smoothness") > 0) ||
+        (opts.count("v0-skygrid-prior-double-half-time") > 0) ||
+        (opts.count("v0-skygrid-tau") > 0) ||
+        (opts.count("v0-skygrid-tau-prior-alpha") > 0) ||
+        (opts.count("v0-skygrid-tau-prior-beta") > 0);
 
     if (opts["v0-pop-model"].as<std::string>() == "exponential") {
       
@@ -472,28 +492,77 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         x_k[k] = (t0 - skygrid_cutoff) + k * dt;
       }
 
-      // Hard-code default initial pop to 3 years for now
-      auto gamma_k = std::vector<double>(M+1, std::log(3.0 * 365.0));
+      auto skygrid_tau = 0.0;
+      auto infer_tau = opts["v0-skygrid-infer-prior-smoothness"].as<bool>();
+      if (infer_tau) {
+        // Infer a priori smoothness of log-population curve
+        auto prior_alpha = opts["v0-skygrid-tau-prior-alpha"].as<double>();
+        auto prior_beta = opts["v0-skygrid-tau-prior-beta"].as<double>();
+        if (prior_alpha <= 0.0 || prior_beta <= 0.0) {
+          std::cerr << "ERROR: Skygrid tau prior parameters must be positive\n";
+          std::exit(EXIT_FAILURE);
+        }
+        
+        run->set_skygrid_tau_prior_alpha(prior_alpha);
+        run->set_skygrid_tau_prior_beta(prior_beta);
 
-      // Hard-code value of skygrid tau to something sensible
-      //
-      // Setting tau = 1 / (2 D dt), the prior for the log-population curve looks like a
-      // 1D random walk with diffusion constant D.  Hence, on average, a starting
-      // log-population changes after a time T by a root-mean-square deviation of `sqrt(2
-      // D T)`.  We parametrize D such that after T = 30 days, the rms deviation is
-      // log(2), i.e., population changes by up to a factor of ~2 in 30 days with 68%
-      // probability:
-      //
-      //   sqrt(2 D T) = log(2)  => D = log^2(2) / (2 T).
-      //
-      const auto T = 30.0;  // days
-      const auto D = std::pow(std::log(2.0), 2) / (2 * T);
-    
-      auto skygrid_tau = 1.0 / (2 * D * dt);
+        skygrid_tau = prior_alpha / prior_beta;
+        
+      } else {
+        // Fix a priori smoothness of log-population curve
+        if (opts.count("v0-skygrid-tau") > 0 &&
+            opts.count("v0-skygrid-prior-double-half-time") > 0) {
+          std::cerr << "ERROR: Skygrid tau can be fixed either directly (--v0-skygrid-tau) or by specifying an effective 'double-half' time (--v0-skygrid-prior-double-half-time), but not both\n";
+          std::exit(EXIT_FAILURE);
+        }
+
+        if (opts.count("v0-skygrid-tau") > 0) {
+          skygrid_tau = opts["v0-skygrid-tau"].as<double>();
+          if (skygrid_tau <= 0.0) {
+            std::cerr << "ERROR: Skygrid tau parameter must be positive\n";
+            std::exit(EXIT_FAILURE);
+          }
+          
+        } else {
+          auto double_half_time = opts["v0-skygrid-prior-double-half-time"].as<double>();
+          double_half_time *= 365.0;  // convert to days
+          if (double_half_time <= 0.0) {
+            std::cerr << "ERROR: Skygrid prior 'double-half' time must be positive\n";
+            std::exit(EXIT_FAILURE);
+          }
+          
+          // Setting tau = 1 / (2 D dt), the prior for the log-population curve looks like
+          // a 1D random walk with diffusion constant D.  Hence, on average, a starting
+          // log-population changes after a time T by a root-mean-square deviation of
+          // `sqrt(2 D T)`.  We parametrize D such that after T = double_half_time, the
+          // rms deviation is log(2), i.e., population changes by up to a factor of ~2 in
+          // the "double-half time" with 68% probability:
+          //
+          //   sqrt(2 D T) = log(2)  => D = log^2(2) / (2 T).
+          //
+          const auto D = std::pow(std::log(2.0), 2) / (2 * double_half_time);
+          skygrid_tau = 1.0 / (2 * D * dt);
+        }
+      }
+
+      // At this point, skygrid_tau is set.  Sample a random trajectory with this
+      // precision, then reset its mean to "3 years" (the `skygrid_gammas_zero_mode_gibbs_move`
+      // Gibbs sample the mean value of gamma, so we don't need to get this right at all here)
+      auto gamma_k = std::vector<double>(M+1, 0.0);
+      auto mean_gamma_k = 0.0;
+      for (auto k = 1; k <= M; ++k) {
+        gamma_k[k] = gamma_k[k-1] + absl::Gaussian(prng, 0.0, std::sqrt(1.0/skygrid_tau));
+        mean_gamma_k += gamma_k[k];
+      }
+      mean_gamma_k /= M+1;
+      for (auto k = 0; k <= M; ++k) {
+        gamma_k[k] += (-mean_gamma_k) + std::log(3.0 * 365.0);
+      }
 
       // Configure run
       run->set_pop_model(std::make_unique<Skygrid_pop_model>(std::move(x_k), std::move(gamma_k), skygrid_type));
       run->set_skygrid_tau(skygrid_tau);
+      run->set_skygrid_tau_move_enabled(infer_tau);  // Prior configured above when infer_tau == true
       
     } else {
       std::cerr << "ERROR: Unknown population model '" << opts["v0-pop-model"].as<std::string>() << "'\n";
