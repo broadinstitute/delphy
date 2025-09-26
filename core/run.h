@@ -62,6 +62,10 @@ class Run {
   auto set_skygrid_tau_prior_alpha(double skygrid_tau_prior_alpha) -> void { skygrid_tau_prior_alpha_ = skygrid_tau_prior_alpha, invalidate_derived_quantities(); }
   auto skygrid_tau_prior_beta() const -> double { return skygrid_tau_prior_beta_; }
   auto set_skygrid_tau_prior_beta(double skygrid_tau_prior_beta) -> void { skygrid_tau_prior_beta_ = skygrid_tau_prior_beta, invalidate_derived_quantities(); }
+  auto skygrid_low_gamma_barrier_loc() const -> double { return skygrid_low_gamma_barrier_loc_; }
+  auto set_skygrid_low_gamma_barrier_loc(double skygrid_low_gamma_barrier_loc) -> void { skygrid_low_gamma_barrier_loc_ = skygrid_low_gamma_barrier_loc, invalidate_derived_quantities(); }
+  auto skygrid_low_gamma_barrier_scale() const -> double { return skygrid_low_gamma_barrier_scale_; }
+  auto set_skygrid_low_gamma_barrier_scale(double skygrid_low_gamma_barrier_scale) -> void { skygrid_low_gamma_barrier_scale_ = skygrid_low_gamma_barrier_scale, invalidate_derived_quantities(); }
 
   auto evo() const -> const Global_evo_model& {
     return validate_derived_quantities(), evo_; }
@@ -159,6 +163,8 @@ class Run {
   auto repartitioning_enabled() const -> bool { return repartitioning_enabled_; }
   auto set_repartitioning_enabled(bool repartitioning_enabled) -> void {
     repartitioning_enabled_ = repartitioning_enabled; }
+
+  // Other moves and features are enabled selectively depending on config
   auto alpha_move_enabled() const -> bool { return alpha_move_enabled_; }
   auto set_alpha_move_enabled(bool enabled) -> void {
     alpha_move_enabled_ = enabled; }
@@ -174,6 +180,10 @@ class Run {
   auto skygrid_tau_move_enabled() const -> bool { return skygrid_tau_move_enabled_; }
   auto set_skygrid_tau_move_enabled(bool enabled) -> void {
     skygrid_tau_move_enabled_ = enabled; }
+  auto skygrid_low_gamma_barrier_enabled() const -> bool { return skygrid_low_gamma_barrier_enabled_; }
+  auto set_skygrid_low_gamma_barrier_enabled(bool enabled) -> void {
+    skygrid_low_gamma_barrier_enabled_ = enabled;
+  }
 
  private:
   ctpl::thread_pool* thread_pool_;
@@ -208,12 +218,15 @@ class Run {
   bool final_pop_size_move_enabled_ = true;
   bool pop_growth_rate_move_enabled_ = true;
   bool skygrid_tau_move_enabled_ = false;  // tau can either be fixed, or inferred with a gamma prior (as in Gill et al 2012, Eq. 15)
+  bool skygrid_low_gamma_barrier_enabled_ = true;
 
   // Parameters
   std::shared_ptr<const Pop_model> pop_model_;
   double skygrid_tau_;
   double skygrid_tau_prior_alpha_;
   double skygrid_tau_prior_beta_;
+  double skygrid_low_gamma_barrier_loc_;
+  double skygrid_low_gamma_barrier_scale_;
   double alpha_;
   Site_vector<double> nu_;
   Hky_model hky_model_;

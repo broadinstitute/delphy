@@ -965,6 +965,30 @@ auto delphy_run_set_skygrid_tau_prior_beta(Delphy_context& /*ctx*/, Run& run, do
   run.set_skygrid_tau_prior_beta(skygrid_tau_prior_beta);
 }
 
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_skygrid_low_gamma_barrier_loc(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.skygrid_low_gamma_barrier_loc();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_skygrid_low_gamma_barrier_loc(Delphy_context& /*ctx*/, Run& run, double skygrid_low_gamma_barrier_loc) -> void {
+  run.set_skygrid_low_gamma_barrier_loc(skygrid_low_gamma_barrier_loc);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_skygrid_low_gamma_barrier_scale(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.skygrid_low_gamma_barrier_scale();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_skygrid_low_gamma_barrier_scale(Delphy_context& /*ctx*/, Run& run, double skygrid_low_gamma_barrier_scale) -> void {
+  run.set_skygrid_low_gamma_barrier_scale(skygrid_low_gamma_barrier_scale);
+}
+
 // Delphy retains ownership of the returned Pop_model object
 EMSCRIPTEN_KEEPALIVE
 extern "C"
@@ -1150,6 +1174,18 @@ EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_set_skygrid_tau_move_enabled(Delphy_context& /*ctx*/, Run& run, bool skygrid_tau_move_enabled) -> void {
   run.set_skygrid_tau_move_enabled(skygrid_tau_move_enabled);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_is_skygrid_low_gamma_barrier_enabled(Delphy_context& /*ctx*/, const Run& run) -> bool {
+  return run.skygrid_low_gamma_barrier_enabled();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_skygrid_low_gamma_barrier_enabled(Delphy_context& /*ctx*/, Run& run, bool skygrid_low_gamma_barrier_enabled) -> void {
+  run.set_skygrid_low_gamma_barrier_enabled(skygrid_low_gamma_barrier_enabled);
 }
 
 // Caller is responsible for freeing the flatbuffer (using fb_holder_delete).  Root object type: `Params`

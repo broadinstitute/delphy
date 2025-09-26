@@ -200,6 +200,15 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       ("v0-skygrid-tau-prior-beta",
        "[pop-model == skygrid] When inferring the log-population curve's prior smoothness `tau`, the hyperprior on tau is ~ tau^{alpha - 1} exp[-beta tau]",
        cxxopts::value<double>()->default_value("0.001"))
+      ("v0-skygrid-disable-low-pop-barrier",
+       "[pop-model == skygrid] Disable quadratic penalty against effective population sizes dropping below a certain limit (--v0-skygrid-low-pop-barrier-loc, default=1 day to match resolution of tip dates).  Such low population sizes sometimes trigger numerical difficulties that cause some MCMC moves to grind to a halt.  Moreover, they cannot reliably be estimated from the data.  We recommend disabling this only if attempting to make an exact comparison to a run from another tool, like BEAST.",
+       cxxopts::value<bool>()->default_value("false"))
+      ("v0-skygrid-low-pop-barrier-loc",
+       "[pop-model == skygrid] Minimum value of N(t), in years, below which we penalize smaller populations (default = 1 day = 1/365 years, to match resolution of tip dates)",
+       cxxopts::value<double>()->default_value(absl::StrFormat("%.5g", 1.0 / 365.0)))
+      ("v0-skygrid-low-pop-barrier-scale",
+       "[pop-model == skygrid] Fraction by which N(t) must drop below minimum for the value of the low-pop barrier to reach a value of 1 nat (i.e., (log(N/N_min) / log(1-scale))^2 = 1 at N = N_min * (1-scale)).",
+       cxxopts::value<double>()->default_value("0.30"))
       ;
 
   try {
@@ -424,7 +433,10 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         (opts.count("v0-skygrid-prior-double-half-time") > 0) ||
         (opts.count("v0-skygrid-tau") > 0) ||
         (opts.count("v0-skygrid-tau-prior-alpha") > 0) ||
-        (opts.count("v0-skygrid-tau-prior-beta") > 0);
+        (opts.count("v0-skygrid-tau-prior-beta") > 0) ||
+        (opts.count("v0-skygrid-disable-low-pop-barrier") > 0) ||
+        (opts.count("v0-skygrid-low-pop-barrier-loc") > 0) ||
+        (opts.count("v0-skygrid-low-pop-barrier-scale") > 0);
 
     if (opts["v0-pop-model"].as<std::string>() == "exponential") {
       
@@ -563,6 +575,22 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       run->set_pop_model(std::make_unique<Skygrid_pop_model>(std::move(x_k), std::move(gamma_k), skygrid_type));
       run->set_skygrid_tau(skygrid_tau);
       run->set_skygrid_tau_move_enabled(infer_tau);  // Prior configured above when infer_tau == true
+
+      // Low-pop barrier
+      if (opts["v0-skygrid-disable-low-pop-barrier"].as<bool>()) {
+        run->set_skygrid_low_gamma_barrier_enabled(false);
+      } else {
+        auto low_pop_barrier_loc = opts["v0-skygrid-low-pop-barrier-loc"].as<double>();
+        low_pop_barrier_loc *= 365.0;  // convert to days
+        auto low_gamma_barrier_loc = std::log(low_pop_barrier_loc);
+
+        auto low_pop_barrier_scale = opts["v0-skygrid-low-pop-barrier-scale"].as<double>();
+        auto low_gamma_barrier_scale = -std::log(1 - low_pop_barrier_scale);  // Convert to scale in gamma
+        
+        run->set_skygrid_low_gamma_barrier_enabled(true);
+        run->set_skygrid_low_gamma_barrier_loc(low_gamma_barrier_loc);
+        run->set_skygrid_low_gamma_barrier_scale(low_gamma_barrier_scale);
+      }
       
     } else {
       std::cerr << "ERROR: Unknown population model '" << opts["v0-pop-model"].as<std::string>() << "'\n";

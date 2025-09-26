@@ -482,7 +482,7 @@ static auto render_pop_curve() -> void {
   auto g = 10.0 / 365;
   auto t0 = parse_iso_date("2024-07-31");
   
-  color_3d(1.0, 0.0, 0.0);
+  color_3d(0.0, 0.5, 0.0);
 
   auto t_min = ui_run->coalescent_prior().cell_lbound(0);
   auto t_max = ui_run->coalescent_prior().cell_lbound(C-1);
@@ -493,23 +493,22 @@ static auto render_pop_curve() -> void {
   // where N_0 = 2.0 years              = 2*365 days,
   auto N_0_const = 2.0 * 365;
   
-  color_3d(1.0, 0.0, 0.0);
+  color_3d(0.0, 0.5, 0.0);
 
   draw_line(x_for(t_min), y_min + y_scale * (std::log(N_0_const)),
             x_for(t_max), y_min + y_scale * (std::log(N_0_const)));
 
-  // Lower bound
-  const auto min_gamma_k = std::log(1.0 /* day */ / 365.0);
-  
-  // Barrier on low N(t) is quadratic: for each gamma_k, whenever is drops below min_gamma_k
-  // by barrier_scale, accumulate 1/2 nat of penalty
-  const auto barrier_scale = std::log(1.3);  // 1/2 a nat when N(x_k) = e^min_gamma_k / 1.3
-  
-  draw_line(x_for(t_min), y_min + y_scale * min_gamma_k,
-            x_for(t_max), y_min + y_scale * min_gamma_k);
-  draw_line(x_for(t_min), y_min + y_scale * (min_gamma_k - barrier_scale),
-            x_for(t_max), y_min + y_scale * (min_gamma_k - barrier_scale));
-  
+  if (ui_run->skygrid_low_gamma_barrier_enabled()) {
+    // Barrier on low N(t) is quadratic: for each gamma_k, values below `loc`, measured in multiples of `scale`, accumulate a quadratic penalty that is 1 when `loc - gamma == scale`
+    const auto barrier_loc = ui_run->skygrid_low_gamma_barrier_loc();
+    const auto barrier_scale = ui_run->skygrid_low_gamma_barrier_scale();
+    
+    color_3d(1.0, 0.0, 0.0);
+    draw_line(x_for(t_min), y_min + y_scale * barrier_loc,
+              x_for(t_max), y_min + y_scale * barrier_loc);
+    draw_line(x_for(t_min), y_min + y_scale * (barrier_loc - barrier_scale),
+              x_for(t_max), y_min + y_scale * (barrier_loc - barrier_scale));
+  }
 
   // Actual pop curve
   color_3d(0.0, 0.0, 0.0);  // black lines

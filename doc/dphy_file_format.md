@@ -144,7 +144,7 @@ union PopModel {
 // --------------
 
 table Params {
-  // Next free id: 35
+  // Next free id: 38
   
   step: int64   (id:  0);      // MCMC steps taken so far [unitless, >= 0]
   num_local_moves_per_global_move: int64 = -1 (id: 1);  // [unitless, >= 1].  -1 => use reasonable default
@@ -161,6 +161,8 @@ table Params {
   skygrid_tau: float64 (id: 31);// `tau` parameter of Skygrid model (if in use) [unitless, >= 0]
   skygrid_tau_prior_alpha: float64 (id: 32);// alpha parameter of Skygrid `tau` prior (if in use) [unitless, >= 0]
   skygrid_tau_prior_beta: float64 (id: 33);// beta parameter of Skygrid `tau` prior (if in use) [unitless, >= 0]
+  skygrid_low_gamma_barrier_loc: float64 (id: 36);// value of gamma (log(N(t))) below which we penalize smaller populations [unitless, >= 0]
+  skygrid_low_gamma_barrier_scale: float64 (id: 37);// value of gamma below low-gamma barrier loc at which barrier penalty reaches 1 nat (log(prior_barrier) = 1) [unitless, >= 0]
 
   // Deprecated hard-coded ExpPopModel parameters.  If pop_model is missing, assume exponential model with these
   // parameters; otherwise, ignore these
@@ -177,6 +179,7 @@ table Params {
   final_pop_size_move_enabled: bool = true (id: 27);
   pop_growth_rate_move_enabled: bool = true (id: 28);
   skygrid_tau_move_enabled: bool = false (id: 34);
+  skygrid_low_gamma_barrier_enabled: bool = false (id: 35);
 
   // Read-only (setting these has no effect)
   log_posterior: float64 (id: 17);

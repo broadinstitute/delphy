@@ -683,7 +683,10 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_SKYGRID_TAU = 66,
     VT_SKYGRID_TAU_PRIOR_ALPHA = 68,
     VT_SKYGRID_TAU_PRIOR_BETA = 70,
-    VT_SKYGRID_TAU_MOVE_ENABLED = 72
+    VT_SKYGRID_TAU_MOVE_ENABLED = 72,
+    VT_SKYGRID_LOW_GAMMA_BARRIER_ENABLED = 74,
+    VT_SKYGRID_LOW_GAMMA_BARRIER_LOC = 76,
+    VT_SKYGRID_LOW_GAMMA_BARRIER_SCALE = 78
   };
   int64_t step() const {
     return GetField<int64_t>(VT_STEP, 0);
@@ -797,6 +800,15 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   bool skygrid_tau_move_enabled() const {
     return GetField<uint8_t>(VT_SKYGRID_TAU_MOVE_ENABLED, 0) != 0;
   }
+  bool skygrid_low_gamma_barrier_enabled() const {
+    return GetField<uint8_t>(VT_SKYGRID_LOW_GAMMA_BARRIER_ENABLED, 0) != 0;
+  }
+  double skygrid_low_gamma_barrier_loc() const {
+    return GetField<double>(VT_SKYGRID_LOW_GAMMA_BARRIER_LOC, 0.0);
+  }
+  double skygrid_low_gamma_barrier_scale() const {
+    return GetField<double>(VT_SKYGRID_LOW_GAMMA_BARRIER_SCALE, 0.0);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int64_t>(verifier, VT_STEP, 8) &&
@@ -836,6 +848,9 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyField<double>(verifier, VT_SKYGRID_TAU_PRIOR_ALPHA, 8) &&
            VerifyField<double>(verifier, VT_SKYGRID_TAU_PRIOR_BETA, 8) &&
            VerifyField<uint8_t>(verifier, VT_SKYGRID_TAU_MOVE_ENABLED, 1) &&
+           VerifyField<uint8_t>(verifier, VT_SKYGRID_LOW_GAMMA_BARRIER_ENABLED, 1) &&
+           VerifyField<double>(verifier, VT_SKYGRID_LOW_GAMMA_BARRIER_LOC, 8) &&
+           VerifyField<double>(verifier, VT_SKYGRID_LOW_GAMMA_BARRIER_SCALE, 8) &&
            verifier.EndTable();
   }
 };
@@ -957,6 +972,15 @@ struct ParamsBuilder {
   void add_skygrid_tau_move_enabled(bool skygrid_tau_move_enabled) {
     fbb_.AddElement<uint8_t>(Params::VT_SKYGRID_TAU_MOVE_ENABLED, static_cast<uint8_t>(skygrid_tau_move_enabled), 0);
   }
+  void add_skygrid_low_gamma_barrier_enabled(bool skygrid_low_gamma_barrier_enabled) {
+    fbb_.AddElement<uint8_t>(Params::VT_SKYGRID_LOW_GAMMA_BARRIER_ENABLED, static_cast<uint8_t>(skygrid_low_gamma_barrier_enabled), 0);
+  }
+  void add_skygrid_low_gamma_barrier_loc(double skygrid_low_gamma_barrier_loc) {
+    fbb_.AddElement<double>(Params::VT_SKYGRID_LOW_GAMMA_BARRIER_LOC, skygrid_low_gamma_barrier_loc, 0.0);
+  }
+  void add_skygrid_low_gamma_barrier_scale(double skygrid_low_gamma_barrier_scale) {
+    fbb_.AddElement<double>(Params::VT_SKYGRID_LOW_GAMMA_BARRIER_SCALE, skygrid_low_gamma_barrier_scale, 0.0);
+  }
   explicit ParamsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1004,8 +1028,13 @@ inline ::flatbuffers::Offset<Params> CreateParams(
     double skygrid_tau = 0.0,
     double skygrid_tau_prior_alpha = 0.0,
     double skygrid_tau_prior_beta = 0.0,
-    bool skygrid_tau_move_enabled = false) {
+    bool skygrid_tau_move_enabled = false,
+    bool skygrid_low_gamma_barrier_enabled = false,
+    double skygrid_low_gamma_barrier_loc = 0.0,
+    double skygrid_low_gamma_barrier_scale = 0.0) {
   ParamsBuilder builder_(_fbb);
+  builder_.add_skygrid_low_gamma_barrier_scale(skygrid_low_gamma_barrier_scale);
+  builder_.add_skygrid_low_gamma_barrier_loc(skygrid_low_gamma_barrier_loc);
   builder_.add_skygrid_tau_prior_beta(skygrid_tau_prior_beta);
   builder_.add_skygrid_tau_prior_alpha(skygrid_tau_prior_alpha);
   builder_.add_skygrid_tau(skygrid_tau);
@@ -1031,6 +1060,7 @@ inline ::flatbuffers::Offset<Params> CreateParams(
   builder_.add_pop_model(pop_model);
   builder_.add_nu(nu);
   builder_.add_num_parts(num_parts);
+  builder_.add_skygrid_low_gamma_barrier_enabled(skygrid_low_gamma_barrier_enabled);
   builder_.add_skygrid_tau_move_enabled(skygrid_tau_move_enabled);
   builder_.add_pop_model_type(pop_model_type);
   builder_.add_pop_growth_rate_move_enabled(pop_growth_rate_move_enabled);
@@ -1080,7 +1110,10 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
     double skygrid_tau = 0.0,
     double skygrid_tau_prior_alpha = 0.0,
     double skygrid_tau_prior_beta = 0.0,
-    bool skygrid_tau_move_enabled = false) {
+    bool skygrid_tau_move_enabled = false,
+    bool skygrid_low_gamma_barrier_enabled = false,
+    double skygrid_low_gamma_barrier_loc = 0.0,
+    double skygrid_low_gamma_barrier_scale = 0.0) {
   auto nu__ = nu ? _fbb.CreateVector<double>(*nu) : 0;
   return delphy::api::CreateParams(
       _fbb,
@@ -1118,7 +1151,10 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
       skygrid_tau,
       skygrid_tau_prior_alpha,
       skygrid_tau_prior_beta,
-      skygrid_tau_move_enabled);
+      skygrid_tau_move_enabled,
+      skygrid_low_gamma_barrier_enabled,
+      skygrid_low_gamma_barrier_loc,
+      skygrid_low_gamma_barrier_scale);
 }
 
 inline bool VerifyPopModel(::flatbuffers::Verifier &verifier, const void *obj, PopModel type) {

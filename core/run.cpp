@@ -10,11 +10,6 @@
 
 namespace delphy {
 
-// Highly discourage values of gamma_k which are too low
-constexpr auto enable_low_gamma_barrier = true;
-static const auto skygrid_gamma_min = std::log(1.0 /* day */ / 365.0);
-static const auto skygrid_delta_gamma = std::log(1.3);  // penalty of 1 to log-posterior N(x_k) = e^gamma_min / 1.3
-
 Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
     : thread_pool_{&thread_pool},
       bitgen_{bitgen},
@@ -25,6 +20,8 @@ Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
       skygrid_tau_{1.0},  // Prior mean, Gill et al 2012 Eq. 15
       skygrid_tau_prior_alpha_{0.001},  // Prior, Gill et al 2012 discussion below Eq. 16
       skygrid_tau_prior_beta_{0.001},
+      skygrid_low_gamma_barrier_loc_{std::log(1.0)},  // Pop sizes below 1 day are penalized
+      skygrid_low_gamma_barrier_scale_{-std::log(0.70)},  // by 1 nat for every 30% drop
       alpha_{10.0},
       nu_(tree_.num_sites(), 1.0),
       evo_{make_single_partition_global_evo_model(tree_.num_sites())},
@@ -546,7 +543,7 @@ auto Run::calc_cur_log_other_priors() const -> double {
           - 0.5 * std::pow(delta_gamma, 2) * tau;
     }
 
-    if (enable_low_gamma_barrier) {
+    if (skygrid_low_gamma_barrier_enabled_) {
       // Strong lower bound on gamma_k's
       //
       // Anything implying a coalescent timescale below N(t) = e^{skygrid_gamma_min} (with
@@ -559,9 +556,9 @@ auto Run::calc_cur_log_other_priors() const -> double {
       // skygrid_gamma_min by skygrid_delta_gamma reduces the log-posterior by 1.
       //
       for (auto k = 0; k <= M; ++k) {
-        if (skygrid_pop_model.gamma(k) < skygrid_gamma_min) {
-          auto excess = skygrid_gamma_min - skygrid_pop_model.gamma(k);
-          log_prior -= std::pow(excess / skygrid_delta_gamma, 2);
+        if (skygrid_pop_model.gamma(k) < skygrid_low_gamma_barrier_loc_) {
+          auto excess = skygrid_low_gamma_barrier_loc_ - skygrid_pop_model.gamma(k);
+          log_prior -= std::pow(excess / skygrid_low_gamma_barrier_scale_, 2);
         }
       }
     }
@@ -1672,12 +1669,12 @@ auto Run::skygrid_gammas_hmc_move() -> void {
     }
     U_prior *= 0.5 * tau;
 
-    if (enable_low_gamma_barrier) {
+    if (skygrid_low_gamma_barrier_enabled_) {
       // Strong lower bound on gamma_k's: See comments in calc_cur_log_other_priors().
       for (auto k = 0; k <= M; ++k) {
-        if (gamma_k[k] < skygrid_gamma_min) {
-          auto excess = skygrid_gamma_min - gamma_k[k];
-          U_prior += std::pow(excess / skygrid_delta_gamma, 2);
+        if (gamma_k[k] < skygrid_low_gamma_barrier_loc_) {
+          auto excess = skygrid_low_gamma_barrier_loc_ - gamma_k[k];
+          U_prior += std::pow(excess / skygrid_low_gamma_barrier_scale_, 2);
         }
       }
     }
@@ -1727,11 +1724,11 @@ auto Run::skygrid_gammas_hmc_move() -> void {
         f_k[k] -= tau * (gamma_k[k] - gamma_k[k+1]);
       }
 
-      if (enable_low_gamma_barrier) {
+      if (skygrid_low_gamma_barrier_enabled_) {
         // Strong lower bound on gamma_k's: See comments in calc_cur_log_other_priors().
-        if (gamma_k[k] < skygrid_gamma_min) {
-          auto excess = skygrid_gamma_min - gamma_k[k];
-          f_k[k] += 2 * excess / std::pow(skygrid_delta_gamma, 2);
+        if (gamma_k[k] < skygrid_low_gamma_barrier_loc_) {
+          auto excess = skygrid_low_gamma_barrier_loc_ - gamma_k[k];
+          f_k[k] += 2 * excess / std::pow(skygrid_low_gamma_barrier_scale_, 2);
         }
       }
     }
@@ -2015,15 +2012,15 @@ auto Run::skygrid_gammas_zero_mode_gibbs_move() -> void {
   auto old_log_prior_bound = 0.0;
   auto new_log_prior_bound = 0.0;
 
-  if (enable_low_gamma_barrier) {
+  if (skygrid_low_gamma_barrier_enabled_) {
     for (auto k = 0; k <= M; ++k) {
-      if (old_pop_model->gamma(k) < skygrid_gamma_min) {
-        auto excess = skygrid_gamma_min - old_pop_model->gamma(k);
-        old_log_prior_bound -= std::pow(excess / skygrid_delta_gamma, 2);
+      if (old_pop_model->gamma(k) < skygrid_low_gamma_barrier_loc_) {
+        auto excess = skygrid_low_gamma_barrier_loc_ - old_pop_model->gamma(k);
+        old_log_prior_bound -= std::pow(excess / skygrid_low_gamma_barrier_scale_, 2);
       }
-      if (new_gamma_k[k] < skygrid_gamma_min) {
-        auto excess = skygrid_gamma_min - new_gamma_k[k];
-        new_log_prior_bound -= std::pow(excess / skygrid_delta_gamma, 2);
+      if (new_gamma_k[k] < skygrid_low_gamma_barrier_loc_) {
+        auto excess = skygrid_low_gamma_barrier_loc_ - new_gamma_k[k];
+        new_log_prior_bound -= std::pow(excess / skygrid_low_gamma_barrier_scale_, 2);
       }
     }
   }
