@@ -1429,14 +1429,15 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   //   del(log P)/del gamma_k =~
   //           + SS_k exp(-gamma_k)
   //           - c_k
-  //           - tau (gamma_k - gamma_{k-1})  \  these terms are terms
-  //           - tau (gamma_k - gamma_{k+1})  /  are essentially zero
+  //           - tau (gamma_k - gamma_{k-1}) [[ k > 0 ]]  \  these terms are terms
+  //           - tau (gamma_k - gamma_{k+1}) [[ k < M ]]  /  are essentially zero
   //
   // and
   //
   //   del^2(log P)/del gamma_k^2 =~
   //           - SS_k exp(-gamma_k)
-  //           - tau                         <-- independent of {gamma_k} !
+  //           - tau [[ k > 0 ]]                          \  independent of
+  //           - tau [[ k < M ]]                          /  {gamma_k} !
   //
   // Neglecting the last two terms in del(log P)/del gamma_k places the maximum of log P at
   // a value gammahat_k satisfying:
@@ -1452,18 +1453,19 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   //
   // Hence, we have our key result:
   //
-  //   del^2(log P)/del gamma_k^2 =~ -(tau + c_k).
+  //   del^2(log P)/del gamma_k^2 =~ -(tau [[ k > 0 ]] + tau [[ k < M ]] + c_k).
   //
   // Compare this to a Gaussian distribution:
   //
   //   log P_G(gamma_k) = -(gamma_k - gammahat_k)^2 / (2 sigma^2),
   //   => del^2(log P_G)/del gamma_k^2 = -1 / sigma^2.
   //
-  // Hence, the typical width of the posterior along the gamma_k direction near its minimum is
-  // something like 1/sqrt(tau + c_k).  This isn't strictly true owing to the coupling between
-  // the neighbouring gamma_k's, and it's very possible that the width of the posterior along
-  // other directions is much larger, but this gives us a reasonable starting point with a
-  // physically pleasing interpretation:
+  // Hence, the typical width of the posterior along the gamma_k direction near its
+  // minimum is something like 1/sqrt(tau [[ k > 0 ]] + tau [[ k < M ]] + c_k).  This
+  // isn't strictly true owing to the coupling between the neighbouring gamma_k's, and
+  // it's very possible that the width of the posterior along other directions is much
+  // larger, but this gives us a reasonable starting point with a physically pleasing
+  // interpretation:
   //
   //   "In intervals where there is little data (c_k << tau), oscillations of the
   //    population curve are driven by the GMRF prior.  In intervals where there is
@@ -1472,7 +1474,7 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   //
   // As we will see below, setting the mass m_k associated with variable gamma_k to
   //
-  //    m_k = tau + c_k
+  //    m_k = tau [[ k > 0 ]] + tau [[ k < M ]] + c_k
   //
   // results in all oscillations of the dynamical system having very similar angular
   // frequencies close to 1, which permits picking a natural time step and trajectory length.
@@ -1532,15 +1534,15 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   // (b) how to choose m_k, dt and S?
   //
   // The second question is easier to answer given the above discussion.  As noted above,
-  // near the maximum of log P at {gammahat_k} , we'll have something like
+  // near the maximum of log P at {gammahat_k}, for 0 < k < M, we'll have something like
   //
-  //   d^2 (gamma_k - gammahat_k) / dt^2 = - (gamma_k - gammahat_k) * (tau + c_k) / m_k.
-  //                                       \                                    /
-  //                                        +------------ ~ f_k ---------------+
+  //   d^2 (gamma_k - gammahat_k) / dt^2 = - (gamma_k - gammahat_k) * (2 tau + c_k) / m_k.
+  //                                       \                                       /
+  //                                        +-------------- ~ f_k ----------------+
   //
   // Hence, setting
   //
-  //   m_k = tau + c_k
+  //   m_k = tau [[ k > 0 ]] + tau [[ k < M ]] + c_k
   //
   // makes gamma_k behave as a harmonic oscillator about gammahat_k, with angular frequency 1.
   // This is not exactly what happens, but it's close enough to be a useful guide to tuning
@@ -1614,6 +1616,9 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   // - replacing `sum_{i inner} 1/N(t_i)` in the coalescent prior by `sum_c (1/N_c)^{n_c},
   //   where n_c is the number of tips in interval `k`.
   // - merging the position half-steps of consecutive steps
+  // - identifying k_min = the largest k where x_k < t_root,
+  //   evolving the pop curve just for k_min <= k <= M, then extending the pop curve down
+  //   to k = 0 by Gibbs sampling.
  
   const Pop_model& raw_pop_model = *pop_model_;
   CHECK(typeid(raw_pop_model) == typeid(Skygrid_pop_model));
@@ -1647,7 +1652,7 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   auto m_k = std::vector<double>(M+1, 0.0);
   auto inv_m_k = std::vector<double>(M+1, 0.0);       // inverse masses
   for (auto k = 0; k <= M; ++k) {
-    m_k[k] = tau + c_k[k];
+    m_k[k] = (k > 0 ? tau : 0.0) + (k < M ? tau : 0.0) + c_k[k];
     inv_m_k[k] = 1.0 / m_k[k];
   }
 
