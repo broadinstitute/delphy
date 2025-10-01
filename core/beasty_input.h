@@ -16,6 +16,7 @@ auto read_beasty_trees(
 
 auto export_beast_input(
     const Run& run,
+    std::string_view beast_version,
     std::ostream& os,
     int64_t chain_length = 10000000,
     int64_t log_every = 1000,

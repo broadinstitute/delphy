@@ -1028,12 +1028,20 @@ auto keyboard_func(char key) -> void {
     default: {
       return;  // Avoid redisplay and stats line
     }
-    case 'i':
-    case 'I': {
-      std::cerr << "*** EXPORTING ANALOGOUS BEAST INPUT FILE ('beast2.xml') ***" << std::endl;
+    case 'i': {
+      std::cerr << "*** EXPORTING ANALOGOUS BEAST2 INPUT FILE ('beast2.xml') ***" << std::endl;
       auto os = std::ofstream("beast2.xml");
       if (os) {
-        export_beast_input(*ui_run, os);
+        export_beast_input(*ui_run, "2.6.2", os);
+      }
+      std::cerr << "*** EXPORT COMPLETE ***" << std::endl;
+      break;
+    }
+    case 'I': {
+      std::cerr << "*** EXPORTING ANALOGOUS BEAST X INPUT FILE ('beast_X.xml') ***" << std::endl;
+      auto os = std::ofstream("beast_X.xml");
+      if (os) {
+        export_beast_input(*ui_run, "X-10.5.0", os);
       }
       std::cerr << "*** EXPORT COMPLETE ***" << std::endl;
       break;

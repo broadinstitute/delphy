@@ -1219,10 +1219,11 @@ EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_run_export_beast_input(
     Delphy_context /*ctx*/,
-    const Run& run)
+    const Run& run,
+    const char* beast_version)  // null-terminated, please!
     -> std::string* {
   auto ss = std::ostringstream{};
-  export_beast_input(run, ss);
+  export_beast_input(run, std::string_view{beast_version}, ss);
   return new std::string{std::move(ss).str()};  // Idiom to move string out of ss instead of copying it
 }
 

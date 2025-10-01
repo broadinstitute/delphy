@@ -170,7 +170,7 @@ static auto output_sequences(const Run& run, std::ostream& os) -> void {
   }
 }
 
-auto export_beast_input(
+static auto export_beast_2_6_2_input(
     const Run& run,
     std::ostream& os,
     int64_t chain_length,
@@ -542,6 +542,23 @@ auto export_beast_input(
   
   os << "</run>\n";
   os << "</beast>\n";
+}
+
+auto export_beast_input(
+    const Run& run,
+    std::string_view beast_version,
+    std::ostream& os,
+    int64_t chain_length,
+    int64_t log_every,
+    int64_t tree_every)
+    -> void {
+
+  if (beast_version == "2.6.2") {
+    export_beast_2_6_2_input(run, os, chain_length, log_every, tree_every);
+  } else {
+    std::cerr << "ERROR: BEAST input XML generation not currently supported for BEAST version '" << beast_version << "'\n";
+    os << "ERROR: BEAST input XML generation not currently supported for BEAST version '" << beast_version << "'\n";
+  }
 }
 
 }  // namespace delphy

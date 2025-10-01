@@ -154,6 +154,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<double>()->default_value("1e-3"))
       ("v0-out-beast-xml", "Filename for XML input file suitable for BEAST 2.6.2",
        cxxopts::value<std::string>())
+      ("v0-out-beast-version", "BEAST version to target for XML and output files.  Currently allowed values are '2.6.2', and 'X-10.5.0'.",
+       cxxopts::value<std::string>()->default_value("2.6.2"))
       ("v0-mpox-hack", "Enable mpox hack (very crude treatment of APOBEC3 mechanism)",
        cxxopts::value<bool>()->default_value("false"))
       ("v0-target-coal-prior-cells", "Target number of cells to use in parallelized coalescent prior (coalescent prior resolution is adjusted if actual number is more than 33% away from target); higher is more accurate but more expensive",
@@ -597,6 +599,9 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       std::exit(EXIT_FAILURE);
     }
 
+    // Which version of BEAST to target for input XML and output log & trees files
+    auto beast_version = opts["v0-out-beast-version"].as<std::string>();
+    
     // Output BEAST input XML if needed
     if (opts.count("v0-out-beast-xml")) {
       auto beast_xml_filename = opts["v0-out-beast-xml"].as<std::string>();
@@ -607,7 +612,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       }
 
       // Very rough rule of thumb: 10 Delphy steps = 1 BEAST2 step
-      export_beast_input(*run, beast_xml_os, steps / 10, std::max(1L, log_every / 10), std::max(1L, tree_every / 10));
+      export_beast_input(*run, beast_version, beast_xml_os, steps / 10, std::max(1L, log_every / 10), std::max(1L, tree_every / 10));
     }
 
     // Dry run => stop here
