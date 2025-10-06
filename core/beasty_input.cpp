@@ -544,6 +544,676 @@ static auto export_beast_2_6_2_input(
   os << "</beast>\n";
 }
 
+static auto output_sequences_X_10_5(const Run& run, std::ostream& os) -> void {
+  const auto& tree = run.tree();
+
+  auto num_tips = Node_index{(tree.size() + 1) / 2};
+  os << absl::StreamFormat("  <!-- The list of taxa to be analysed (can also include dates/ages).          -->\n")
+     << absl::StreamFormat("  <!-- ntax=%-56d -->\n", num_tips);
+  
+  os << absl::StreamFormat("  <taxa id=\"taxa\">\n");
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip()) {
+      os << absl::StreamFormat("    <taxon id=\"%s\">\n", tree.at(node).name);
+      os << absl::StreamFormat("      <date value=\"%g\" direction=\"forwards\" units=\"years\"",  // Partial line
+                               0.5 * (to_linear_year(tree.at(node).t_min) + to_linear_year(tree.at(node).t_max)));
+
+      // Tip date uncertainty
+      if (tree.at(node).t_min != tree.at(node).t_max) {
+        os << absl::StreamFormat(" uncertainty=\"%g\"",
+                                 to_linear_year(tree.at(node).t_max) - to_linear_year(tree.at(node).t_min));
+      }
+      
+      os << absl::StreamFormat("/>\n");
+      os << absl::StreamFormat("    </taxon>\n");
+    }
+  }
+  os << absl::StreamFormat("  </taxa>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n");
+
+  os << absl::StreamFormat("  <!-- The sequence alignment (each sequence refers to a taxon above).         -->\n")
+     << absl::StreamFormat("  <!-- %-61s -->\n", absl::StrFormat("ntax = %d nchar = %d",
+                                                                 num_tips, tree.num_sites()));
+  os << absl::StreamFormat("  <alignment id=\"alignment\" dataType=\"nucleotide\">\n");
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip()) {
+      os << absl::StreamFormat("    <sequence>\n");
+      os << absl::StreamFormat("      <taxon idref=\"%s\">\n", tree.at(node).name);
+      os << absl::StreamFormat("      ");  // No newline here
+      
+      auto seq = view_of_sequence_at(tree, node);
+      auto missing_sites = reconstruct_missing_sites_at(tree, node);
+      
+      auto missing_it = missing_sites.begin();
+      auto in_missing = false;
+      
+      for (auto l = Site_index{0}; l != tree.num_sites(); ++l) {
+        if (missing_it != missing_sites.end()) {
+          const auto& [mi_start, mi_end] = *missing_it;
+          if (not in_missing && l == mi_start) {
+            in_missing = true;
+          } else if (in_missing && l == mi_end) {
+            in_missing = false;
+            ++missing_it;
+          }
+        }
+        
+        if (in_missing) {
+          os << 'N';
+        } else {
+          os << to_char(seq[l]);
+        }
+      }
+      
+      os << absl::StreamFormat("    </sequence>\n");
+    }
+  }
+  os << absl::StreamFormat("  </alignment>\n");
+}
+
+static auto export_beast_X_10_5_0_input(
+    const Run& run,
+    std::ostream& os,
+    int64_t chain_length,
+    int64_t log_every,
+    int64_t tree_every)
+    -> void {
+  
+  const auto& tree = run.tree();
+
+  if (run.mpox_hack_enabled()) {
+    std::cerr << "ERROR: BEAST input XML generation not currently supported when enabling APOBEC3 treatment (mpox)\n";
+    os << "ERROR: BEAST input XML generation not currently supported when enabling APOBEC3 treatment (mpox)\n";
+    return;
+  }
+  
+  // Gather basic info about tree
+  auto num_tips = Node_index{(tree.size() + 1) / 2};
+  
+  auto beast_t0 = -std::numeric_limits<double>::max();  // t0 = time of latest tip
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip()) {
+      beast_t0 = std::max(beast_t0, tree.at(node).t);
+    }
+  }
+  const auto& pop_model = run.pop_model();
+  
+  auto has_tip_uncertainty = false;
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+      has_tip_uncertainty = true;
+      break;
+    }
+  }
+
+  // Off we go!
+  os << "<?xml version=\"1.0\" standalone=\"yes\"?>\n"
+     << "\n"
+     << "<!-- \n"
+     << stamp_version_into_log_file{}
+     << "-->\n"
+     << "\n"
+     << "<!-- BEAST X 10.5.0 input file, modelled on run analyzed in \n"
+     << "     LeMieux et al, \"Phylogenetic analysis of SARS-CoV-2 in Boston highlights\n"
+     << "     the impact of superspreading events\", Science 371, 588 (2021)\n"
+     << "     (https://dx.doi.org/10.1126/science.abe3261) -->\n"
+     << "\n"
+     << "<!-- This template is essentially what comes out of BEAUti X after loading\n"
+     << "     the input FASTA file and choosing the appropriate:\n"
+     << "     * date format (yyyy-M-dd, after last '|')\n"
+     << "     * site model (Gamma site model with 0 or 4 gamma categories, HKY subst model)\n"
+     << "     * clock model (strict)\n"
+     << "     * population prior (Coalescent: Exponential Population or Coalescent: Hamiltonian Monte Carlo SkyGrid)\n"
+     << "     [leaving all parameters in their default settings] -->\n"
+     << "\n";
+  
+  os << "<beast version=\"10.5.0-beta5\">\n"
+     << "\n"
+     << "\n";
+
+  // Sequence data
+  output_sequences_X_10_5(run, os);
+  os << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("  <!-- The unique patterns from 1 to end                                       -->\n")
+     << absl::StreamFormat("  <!-- npatterns=<DELPHY DOESN'T COUNT THESE>                                  -->\n")
+     << absl::StreamFormat("  <patterns id=\"patterns\" from=\"1\" strip=\"false\">\n")
+     << absl::StreamFormat("    <alignment idref=\"alignment\"/>\n")
+     << absl::StreamFormat("  </patterns>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n");
+
+  // Starting tree initialized from a random coalescent simulation with constant-size or exponentially growing population
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
+    auto final_pop_size = exp_pop_model.pop_at_t0();
+    auto pop_growth_rate = exp_pop_model.growth_rate();
+    
+    os << absl::StreamFormat("  <!-- A prior assumption that the population size has grown exponentially     -->\n")
+       << absl::StreamFormat("  <!-- throughout the time spanned by the genealogy.                           -->\n")
+       << absl::StreamFormat("  <exponentialGrowth id=\"exponential\" units=\"years\">\n")
+       << absl::StreamFormat("    <populationSize>\n")
+       << absl::StreamFormat("      <parameter id=\"exponential.popSize\" value=\"%g\" lower=\"0.0\"/>\n",
+                             run.final_pop_size_move_enabled()
+                             ? 1.0                    // Will infer...
+                             : final_pop_size/365.0)  // ... vs. fixed  (units: years)
+       << absl::StreamFormat("    </populationSize>\n")
+       << absl::StreamFormat("    <growthRate>\n")
+       << absl::StreamFormat("      <parameter id=\"exponential.growthRate\" value=\"%g\"/>\n",
+                             run.final_pop_size_move_enabled()
+                             ? 0.0                    // Will infer...
+                             : pop_growth_rate*365.0)  // ... vs. fixed  (units: e-foldings per year)
+       << absl::StreamFormat("    </growthRate>\n")
+       << absl::StreamFormat("  </exponentialGrowth>\n")
+       << absl::StreamFormat("\n")
+       << absl::StreamFormat("\n")
+       << absl::StreamFormat("  <!-- Generate a random starting tree under the coalescent process            -->\n")
+       << absl::StreamFormat("  <coalescentSimulator id=\"startingTree\">\n")
+       << absl::StreamFormat("    <taxa idref=\"taxa\"/>\n")
+       << absl::StreamFormat("    <exponentialGrowth idref=\"exponential\"/>\n")
+       << absl::StreamFormat("  </coalescentSimulator>\n")
+       << absl::StreamFormat("\n")
+       << absl::StreamFormat("\n");
+
+  } else {
+    os << absl::StreamFormat("  <!-- This is a simple constant population size coalescent model              -->\n")
+       << absl::StreamFormat("  <!-- that is used to generate an initial tree for the chain.                 -->\n")
+       << absl::StreamFormat("  <constantSize id=\"initialDemo\" units=\"years\">\n")
+       << absl::StreamFormat("    <populationSize>\n")
+       << absl::StreamFormat("      <parameter id=\"initialDemo.popSize\" value=\"100.0\"/>\n")
+       << absl::StreamFormat("    </populationSize>\n")
+       << absl::StreamFormat("  </constantSize>\n")
+       << absl::StreamFormat("\n")
+       << absl::StreamFormat("\n")
+       << absl::StreamFormat("  <!-- Generate a random starting tree under the coalescent process            -->\n")
+       << absl::StreamFormat("  <coalescentSimulator id=\"startingTree\">\n")
+       << absl::StreamFormat("    <taxa idref=\"taxa\"/>\n")
+       << absl::StreamFormat("    <constantSize idref=\"initialDemo\"/>\n")
+       << absl::StreamFormat("  </coalescentSimulator>\n")
+       << absl::StreamFormat("\n")
+       << absl::StreamFormat("\n");
+  }
+
+  // Tree model and basic statistics
+  os << absl::StreamFormat("  <!-- Generate a tree model                                                   -->\n")
+     << absl::StreamFormat("  <treeModel id=\"treeModel\">\n")
+     << absl::StreamFormat("    <coalescentTree idref=\"startingTree\"/>\n")
+     << absl::StreamFormat("    <rootHeight>\n")
+     << absl::StreamFormat("      <parameter id=\"treeModel.rootHeight\"/>")
+     << absl::StreamFormat("    </rootHeight>\n")
+     << absl::StreamFormat("    <nodeHeights internalNodes=\"true\">\n")
+     << absl::StreamFormat("      <parameter id=\"treeModel.internalNodeHeights\"/>\n")
+     << absl::StreamFormat("    </nodeHeights>\n")
+     << absl::StreamFormat("    <nodeHeights internalNodes=\"true\" rootNode=\"true\">\n")
+     << absl::StreamFormat("      <parameter id=\"treeModel.allInternalNodeHeights\"/>\n")
+     << absl::StreamFormat("    </nodeHeights>\n");
+
+  if (has_tip_uncertainty) {
+    os << absl::StreamFormat("\n");
+    os << absl::StreamFormat("    <!-- START Tip date sampling                                                 -->\n");
+    for (const auto& node : index_order_traversal(tree)) {
+      if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+        os << absl::StreamFormat("    <leafHeight taxon=\"%s\">\n",
+                                 tree.at(node).name)
+           << absl::StreamFormat("      <parameter id=\"age(%s)\"/>\n",
+                                 tree.at(node).name)
+           << absl::StreamFormat("    </leafHeight>\n");
+      }
+    }
+    os << absl::StreamFormat("\n");
+    os << absl::StreamFormat("    <!-- END Tip date sampling                                                   -->\n");
+    os << absl::StreamFormat("\n");
+  }
+  
+  os << absl::StreamFormat("  </treeModel>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("  <!-- Statistic for height of the root of the tree                            -->\n")
+     << absl::StreamFormat("  <treeHeightStatistic id=\"rootHeight\">\n")
+     << absl::StreamFormat("    <treeModel idref=\"treeModel\"/>\n")
+     << absl::StreamFormat("  </treeHeightStatistic>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("  <!-- Statistic for sum of the branch lengths of the tree (tree length)       -->\n")
+     << absl::StreamFormat("  <treeLengthStatistic id=\"treeLength\">\n")
+     << absl::StreamFormat("    <treeModel idref=\"treeModel\"/>\n")
+     << absl::StreamFormat("  </treeLengthStatistic>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("  <!-- Statistic for time of most recent common ancestor of tree               -->\n")
+     << absl::StreamFormat("  <tmrcaStatistic id=\"age(root)\" absolute=\"true\">\n")
+     << absl::StreamFormat("    <treeModel idref=\"treeModel\"/>\n")
+     << absl::StreamFormat("  </tmrcaStatistic>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n");
+
+  // Skygrid flexible population curve
+  if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+    const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(run.pop_model());
+    
+    os << absl::StreamFormat("  <!-- Generate a gmrfSkyGridLikelihood for the Bayesian SkyGrid process       -->\n")
+       << absl::StreamFormat("  <gmrfSkyGridLikelihood id=\"skygrid\">\n")
+       << absl::StreamFormat("    <populationSizes>\n")
+       << absl::StreamFormat("      \n")
+       << absl::StreamFormat("      <!-- skygrid.logPopSize is in log units unlike other popSize                 -->\n")
+       << absl::StreamFormat("      <parameter id=\"skygrid.logPopSize\" dimension=\"%d\" value=\"1.0\"/>\n",
+                             skygrid_pop_model.M() + 1)
+       << absl::StreamFormat("    </populationSizes>\n")
+       << absl::StreamFormat("    <precisionParameter>\n")
+       << absl::StreamFormat("      <parameter id=\"skygrid.precision\" value=\"0.1\" lower=\"0.0\"/>\n")
+       << absl::StreamFormat("    </precisionParameter>\n")
+       << absl::StreamFormat("    <numGridPoints>\n")
+       << absl::StreamFormat("      <parameter id=\"skygrid.numGridPoints\" value=\"%d\"/>\n",
+                             skygrid_pop_model.M())
+       << absl::StreamFormat("    </numGridPoints>\n")
+       << absl::StreamFormat("    <cutOff>\n")
+       << absl::StreamFormat("      <parameter id=\"skygrid.cutOff\" value=\"%.5f\"/>",
+                             (beast_t0 - skygrid_pop_model.x(0)) / 365.0)
+       << absl::StreamFormat("    </cutOff>\n")
+       << absl::StreamFormat("    <populationTree>\n")
+       << absl::StreamFormat("      <treeModel idref=\"treeModel\"/>\n")
+       << absl::StreamFormat("    </populationTree>\n")
+       << absl::StreamFormat("  </gmrfSkyGridLikelihood>\n");
+
+    os << absl::StreamFormat("  <gammaPrior id=\"skygrid.precision.prior\" shape=\"%.5f\" scale=\"%.5f\" offset=\"0.0\">\n",
+                             run.skygrid_tau_prior_alpha(),
+                             1.0 / run.skygrid_tau_prior_beta())
+       << absl::StreamFormat("    <parameter idref=\"skygrid.precision\"/>\n")
+       << absl::StreamFormat("  </gammaPrior>\n")
+       << absl::StreamFormat("  <gmrfSkyrideGradient id=\"gmrfGradientPop\" wrtParameter=\"logPopulationSizes\">\n")
+       << absl::StreamFormat("    <gmrfSkyGridLikelihood idref=\"skygrid\"/>\n")
+       << absl::StreamFormat("  </gmrfSkyrideGradient>\n")
+       << absl::StreamFormat("  <compoundParameter id=\"skygrid.parameters\">\n");
+    if (run.skygrid_tau_move_enabled()) {
+      os << absl::StreamFormat("    <parameter idref=\"skygrid.precision\"/>\n");
+    }
+    os << absl::StreamFormat("    <parameter idref=\"skygrid.logPopSize\"/>\n")
+       << absl::StreamFormat("  </compoundParameter>\n");
+    if (run.skygrid_tau_move_enabled()) {
+      os << absl::StreamFormat("  <gmrfSkyrideGradient id=\"gmrfGradientPrec\" wrtParameter=\"precision\">\n")
+         << absl::StreamFormat("    <gmrfSkyGridLikelihood idref=\"skygrid\"/>\n")
+         << absl::StreamFormat("  </gmrfSkyrideGradient>\n")
+         << absl::StreamFormat("  <jointGradient id=\"joint.skygrid.precision\">\n")
+         << absl::StreamFormat("    <gmrfSkyrideGradient idref=\"gmrfGradientPrec\"/>\n")
+         << absl::StreamFormat("    <gradient>\n")
+         << absl::StreamFormat("      <gammaPrior idref=\"skygrid.precision.prior\"/>\n")
+         << absl::StreamFormat("      <parameter idref=\"skygrid.precision\"/>\n")
+         << absl::StreamFormat("    </gradient>\n")
+         << absl::StreamFormat("  </jointGradient>\n");
+    }
+    os << absl::StreamFormat("  <compoundGradient id=\"full.skygrid.gradient\">\n");
+    if (run.skygrid_tau_move_enabled()) {
+      os << absl::StreamFormat("    <jointGradient idref=\"joint.skygrid.precision\"/>\n");
+    }
+    os << absl::StreamFormat("    <gmrfSkyrideGradient idref=\"gmrfGradientPop\"/>\n")
+       << absl::StreamFormat("  </compoundGradient>\n")
+       << absl::StreamFormat("\n");
+    
+  } else if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    
+    os << absl::StreamFormat("  <!-- Generate a coalescent likelihood                                        -->\n")
+       << absl::StreamFormat("  <coalescentLikelihood id=\"coalescent\">\n")
+       << absl::StreamFormat("    <model>\n")
+       << absl::StreamFormat("      <exponentialGrowth idref=\"exponential\"/>\n")
+       << absl::StreamFormat("    </model>\n")
+       << absl::StreamFormat("    <populationTree>\n")
+       << absl::StreamFormat("      <treeModel idref=\"treeModel\"/>\n")
+       << absl::StreamFormat("    </populationTree>\n")
+       << absl::StreamFormat("  </coalescentLikelihood>\n")
+       << absl::StreamFormat("\n")
+       << absl::StreamFormat("\n");
+      
+  } else {
+    // Make invalid XML tag on purpose to stop this BEAST X XML file from running (with God knows what population model...)
+    std::cerr << "ERROR: Unrecognized population model type " << typeid(pop_model).name() << '\n';
+    os << absl::StreamFormat("<ERROR>UNRECOGNIZED POPULATION MODEL TYPE: %s</ERROR>", typeid(pop_model).name());
+  }
+
+  // Mutation rates
+  os << absl::StreamFormat("  <!-- The strict clock (Uniform rates across branches)                        -->\n")
+     << absl::StreamFormat("  <strictClockBranchRates id=\"branchRates\">\n")
+     << absl::StreamFormat("    <rate>\n")
+     << absl::StreamFormat("      <parameter id=\"clock.rate\" value=\"%g\" lower=\"0.0\"/>\n",
+                           run.mu_move_enabled()
+                           ? 0.001             // Will infer...
+                           : run.mu()*365.0)   // ... vs. fixed (units: mutations per site per year)
+     << absl::StreamFormat("    </rate>\n")
+     << absl::StreamFormat("  </strictClockBranchRates>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("  <rateStatistic id=\"meanRate\" name=\"meanRate\" mode=\"mean\" internal=\"true\" external=\"true\">\n")
+     << absl::StreamFormat("    <treeModel idref=\"treeModel\"/>\n")
+     << absl::StreamFormat("    <strictClockBranchRates idref=\"branchRates\"/>\n")
+     << absl::StreamFormat("  </rateStatistic>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n");
+
+  // Substitution model
+  os << absl::StreamFormat("  <!-- The HKY substitution model (Hasegawa, Kishino & Yano, 1985)             -->\n")
+     << absl::StreamFormat("  <HKYModel id=\"hky\">\n")
+     << absl::StreamFormat("    <frequencies>\n")
+     << absl::StreamFormat("      <frequencyModel dataType=\"nucleotide\">\n")
+     << absl::StreamFormat("        <frequencies>\n")
+     << absl::StreamFormat("          <parameter id=\"frequencies\" value=\"0.25 0.25 0.25 0.25\"/>\n")
+     << absl::StreamFormat("        </frequencies>\n")
+     << absl::StreamFormat("      </frequencyModel>\n")
+     << absl::StreamFormat("    </frequencies>\n")
+     << absl::StreamFormat("    <kappa>\n")
+     << absl::StreamFormat("      <parameter id=\"kappa\" value=\"2.0\" lower=\"0.0\"/>\n")
+     << absl::StreamFormat("    </kappa>\n")
+     << absl::StreamFormat("  </HKYModel>\n")
+     << absl::StreamFormat("\n");
+
+
+  // Site model
+  os << absl::StreamFormat("  <!-- site model                                                              -->\n")
+     << absl::StreamFormat("  <siteModel id=\"siteModel\">\n")
+     << absl::StreamFormat("    <substitutionModel>\n")
+     << absl::StreamFormat("      <HKYModel idref=\"hky\"/>\n")
+     << absl::StreamFormat("    </substitutionModel>\n");
+
+  if (run.alpha_move_enabled()) {
+    os << absl::StreamFormat("    <gammaShape gammaCategories=\"4\">\n")
+       << absl::StreamFormat("      <parameter id=\"alpha\" value=\"1.0\" lower=\"0.0\"/>\n")
+       << absl::StreamFormat("    </gammaShape>\n");
+  }
+
+  os << absl::StreamFormat("  </siteModel>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("  <!--                                                                         -->\n")
+     << absl::StreamFormat("  <statistic id=\"mu\" name=\"mu\">\n")
+     << absl::StreamFormat("    <siteModel idref=\"siteModel\"/>\n")
+     << absl::StreamFormat("  </statistic>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n");
+	
+
+  // Tree likelihood
+  os << absl::StreamFormat("  <!-- Likelihood for tree given sequence data                                 -->\n")
+      // Below, useAmbiguities = false just means treating things like R and Y as N instead of A|G and C|T, respectively.
+      // Missing data is still treated as you would expect.
+      // See https://groups.google.com/g/beast-users/c/rWqz6FcTdKU/m/c20Q6djYAgAJ .
+     << absl::StreamFormat("  <treeDataLikelihood id=\"treeLikelihood\" useAmbiguities=\"false\" usePreOrder=\"false\">\n")
+     << absl::StreamFormat("    <partition>\n")
+     << absl::StreamFormat("      <patterns idref=\"patterns\"/>\n")
+     << absl::StreamFormat("      <siteModel idref=\"siteModel\"/>\n")
+     << absl::StreamFormat("    </partition>\n")
+     << absl::StreamFormat("    <treeModel idref=\"treeModel\"/>\n")
+     << absl::StreamFormat("    <strictClockBranchRates idref=\"branchRates\"/>\n")
+     << absl::StreamFormat("  </treeDataLikelihood>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n");
+  
+  // Operators
+  os << absl::StreamFormat("  <!-- Define operators                                                        -->\n")
+     << absl::StreamFormat("  <operators id=\"operators\" optimizationSchedule=\"log\">\n")
+     << absl::StreamFormat("    <scaleOperator scaleFactor=\"0.75\" weight=\"1\">\n")
+     << absl::StreamFormat("      <parameter idref=\"kappa\"/>\n")
+     << absl::StreamFormat("    </scaleOperator>\n")
+     << absl::StreamFormat("    <deltaExchange delta=\"0.01\" weight=\"1\">\n")
+     << absl::StreamFormat("      <parameter idref=\"frequencies\"/>\n")
+     << absl::StreamFormat("    </deltaExchange>\n");
+
+  if (run.alpha_move_enabled()) {
+    os << absl::StreamFormat("    <scaleOperator scaleFactor=\"0.75\" weight=\"1\">\n")
+       << absl::StreamFormat("      <parameter idref=\"alpha\"/>\n")
+       << absl::StreamFormat("    </scaleOperator>\n");
+  }
+  if (run.mu_move_enabled()) {
+    os << absl::StreamFormat("    <scaleOperator scaleFactor=\"0.75\" weight=\"3\">\n")
+       << absl::StreamFormat("      <parameter idref=\"clock.rate\"/>\n")
+       << absl::StreamFormat("    </scaleOperator>\n")
+       << absl::StreamFormat("    <upDownOperator scaleFactor=\"0.75\" weight=\"3\">\n")
+       << absl::StreamFormat("      <up>\n")
+       << absl::StreamFormat("        <parameter idref=\"treeModel.allInternalNodeHeights\"/>\n")
+       << absl::StreamFormat("      </up>\n")
+       << absl::StreamFormat("      <down>\n")
+       << absl::StreamFormat("        <parameter idref=\"clock.rate\"/>\n")
+       << absl::StreamFormat("      </down>\n")
+       << absl::StreamFormat("    </upDownOperator>\n");
+  }
+  
+  os << absl::StreamFormat("    <subtreeLeap size=\"1.0\" weight=\"%d\">\n",
+                           num_tips)
+     << absl::StreamFormat("      <treeModel idref=\"treeModel\"/>\n")
+     << absl::StreamFormat("    </subtreeLeap>\n")
+     << absl::StreamFormat("    <fixedHeightSubtreePruneRegraft weight=\"%g\">\n",
+                           num_tips / 10.0)
+     << absl::StreamFormat("      <treeModel idref=\"treeModel\"/>\n")
+     << absl::StreamFormat("    </fixedHeightSubtreePruneRegraft>\n");
+
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    os << absl::StreamFormat("    <scaleOperator scaleFactor=\"0.75\" weight=\"3\">\n")
+       << absl::StreamFormat("      <parameter idref=\"exponential.popSize\"/>\n")
+       << absl::StreamFormat("    </scaleOperator>\n")
+       << absl::StreamFormat("    <randomWalkOperator windowSize=\"1.0\" weight=\"3\">\n")
+       << absl::StreamFormat("      <parameter idref=\"exponential.growthRate\"/>\n")
+       << absl::StreamFormat("    </randomWalkOperator>\n");
+    
+  } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+    os << absl::StreamFormat("    <hamiltonianMonteCarloOperator weight=\"2\" nSteps=\"50\" stepSize=\"0.01\" mode=\"vanilla\" autoOptimize=\"true\" gradientCheckCount=\"0\" gradientCheckTolerance=\"0.1\" preconditioning=\"none\" preconditioningUpdateFrequency=\"100\">\n")
+       << absl::StreamFormat("      <compoundGradient idref=\"full.skygrid.gradient\"/>\n")
+       << absl::StreamFormat("      <compoundParameter idref=\"skygrid.parameters\"/>\n");
+    if (run.skygrid_tau_move_enabled()) {
+      os << absl::StreamFormat("      <signTransform start=\"1\" end=\"1\">\n")
+         << absl::StreamFormat("        <compoundParameter idref=\"skygrid.parameters\"/>\n")
+         << absl::StreamFormat("      </signTransform>\n");
+    }
+    os << absl::StreamFormat("    </hamiltonianMonteCarloOperator>\n");
+    
+  } else {
+    // Make invalid XML tag on purpose to stop this BEAST X XML file from running (with God knows what population model...)
+    std::cerr << "ERROR: Unrecognized population model type " << typeid(pop_model).name() << '\n';
+    os << absl::StreamFormat("<ERROR>UNRECOGNIZED POPULATION MODEL TYPE: %s</ERROR>", typeid(pop_model).name());
+  }
+
+  if (has_tip_uncertainty) {
+    for (const auto& node : index_order_traversal(tree)) {
+      if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+        os << absl::StreamFormat("    <uniformOperator weight=\"1\">\n")
+           << absl::StreamFormat("      <parameter idref=\"%s\"/>\n",
+                                 tree.at(node).name)
+           << absl::StreamFormat("    </uniformOperator>\n");
+      }
+    }
+  }
+  
+  os << absl::StreamFormat("  </operators>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n");
+
+  // MCMC
+  os << absl::StreamFormat("  <!-- Define MCMC                                                             -->\n")
+     << absl::StreamFormat("  <mcmc id=\"mcmc\" chainLength=\"%d\" autoOptimize=\"true\" operatorAnalysis=\"output.ops\">\n",
+                           chain_length)
+     << absl::StreamFormat("    <joint id=\"joint\">\n")
+     << absl::StreamFormat("      <prior id=\"prior\">\n");
+  
+  auto log_kappa_mu = 1.0;  // these defaults come from BEAUti2
+  auto log_kappa_sigma = 1.25;  // these defaults come from BEAUti2
+  os << absl::StreamFormat("        <logNormalPrior mu=\"%g\" sigma=\"%g\" offset=\"0.0\">\n",
+                           log_kappa_mu, log_kappa_sigma)
+     << absl::StreamFormat("          <parameter idref=\"kappa\"/>\n")
+     << absl::StreamFormat("        </logNormalPrior>\n");
+  
+  os << absl::StreamFormat("        <dirichletPrior alpha=\"1.0\" sumsTo=\"1.0\">\n")
+     << absl::StreamFormat("          <parameter idref=\"frequencies\"/>\n")
+     << absl::StreamFormat("        </dirichletPrior>\n");
+
+  if (run.alpha_move_enabled()) {
+    auto alpha_mean = 1.0;
+    os << absl::StreamFormat("        <exponentialPrior mean=\"%g\" offset=\"0.0\">\n",
+                             alpha_mean)
+       << absl::StreamFormat("          <parameter idref=\"alpha\"/>\n")
+       << absl::StreamFormat("        </exponentialPrior>\n");
+  }
+  
+  // No CTMC prior in Delphy
+  
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    
+    if (run.final_pop_size_move_enabled()) {
+      os << absl::StreamFormat("        <oneOnXPrior>\n")
+         << absl::StreamFormat("          <parameter idref=\"exponential.popSize\"/>\n")
+         << absl::StreamFormat("        </oneOnXPrior>\n");
+    }
+    
+    if (run.pop_growth_rate_move_enabled()) {
+      auto growth_rate_mu = 0.001;  // per year - these defaults come from BEAUti2
+      auto growth_rate_scale = 30.701135;  // per year - these defaults come from BEAUti2
+      
+      os << absl::StreamFormat("        <laplacePrior mean=\"%f\" scale=\"%f\">\n",
+                               growth_rate_mu, growth_rate_scale)
+         << absl::StreamFormat("          <parameter idref=\"exponential.growthRate\"/>\n")
+         << absl::StreamFormat("        </laplacePrior>\n");
+    }
+
+    os << absl::StreamFormat("        <coalescentLikelihood idref=\"coalescent\"/>\n")
+       << absl::StreamFormat("\n")
+       << absl::StreamFormat("\n");
+    
+  } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+    os << absl::StreamFormat("        <gammaPrior idref=\"skygrid.precision.prior\"/>\n")
+       << absl::StreamFormat("        <gmrfSkyGridLikelihood idref=\"skygrid\"/>\n");
+    
+  } else {
+    // Make invalid XML tag on purpose to stop this BEAST X XML file from running (with God knows what population model...)
+    std::cerr << "ERROR: Unrecognized population model type " << typeid(pop_model).name() << '\n';
+    os << absl::StreamFormat("<ERROR>UNRECOGNIZED POPULATION MODEL TYPE: %s</ERROR>", typeid(pop_model).name());
+  }
+
+  os << absl::StreamFormat("        <strictClockBranchRates idref=\"branchRates\"/>\n")
+     << absl::StreamFormat("      </prior>\n")
+     << absl::StreamFormat("      <likelihood id=\"likelihood\">\n")
+     << absl::StreamFormat("        <treeDataLikelihood idref=\"treeLikelihood\"/>\n")
+     << absl::StreamFormat("      </likelihood>\n")
+     << absl::StreamFormat("    </joint>\n")
+     << absl::StreamFormat("    <operators idref=\"operators\"/>\n")
+     << absl::StreamFormat("\n");
+
+  // Screen logger
+  os << absl::StreamFormat("    <!-- write log to screen                                                     -->\n")
+     << absl::StreamFormat("    <log id=\"screenLog\" logEvery=\"1000\">\n")
+     << absl::StreamFormat("      <column label=\"Joint\" dp=\"4\" width=\"12\">\n")
+     << absl::StreamFormat("        <joint idref=\"joint\"/>\n")
+     << absl::StreamFormat("      </column>\n")
+     << absl::StreamFormat("      <column label=\"Prior\" dp=\"4\" width=\"12\">\n")
+     << absl::StreamFormat("        <prior idref=\"prior\"/>\n")
+     << absl::StreamFormat("      </column>\n")
+     << absl::StreamFormat("      <column label=\"Likelihood\" dp=\"4\" width=\"12\">\n")
+     << absl::StreamFormat("        <likelihood idref=\"likelihood\"/>\n")
+     << absl::StreamFormat("      </column>\n")
+     << absl::StreamFormat("      <column label=\"age(root)\" sf=\"6\" width=\"12\">\n")
+     << absl::StreamFormat("        <tmrcaStatistic idref=\"age(root)\"/>\n")
+     << absl::StreamFormat("      </column>\n");
+
+  if (run.mu_move_enabled()) {
+    os << absl::StreamFormat("      <column label=\"clock.rate\" sf=\"6\" width=\"12\">\n")
+       << absl::StreamFormat("        <parameter idref=\"clock.rate\"/>\n")
+       << absl::StreamFormat("      </column>\n");
+  }
+  
+  os << absl::StreamFormat("    </log>\n")
+     << absl::StreamFormat("\n");
+
+  // Trace logger
+  os << absl::StreamFormat("    <!-- write log to file                                                       -->\n")
+     << absl::StreamFormat("    <log id=\"fileLog\" logEvery=\"%d\" fileName=\"output.log\" overwrite=\"false\">\n",
+                           log_every)
+     << absl::StreamFormat("      <joint idref=\"joint\"/>\n")
+     << absl::StreamFormat("      <prior idref=\"prior\"/>\n")
+     << absl::StreamFormat("      <likelihood idref=\"likelihood\"/>\n")
+     << absl::StreamFormat("      <treeHeightStatistic idref=\"rootHeight\"/>\n")
+     << absl::StreamFormat("      <tmrcaStatistic idref=\"age(root)\"/>\n")
+     << absl::StreamFormat("      <treeLengthStatistic idref=\"treeLength\"/>\n");
+  
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    if (run.final_pop_size_move_enabled()) {
+      os << absl::StreamFormat("      <parameter idref=\"exponential.popSize\"/>\n");
+    }
+    if (run.pop_growth_rate_move_enabled()) {
+      os << absl::StreamFormat("      <parameter idref=\"exponential.growthRate\"/>\n");
+    }
+    
+  } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+    os << absl::StreamFormat("      <parameter idref=\"skygrid.precision\"/>\n")
+       << absl::StreamFormat("      <parameter idref=\"skygrid.logPopSize\"/>\n")
+       << absl::StreamFormat("      <parameter idref=\"skygrid.cutOff\"/>\n");
+    
+  } else {
+    // Make invalid XML tag on purpose to stop this BEAST X XML file from running (with God knows what population model...)
+    std::cerr << "ERROR: Unrecognized population model type " << typeid(pop_model).name() << '\n';
+    os << absl::StreamFormat("<ERROR>UNRECOGNIZED POPULATION MODEL TYPE: %s</ERROR>", typeid(pop_model).name());
+  }
+  
+  os << absl::StreamFormat("      <parameter idref=\"kappa\"/>\n")
+     << absl::StreamFormat("      <parameter idref=\"frequencies\"/>\n");
+
+  if (run.alpha_move_enabled()) {
+    os << absl::StreamFormat("      <parameter idref=\"alpha\"/>\n");
+  }
+  if (run.mu_move_enabled()) {
+    os << absl::StreamFormat("      <parameter idref=\"clock.rate\"/>\n");
+  }
+  os << absl::StreamFormat("      <rateStatistic idref=\"meanRate\"/>\n");
+
+  if (has_tip_uncertainty) {
+    os << absl::StreamFormat("\n");
+    os << absl::StreamFormat("      <!-- START Tip date sampling                                                 -->\n");
+    for (const auto& node : index_order_traversal(tree)) {
+      os << absl::StreamFormat("      <parameter idref=\"age(%s)\"/>\n",
+                               tree.at(node).name);
+    }
+    os << absl::StreamFormat("\n")
+       << absl::StreamFormat("      <!-- END Tip date sampling                                                   -->\n")
+       << absl::StreamFormat("\n");
+  }
+  
+  os << absl::StreamFormat("      <treeDataLikelihood idref=\"treeLikelihood\"/>\n")
+     << absl::StreamFormat("      <strictClockBranchRates idref=\"branchRates\"/>\n");
+
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    os << absl::StreamFormat("      <coalescentLikelihood idref=\"coalescent\"/>\n");
+    
+  } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+    os << absl::StreamFormat("      <gmrfSkyGridLikelihood idref=\"skygrid\"/>\n");
+    
+  } else {
+    // Make invalid XML tag on purpose to stop this BEAST X XML file from running (with God knows what population model...)
+    std::cerr << "ERROR: Unrecognized population model type " << typeid(pop_model).name() << '\n';
+    os << absl::StreamFormat("<ERROR>UNRECOGNIZED POPULATION MODEL TYPE: %s</ERROR>", typeid(pop_model).name());
+  }
+  
+  os << absl::StreamFormat("    </log>\n")
+     << absl::StreamFormat("\n");
+
+  // Tree logger
+  os << absl::StreamFormat("    <!-- write tree log to file                                                  -->\n")
+     << absl::StreamFormat("    <logTree id=\"treeFileLog\" logEvery=\"%d\" nexusFormat=\"true\" fileName=\"output.trees\" sortTranslationTable=\"true\">\n",
+                           tree_every)
+     << absl::StreamFormat("      <treeModel idref=\"treeModel\"/>\n")
+     << absl::StreamFormat("      <trait name=\"rate\" tag=\"rate\">\n")
+     << absl::StreamFormat("        <strictClockBranchRates idref=\"branchRates\"/>\n")
+     << absl::StreamFormat("      </trait>\n")
+     << absl::StreamFormat("      <joint idref=\"joint\"/>\n")
+     << absl::StreamFormat("    </logTree>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("    <!-- write state of Markov chain to checkpoint file                          -->\n")
+     << absl::StreamFormat("    <logCheckpoint id=\"checkpointFileLog\" checkpointEvery=\"%d\" checkpointFinal=\"%d\" fileName=\"output.chkpt\" overwrite=\"false\"/>\n",
+                           chain_length / 100, chain_length)
+     << absl::StreamFormat("  </mcmc>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("  <report>\n")
+     << absl::StreamFormat("    <property name=\"timer\">\n")
+     << absl::StreamFormat("      <mcmc idref=\"mcmc\"/>\n")
+     << absl::StreamFormat("    </property>\n")
+     << absl::StreamFormat("  </report>\n")
+     << absl::StreamFormat("\n");
+
+  // That's it
+  os << absl::StreamFormat("</beast>\n");
+}
+
 auto export_beast_input(
     const Run& run,
     std::string_view beast_version,
@@ -555,6 +1225,8 @@ auto export_beast_input(
 
   if (beast_version == "2.6.2") {
     export_beast_2_6_2_input(run, os, chain_length, log_every, tree_every);
+  } else if (beast_version == "X-10.5.0") {
+    export_beast_X_10_5_0_input(run, os, chain_length, log_every, tree_every);
   } else {
     std::cerr << "ERROR: BEAST input XML generation not currently supported for BEAST version '" << beast_version << "'\n";
     os << "ERROR: BEAST input XML generation not currently supported for BEAST version '" << beast_version << "'\n";
