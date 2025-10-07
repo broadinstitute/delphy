@@ -98,6 +98,7 @@ class Run {
   auto calc_cur_num_muts_ab() const -> Seq_matrix<int>;
   auto calc_cur_state_frequencies_of_ref_sequence() const -> Seq_vector<int>;
   auto calc_cur_log_other_priors() const -> double;
+  auto calc_cur_skygrid_gmrf_prior() const -> double;
 
   // Mpox hack.  TODO: We really need something much more generic for supporting different
   // forms of posteriors with different sets of parameters.

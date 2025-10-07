@@ -630,7 +630,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       .tree_every = tree_every,
       .delphy_output_filename = std::move(delphy_output_filename),
       .delphy_output_metadata = std::move(delphy_output_metadata),
-      .delphy_snapshot_every = delphy_snapshot_every
+      .delphy_snapshot_every = delphy_snapshot_every,
+      .beast_version = std::move(beast_version)
     };
     
   } catch (cxxopts::exceptions::exception& x) {

@@ -1660,14 +1660,18 @@ struct Beasty_output {
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
-auto delphy_create_beasty_output(Delphy_context& /*ctx*/, Run& run) -> Beasty_output* {
+auto delphy_create_beasty_output(
+    Delphy_context& /*ctx*/,
+    Run& run,
+    const char* beast_version)  // null-terminated, please!
+    -> Beasty_output* {
   auto log_os = new std::ostringstream{};
   auto tree_os = new std::ostringstream{};
   auto bout = new Beasty_output{
     .log_os = log_os,
     .tree_os = tree_os,
-    .log_output = {log_os, true},
-    .trees_output = {tree_os, true}
+    .log_output = {log_os, std::string{beast_version}, true},
+    .trees_output = {tree_os, std::string{beast_version}, true}
   };
   bout->log_output.output_headers(run);
   bout->trees_output.output_headers(run);

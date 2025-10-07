@@ -41,6 +41,7 @@ struct Processed_cmd_line {
   std::optional<std::string> delphy_output_filename;
   std::optional<std::string> delphy_output_metadata;
   int64_t delphy_snapshot_every;
+  std::string beast_version;
 };
 auto process_args(int argc, char** argv) -> Processed_cmd_line;
 

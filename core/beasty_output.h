@@ -7,9 +7,11 @@
 
 namespace delphy {
 
+class Beasty_log_output_version_impl;  // Opaque implementer for each BEAST version
+
 class Beasty_log_output {
  public:
-  Beasty_log_output(std::ostream* os, bool own_stream = false);
+  Beasty_log_output(std::ostream* os, std::string beast_version, bool own_stream = false);
   ~Beasty_log_output();
 
   auto os() -> std::ostream* { return os_; }
@@ -21,12 +23,14 @@ class Beasty_log_output {
 
  private:
   std::ostream* os_;
+  std::string beast_version_;
+  std::unique_ptr<Beasty_log_output_version_impl> impl_;
   bool own_stream_;
 };
 
 class Beasty_trees_output {
  public:
-  Beasty_trees_output(std::ostream* os, bool own_stream = false);
+  Beasty_trees_output(std::ostream* os, std::string beast_version, bool own_stream = false);
   ~Beasty_trees_output();
 
   auto os() -> std::ostream* { return os_; }
@@ -38,6 +42,7 @@ class Beasty_trees_output {
 
  private:
   std::ostream* os_;
+  std::string beast_version_;
   bool own_stream_;
   Node_vector<Node_index> node_to_tip_{};
 

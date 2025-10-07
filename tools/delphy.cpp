@@ -130,14 +130,14 @@ auto cli_main_loop(Processed_cmd_line& c) -> int {
   auto beasty_log_output = std::unique_ptr<Beasty_log_output>{};
   if (c.log_filename.has_value()) {
     auto os_ptr = std::make_unique<std::ofstream>(c.log_filename.value());
-    beasty_log_output = std::make_unique<Beasty_log_output>(os_ptr.get(), true);
+    beasty_log_output = std::make_unique<Beasty_log_output>(os_ptr.get(), c.beast_version, true);
     os_ptr.release();
     beasty_log_output->output_headers(*c.run);
   }
   auto beasty_trees_output = std::unique_ptr<Beasty_trees_output>{};
   if (c.trees_filename.has_value()) {
     auto os_ptr = std::make_unique<std::ofstream>(c.trees_filename.value());
-    beasty_trees_output = std::make_unique<Beasty_trees_output>(os_ptr.get(), true);
+    beasty_trees_output = std::make_unique<Beasty_trees_output>(os_ptr.get(), c.beast_version, true);
     os_ptr.release();
     beasty_trees_output->output_headers(*c.run);
   }

@@ -760,7 +760,7 @@ auto randomize_tree_times(Phylo_tree& tree) -> void {
 auto start_log_output() -> void {
   if (ui_log_output == nullptr) {
     auto os_ptr = std::make_unique<std::ofstream>(cmd->log_filename.value_or("output.log"));
-    ui_log_output = new Beasty_log_output{os_ptr.get(), true};
+    ui_log_output = new Beasty_log_output{os_ptr.get(), cmd->beast_version, true};
     os_ptr.release();
     ui_log_output->output_headers(*ui_run);
   }
@@ -778,7 +778,7 @@ auto stop_log_output() -> void {
 auto start_trees_output() -> void {
   if (ui_trees_output == nullptr) {
     auto os_ptr = std::make_unique<std::ofstream>(cmd->trees_filename.value_or("output.trees"));
-    ui_trees_output = new Beasty_trees_output{os_ptr.get(), true};
+    ui_trees_output = new Beasty_trees_output{os_ptr.get(), cmd->beast_version, true};
     os_ptr.release();
     ui_trees_output->output_headers(*ui_run);
   }

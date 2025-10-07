@@ -513,11 +513,8 @@ auto Run::calc_cur_log_other_priors() const -> double {
     log_prior += -std::abs(exp_pop_model.growth_rate() - mu_g) / scale_g - std::log(2 * scale_g);
     
   } else if (typeid(raw_pop_model) == typeid(Skygrid_pop_model)) {
-    const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(raw_pop_model);
-
     const auto tau = skygrid_tau_;
     const auto log_tau = std::log(tau);
-    const auto M = skygrid_pop_model.M();
     
     if (skygrid_tau_move_enabled_) {
       // tau - gamma prior (Gill et al 2012, Eq. 15)
@@ -526,40 +523,60 @@ auto Run::calc_cur_log_other_priors() const -> double {
           - skygrid_tau_prior_beta_ * tau;
     }
     
-    // gamma - GMRF prior (Gill et al 2012, Eq. 13)
-    //
-    // Since time intervals are in principle not all the same, we really should
-    // be using something like a diffusion law to condition how much consecutive
-    // gamma's should vary, e.g., gamma_{i+1} - gamma_i ~ N(0, 2 D (x_{i+1} - x_i)).
-    // We don't do that to not deviate from the standard Skygrid parametrization;
-    // assuming equal time intervals of width dt = x_1 - x_0, we'd have
-    //
-    //    2 D dt = 1/tau => D = 1/(2 tau dt).
+    log_prior += calc_cur_skygrid_gmrf_prior();
+  }
 
-    for (auto k = 1; k <= M; ++k) {
-      auto delta_gamma = skygrid_pop_model.gamma(k) - skygrid_pop_model.gamma(k-1);
-      log_prior +=
-          0.5 * log_tau
-          - 0.5 * std::pow(delta_gamma, 2) * tau;
-    }
+  return log_prior;
+}
 
-    if (skygrid_low_gamma_barrier_enabled_) {
-      // Strong lower bound on gamma_k's
-      //
-      // Anything implying a coalescent timescale below N(t) = e^{skygrid_gamma_min} (with
-      // default value of 1 day = the resolution of tip timestamps) is probably a numerical
-      // instability.  These instabilities tend to drive the population curve to extremes that
-      // our moveset finds it hard to recover from.  In realistic datasets, this prior should
-      // almost always be exactly zero.
-      //
-      // The barrier on low gamma_k's is quadratic: for each gamma_k, dropping below
-      // skygrid_gamma_min by skygrid_delta_gamma reduces the log-posterior by 1.
-      //
-      for (auto k = 0; k <= M; ++k) {
-        if (skygrid_pop_model.gamma(k) < skygrid_low_gamma_barrier_loc_) {
-          auto excess = skygrid_low_gamma_barrier_loc_ - skygrid_pop_model.gamma(k);
-          log_prior -= std::pow(excess / skygrid_low_gamma_barrier_scale_, 2);
-        }
+auto Run::calc_cur_skygrid_gmrf_prior() const -> double {
+  auto log_prior = 0.0;
+
+  const Pop_model& raw_pop_model = *pop_model_;
+  const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(raw_pop_model);
+
+  const auto tau = skygrid_tau_;
+  const auto log_tau = std::log(tau);
+  const auto M = skygrid_pop_model.M();
+    
+  // gamma - GMRF prior (Gill et al 2012, Eq. 13)
+  //
+  // Since time intervals are in principle not all the same, we really should
+  // be using something like a diffusion law to condition how much consecutive
+  // gamma's should vary, e.g., gamma_{i+1} - gamma_i ~ N(0, 2 D (x_{i+1} - x_i)).
+  // We don't do that to not deviate from the standard Skygrid parametrization;
+  // assuming equal time intervals of width dt = x_1 - x_0, we'd have
+  //
+  //    2 D dt = 1/tau => D = 1/(2 tau dt).
+
+  const auto log_two_pi = std::log(2.0 * std::numbers::pi);
+  for (auto k = 1; k <= M; ++k) {
+    auto delta_gamma = skygrid_pop_model.gamma(k) - skygrid_pop_model.gamma(k-1);
+    log_prior +=
+          
+        // Gaussian normalization: log(sqrt((tau/2) / pi)) = (1/2) (log(tau) - log(2 pi))
+        0.5 * (log_tau - log_two_pi)
+
+        // Gaussian exponent
+        - 0.5 * std::pow(delta_gamma, 2) * tau;
+  }
+
+  if (skygrid_low_gamma_barrier_enabled_) {
+    // Strong lower bound on gamma_k's
+    //
+    // Anything implying a coalescent timescale below N(t) = e^{skygrid_gamma_min} (with
+    // default value of 1 day = the resolution of tip timestamps) is probably a numerical
+    // instability.  These instabilities tend to drive the population curve to extremes that
+    // our moveset finds it hard to recover from.  In realistic datasets, this prior should
+    // almost always be exactly zero.
+    //
+    // The barrier on low gamma_k's is quadratic: for each gamma_k, dropping below
+    // skygrid_gamma_min by skygrid_delta_gamma reduces the log-posterior by 1.
+    //
+    for (auto k = 0; k <= M; ++k) {
+      if (skygrid_pop_model.gamma(k) < skygrid_low_gamma_barrier_loc_) {
+        auto excess = skygrid_low_gamma_barrier_loc_ - skygrid_pop_model.gamma(k);
+        log_prior -= std::pow(excess / skygrid_low_gamma_barrier_scale_, 2);
       }
     }
   }

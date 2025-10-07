@@ -556,9 +556,10 @@ static auto output_sequences_X_10_5(const Run& run, std::ostream& os) -> void {
     if (tree.at(node).is_tip()) {
       os << absl::StreamFormat("    <taxon id=\"%s\">\n", tree.at(node).name);
       os << absl::StreamFormat("      <date value=\"%g\" direction=\"forwards\" units=\"years\"",  // Partial line
-                               0.5 * (to_linear_year(tree.at(node).t_min) + to_linear_year(tree.at(node).t_max)));
-
+                               to_linear_year(tree.at(node).t_min));
+      
       // Tip date uncertainty
+      // NOTE: For uncertain tips, the "date" is the lower bound and "date + uncertainty" is the upper bound
       if (tree.at(node).t_min != tree.at(node).t_max) {
         os << absl::StreamFormat(" uncertainty=\"%g\"",
                                  to_linear_year(tree.at(node).t_max) - to_linear_year(tree.at(node).t_min));
@@ -792,6 +793,11 @@ static auto export_beast_X_10_5_0_input(
   // Skygrid flexible population curve
   if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
     const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(run.pop_model());
+
+    if (skygrid_pop_model.type() != Skygrid_pop_model::Type::k_staircase) {
+      std::cerr << "BEAST X only supports a staircase Skygrid model: the results of this BEAST run will not exactly match those of Delphy\n";
+      os << absl::StreamFormat("  <!-- BEAST X only supports a staircase Skygrid model: the results of this BEAST run will not exactly match those of Delphy -->\n");
+    }
     
     os << absl::StreamFormat("  <!-- Generate a gmrfSkyGridLikelihood for the Bayesian SkyGrid process       -->\n")
        << absl::StreamFormat("  <gmrfSkyGridLikelihood id=\"skygrid\">\n")
