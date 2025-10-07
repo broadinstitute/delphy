@@ -568,7 +568,7 @@ auto Beasty_trees_output::output_newick_tree(const Phylo_tree& tree) -> void {
       auto mutations = std::vector<std::string>{};
       for (const auto& m : tree.at(node).mutations) {
         mutations.push_back(absl::StrFormat(
-            "%c%d%c,%g", to_char(m.from), m.site+1, to_char(m.to), m.t - t_parent));
+            "%c%d%c,%g", to_char(m.from), m.site+1, to_char(m.to), (m.t - t_parent) / 365.0));  // years!
       }
       if (not mutations.empty()) {
         *os_ << "[&mutations={" << absl::StrJoin(mutations, ",") << "}]";
