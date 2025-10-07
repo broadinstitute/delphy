@@ -574,13 +574,13 @@ static auto output_sequences_X_10_5(const Run& run, std::ostream& os) -> void {
      << absl::StreamFormat("\n");
 
   os << absl::StreamFormat("  <!-- The sequence alignment (each sequence refers to a taxon above).         -->\n")
-     << absl::StreamFormat("  <!-- %-61s -->\n", absl::StrFormat("ntax = %d nchar = %d",
+     << absl::StreamFormat("  <!-- %-71s -->\n", absl::StrFormat("ntax = %d nchar = %d",
                                                                  num_tips, tree.num_sites()));
   os << absl::StreamFormat("  <alignment id=\"alignment\" dataType=\"nucleotide\">\n");
   for (const auto& node : index_order_traversal(tree)) {
     if (tree.at(node).is_tip()) {
       os << absl::StreamFormat("    <sequence>\n");
-      os << absl::StreamFormat("      <taxon idref=\"%s\">\n", tree.at(node).name);
+      os << absl::StreamFormat("      <taxon idref=\"%s\"/>\n", tree.at(node).name);
       os << absl::StreamFormat("      ");  // No newline here
       
       auto seq = view_of_sequence_at(tree, node);
@@ -606,7 +606,8 @@ static auto output_sequences_X_10_5(const Run& run, std::ostream& os) -> void {
           os << to_char(seq[l]);
         }
       }
-      
+
+      os << absl::StreamFormat("\n");  // End sequence line
       os << absl::StreamFormat("    </sequence>\n");
     }
   }
@@ -742,7 +743,7 @@ static auto export_beast_X_10_5_0_input(
      << absl::StreamFormat("  <treeModel id=\"treeModel\">\n")
      << absl::StreamFormat("    <coalescentTree idref=\"startingTree\"/>\n")
      << absl::StreamFormat("    <rootHeight>\n")
-     << absl::StreamFormat("      <parameter id=\"treeModel.rootHeight\"/>")
+     << absl::StreamFormat("      <parameter id=\"treeModel.rootHeight\"/>\n")
      << absl::StreamFormat("    </rootHeight>\n")
      << absl::StreamFormat("    <nodeHeights internalNodes=\"true\">\n")
      << absl::StreamFormat("      <parameter id=\"treeModel.internalNodeHeights\"/>\n")
@@ -801,14 +802,17 @@ static auto export_beast_X_10_5_0_input(
                              skygrid_pop_model.M() + 1)
        << absl::StreamFormat("    </populationSizes>\n")
        << absl::StreamFormat("    <precisionParameter>\n")
-       << absl::StreamFormat("      <parameter id=\"skygrid.precision\" value=\"0.1\" lower=\"0.0\"/>\n")
+       << absl::StreamFormat("      <parameter id=\"skygrid.precision\" value=\"%g\" lower=\"0.0\"/>\n",
+                             run.skygrid_tau_move_enabled()
+                             ? 0.1             // Will infer...
+                             : run.skygrid_tau())   // ... vs. fixed (unitless)
        << absl::StreamFormat("    </precisionParameter>\n")
        << absl::StreamFormat("    <numGridPoints>\n")
        << absl::StreamFormat("      <parameter id=\"skygrid.numGridPoints\" value=\"%d\"/>\n",
                              skygrid_pop_model.M())
        << absl::StreamFormat("    </numGridPoints>\n")
        << absl::StreamFormat("    <cutOff>\n")
-       << absl::StreamFormat("      <parameter id=\"skygrid.cutOff\" value=\"%.5f\"/>",
+       << absl::StreamFormat("      <parameter id=\"skygrid.cutOff\" value=\"%g\"/>\n",
                              (beast_t0 - skygrid_pop_model.x(0)) / 365.0)
        << absl::StreamFormat("    </cutOff>\n")
        << absl::StreamFormat("    <populationTree>\n")
@@ -816,7 +820,7 @@ static auto export_beast_X_10_5_0_input(
        << absl::StreamFormat("    </populationTree>\n")
        << absl::StreamFormat("  </gmrfSkyGridLikelihood>\n");
 
-    os << absl::StreamFormat("  <gammaPrior id=\"skygrid.precision.prior\" shape=\"%.5f\" scale=\"%.5f\" offset=\"0.0\">\n",
+    os << absl::StreamFormat("  <gammaPrior id=\"skygrid.precision.prior\" shape=\"%g\" scale=\"%g\" offset=\"0.0\">\n",
                              run.skygrid_tau_prior_alpha(),
                              1.0 / run.skygrid_tau_prior_beta())
        << absl::StreamFormat("    <parameter idref=\"skygrid.precision\"/>\n")
@@ -983,12 +987,16 @@ static auto export_beast_X_10_5_0_input(
      << absl::StreamFormat("    </fixedHeightSubtreePruneRegraft>\n");
 
   if (typeid(pop_model) == typeid(Exp_pop_model)) {
-    os << absl::StreamFormat("    <scaleOperator scaleFactor=\"0.75\" weight=\"3\">\n")
-       << absl::StreamFormat("      <parameter idref=\"exponential.popSize\"/>\n")
-       << absl::StreamFormat("    </scaleOperator>\n")
-       << absl::StreamFormat("    <randomWalkOperator windowSize=\"1.0\" weight=\"3\">\n")
-       << absl::StreamFormat("      <parameter idref=\"exponential.growthRate\"/>\n")
-       << absl::StreamFormat("    </randomWalkOperator>\n");
+    if (run.final_pop_size_move_enabled()) {
+      os << absl::StreamFormat("    <scaleOperator scaleFactor=\"0.75\" weight=\"3\">\n")
+         << absl::StreamFormat("      <parameter idref=\"exponential.popSize\"/>\n")
+         << absl::StreamFormat("    </scaleOperator>\n");
+    }
+    if (run.pop_growth_rate_move_enabled()) {
+      os << absl::StreamFormat("    <randomWalkOperator windowSize=\"1.0\" weight=\"3\">\n")
+         << absl::StreamFormat("      <parameter idref=\"exponential.growthRate\"/>\n")
+         << absl::StreamFormat("    </randomWalkOperator>\n");
+    }
     
   } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
     os << absl::StreamFormat("    <hamiltonianMonteCarloOperator weight=\"2\" nSteps=\"50\" stepSize=\"0.01\" mode=\"vanilla\" autoOptimize=\"true\" gradientCheckCount=\"0\" gradientCheckTolerance=\"0.1\" preconditioning=\"none\" preconditioningUpdateFrequency=\"100\">\n")
@@ -1011,7 +1019,7 @@ static auto export_beast_X_10_5_0_input(
     for (const auto& node : index_order_traversal(tree)) {
       if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
         os << absl::StreamFormat("    <uniformOperator weight=\"1\">\n")
-           << absl::StreamFormat("      <parameter idref=\"%s\"/>\n",
+           << absl::StreamFormat("      <parameter idref=\"age(%s)\"/>\n",
                                  tree.at(node).name)
            << absl::StreamFormat("    </uniformOperator>\n");
       }
@@ -1062,7 +1070,7 @@ static auto export_beast_X_10_5_0_input(
       auto growth_rate_mu = 0.001;  // per year - these defaults come from BEAUti2
       auto growth_rate_scale = 30.701135;  // per year - these defaults come from BEAUti2
       
-      os << absl::StreamFormat("        <laplacePrior mean=\"%f\" scale=\"%f\">\n",
+      os << absl::StreamFormat("        <laplacePrior mean=\"%g\" scale=\"%g\">\n",
                                growth_rate_mu, growth_rate_scale)
          << absl::StreamFormat("          <parameter idref=\"exponential.growthRate\"/>\n")
          << absl::StreamFormat("        </laplacePrior>\n");
@@ -1161,8 +1169,10 @@ static auto export_beast_X_10_5_0_input(
     os << absl::StreamFormat("\n");
     os << absl::StreamFormat("      <!-- START Tip date sampling                                                 -->\n");
     for (const auto& node : index_order_traversal(tree)) {
-      os << absl::StreamFormat("      <parameter idref=\"age(%s)\"/>\n",
-                               tree.at(node).name);
+      if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+        os << absl::StreamFormat("      <parameter idref=\"age(%s)\"/>\n",
+                                 tree.at(node).name);
+      }
     }
     os << absl::StreamFormat("\n")
        << absl::StreamFormat("      <!-- END Tip date sampling                                                   -->\n")
