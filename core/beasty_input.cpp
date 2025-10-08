@@ -555,13 +555,15 @@ static auto output_sequences_X_10_5(const Run& run, std::ostream& os) -> void {
   for (const auto& node : index_order_traversal(tree)) {
     if (tree.at(node).is_tip()) {
       os << absl::StreamFormat("    <taxon id=\"%s\">\n", tree.at(node).name);
-      os << absl::StreamFormat("      <date value=\"%g\" direction=\"forwards\" units=\"years\"",  // Partial line
+      // NOTE: %.5f formatting vs %g is essential to not lose precision
+      // (counterexample: 2014-05-26, 2014-05-27 and 2014-05-28 all turn to 2014.4 under %g)
+      os << absl::StreamFormat("      <date value=\"%.5f\" direction=\"forwards\" units=\"years\"",  // Partial line
                                to_linear_year(tree.at(node).t_min));
       
       // Tip date uncertainty
       // NOTE: For uncertain tips, the "date" is the lower bound and "date + uncertainty" is the upper bound
       if (tree.at(node).t_min != tree.at(node).t_max) {
-        os << absl::StreamFormat(" uncertainty=\"%g\"",
+        os << absl::StreamFormat(" uncertainty=\"%.5f\"",
                                  to_linear_year(tree.at(node).t_max) - to_linear_year(tree.at(node).t_min));
       }
       
