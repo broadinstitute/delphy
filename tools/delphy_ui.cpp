@@ -1028,20 +1028,12 @@ auto keyboard_func(char key) -> void {
     default: {
       return;  // Avoid redisplay and stats line
     }
-    case 'i': {
-      std::cerr << "*** EXPORTING ANALOGOUS BEAST2 INPUT FILE ('beast2.xml') ***" << std::endl;
+    case 'i':
+    case 'I': {
+      std::cerr << "*** EXPORTING ANALOGOUS BEAST INPUT FILE FOR BEAST VERSION " << cmd->beast_version << " ('beast.xml') ***" << std::endl;
       auto os = std::ofstream("beast2.xml");
       if (os) {
-        export_beast_input(*ui_run, "2.6.2", os);
-      }
-      std::cerr << "*** EXPORT COMPLETE ***" << std::endl;
-      break;
-    }
-    case 'I': {
-      std::cerr << "*** EXPORTING ANALOGOUS BEAST X INPUT FILE ('beast_X.xml') ***" << std::endl;
-      auto os = std::ofstream("beast_X.xml");
-      if (os) {
-        export_beast_input(*ui_run, "X-10.5.0", os);
+        export_beast_input(*ui_run, cmd->beast_version, os);
       }
       std::cerr << "*** EXPORT COMPLETE ***" << std::endl;
       break;
@@ -1051,7 +1043,7 @@ auto keyboard_func(char key) -> void {
       if (ui_log_output == nullptr && ui_trees_output == nullptr) {
         start_log_output();
         start_trees_output();
-        std::cerr << "*** BEAST-COMPATIBLE OUTPUT ENABLED ***" << std::endl;
+        std::cerr << "*** BEAST-COMPATIBLE OUTPUT (version " << cmd->beast_version << ") ENABLED ***" << std::endl;
       } else {
         stop_log_output();
         stop_trees_output();

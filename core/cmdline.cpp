@@ -152,10 +152,10 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<bool>()->default_value("false"))
       ("v0-init-mutation-rate", "Initial (or fixed) value of mutation rate, in subst / site / year",
        cxxopts::value<double>()->default_value("1e-3"))
-      ("v0-out-beast-xml", "Filename for XML input file suitable for BEAST 2.6.2",
+      ("v0-out-beast-xml", "Filename for XML input file suitable for BEAST X or BEAST2 (see --v0-out-beast-version)",
        cxxopts::value<std::string>())
-      ("v0-out-beast-version", "BEAST version to target for XML and output files.  Currently allowed values are '2.6.2', and 'X-10.5.0'.",
-       cxxopts::value<std::string>()->default_value("2.6.2"))
+      ("v0-out-beast-version", "BEAST version to target for XML and output files.  Currently allowed values are '2.6.2', '2.7.7', and 'X-10.5.0'.",
+       cxxopts::value<std::string>()->default_value("X-10.5.0"))
       ("v0-mpox-hack", "Enable mpox hack (very crude treatment of APOBEC3 mechanism)",
        cxxopts::value<bool>()->default_value("false"))
       ("v0-target-coal-prior-cells", "Target number of cells to use in parallelized coalescent prior (coalescent prior resolution is adjusted if actual number is more than 33% away from target); higher is more accurate but more expensive",

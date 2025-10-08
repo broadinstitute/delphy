@@ -43,11 +43,15 @@ static auto output_skygrid_results(std::ostream& os, const Run& run, const Skygr
   os << (pop_model.K() / 365.0) << "\t";         // years
 }
 
-class Beasty_log_output_2_6_2 : public Beasty_log_output_version_impl {
+// These output routines are shared between BEAST2 2.6.2 and 2.7.7
+// (cf, "logger" sections in beasty_input.cpp's export_beast_2_6_2_input() and export_beast_2_7_7_input())
+class Beasty_log_output_2_x_x : public Beasty_log_output_version_impl {
  public:
   virtual auto output_headers(std::ostream& os, const Run& run) -> void {
+    const auto& tree = run.tree();
+    
     if (not run.mpox_hack_enabled()) {
-      // WARNING: Ensure this matches the logger output from export_beast_2_6_2_input (beasty_input.cpp)
+      // WARNING: Ensure this matches the logger output from export_beast_2_x_x_input (beasty_input.cpp)
       os << stamp_version_into_log_file{};
       os << "Sample\t"
          << "numMuts\t"    // Not output by BEAST, but useful for downstream analysis of Delphy results
@@ -86,6 +90,15 @@ class Beasty_log_output_2_6_2 : public Beasty_log_output_version_impl {
          << "freqParameter.2\t"
          << "freqParameter.3\t"
          << "freqParameter.4\t";
+      
+      for (const auto& node : index_order_traversal(tree)) {
+        if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+          os << absl::StreamFormat("logP(mrca(tip-dist.%s))\t",
+                                   tree.at(node).name);
+          os << absl::StreamFormat("height(%s)\t",
+                                   tree.at(node).name);
+        }
+      }
       os << "\n";
     } else {
       os << "state\t"
@@ -120,7 +133,7 @@ class Beasty_log_output_2_6_2 : public Beasty_log_output_version_impl {
   virtual auto output_log(std::ostream& os, const Run& run) -> void {
     const auto& tree = run.tree();
   
-    // WARNING: Ensure this matches the logger output from export_beast_2_6_2_input (beasty_input.cpp)
+    // WARNING: Ensure this matches the logger output from export_beast_2_x_x_input (beasty_input.cpp)
   
     // BEAST2 seems to measure time backwards from the time of the latest tip
     auto beast_t0 = -std::numeric_limits<double>::max();
@@ -137,7 +150,7 @@ class Beasty_log_output_2_6_2 : public Beasty_log_output_version_impl {
     auto log_prior = run.calc_cur_log_coalescent_prior() + log_other_priors;
     
     if (not run.mpox_hack_enabled()) {
-      // WARNING: Ensure this matches the logger output from export_beast_2_6_2_input (beasty_input.cpp)
+      // WARNING: Ensure this matches the logger output from export_beast_2_x_x_input (beasty_input.cpp)
     
       os << run.step() << "\t"
          << run.num_muts() << "\t"
@@ -185,7 +198,19 @@ class Beasty_log_output_2_6_2 : public Beasty_log_output_version_impl {
          << run.hky_pi()[Real_seq_letter::C] << "\t"
          << run.hky_pi()[Real_seq_letter::G] << "\t"
          << run.hky_pi()[Real_seq_letter::T] << "\t";
-    
+
+      // Our BEAST2 XML config uses "real forward time" in years for the tip dates
+      for (const auto& node : index_order_traversal(tree)) {
+        if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+          
+          // logP for a uniform distribution
+          os << absl::StreamFormat("%g\t", -std::log(to_linear_year(tree.at(node).t_max) - to_linear_year(tree.at(node).t_min)))
+
+              // height of node
+             << absl::StreamFormat("%.5f\t", to_linear_year(tree.at(node).t));
+        }
+      }
+      
       os << "\n";
   
     } else {  // mpox_hack_enabled == true
@@ -419,8 +444,8 @@ Beasty_log_output::Beasty_log_output(
     std::string beast_version,
     bool own_stream)
     : os_{os}, beast_version_{std::move(beast_version)}, own_stream_{own_stream} {
-  if (beast_version_ == "2.6.2") {
-    impl_ = std::make_unique<Beasty_log_output_2_6_2>();
+  if (beast_version_ == "2.6.2" || beast_version_ == "2.7.7") {
+    impl_ = std::make_unique<Beasty_log_output_2_x_x>();
   } else if (beast_version_ == "X-10.5.0") {
     impl_ = std::make_unique<Beasty_log_output_X_10_5_0>();
   } else {

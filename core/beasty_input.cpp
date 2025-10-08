@@ -133,13 +133,15 @@ auto read_beasty_trees(
   return result;
 }
 
-static auto output_sequences(const Run& run, std::ostream& os) -> void {
+static auto output_beast2_sequences(const Run& run, std::ostream& os) -> void {
+  // Shared between BEAST2 2.6.2 and 2.7.7 exporters
   const auto& tree = run.tree();
   
   for (const auto& node : index_order_traversal(tree)) {
     if (tree.at(node).is_tip()) {
       os << absl::StreamFormat("    <sequence id=\"seq_%s\" spec=\"Sequence\" taxon=\"%s\" totalcount=\"4\" value=\"",
-                               tree.at(node).name, tree.at(node).name);
+                               tree.at(node).name,
+                               tree.at(node).name);
       
       auto seq = view_of_sequence_at(tree, node);
       auto missing_sites = reconstruct_missing_sites_at(tree, node);
@@ -186,113 +188,109 @@ static auto export_beast_2_6_2_input(
     return;
   }
   
-  os << "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n"
-     << "\n"
-     << "<!-- \n"
+  os << absl::StreamFormat("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("<!-- \n")
      << stamp_version_into_log_file{}
-     << "-->\n"
-     << "\n"
-     << "<!-- BEAST2 v2.6.2 input file, modelled on run analyzed in \n"
-     << "     LeMieux et al, \"Phylogenetic analysis of SARS-CoV-2 in Boston highlights\n"
-     << "     the impact of superspreading events\", Science 371, 588 (2021)\n"
-     << "     (https://dx.doi.org/10.1126/science.abe3261) -->\n"
-     << "\n"
-     << "<!-- This template is essentially what comes out of BEAUti2 after loading\n"
-     << "     the input FASTA file and choosing the appropriate:\n"
-     << "     * date format (yyyy-M-dd, after last '|')\n"
-     << "     * site model (Gamma site model with 0 or 4 gamma categories, HKY subst model)\n"
-     << "     * clock model (strict)\n"
-     << "     * population prior (Coalescent Exponential Population)\n"
-     << "     [leaving all parameters in their default settings] -->\n"
-     << "\n";
+     << absl::StreamFormat("-->\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("<!-- BEAST2 v2.6.2 input file, modelled on run analyzed in \n")
+     << absl::StreamFormat("     LeMieux et al, \"Phylogenetic analysis of SARS-CoV-2 in Boston highlights\n")
+     << absl::StreamFormat("     the impact of superspreading events\", Science 371, 588 (2021)\n")
+     << absl::StreamFormat("     (https://dx.doi.org/10.1126/science.abe3261) -->\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("<!-- This template is essentially what comes out of BEAUti2 after loading\n")
+     << absl::StreamFormat("     the input FASTA file and choosing the appropriate:\n")
+     << absl::StreamFormat("     * date format (yyyy-M-dd, after last '|')\n")
+     << absl::StreamFormat("     * site model (Gamma site model with 0 or 4 gamma categories, HKY subst model)\n")
+     << absl::StreamFormat("     * clock model (strict)\n")
+     << absl::StreamFormat("     * population prior (Coalescent Exponential Population)\n")
+     << absl::StreamFormat("     [leaving all parameters in their default settings] -->\n")
+     << absl::StreamFormat("\n");
   
-  os << "<beast beautitemplate='Standard' beautistatus='' namespace=\"beast.core:beast.evolution.alignment:beast.evolution.tree.coalescent:beast.core.util:beast.evolution.nuc:beast.evolution.operators:beast.evolution.sitemodel:beast.evolution.substitutionmodel:beast.evolution.likelihood\" required=\"\" version=\"2.6\">\n"
-     << "\n";
+  os << absl::StreamFormat("<beast beautitemplate='Standard' beautistatus='' namespace=\"beast.core:beast.evolution.alignment:beast.evolution.tree.coalescent:beast.core.util:beast.evolution.nuc:beast.evolution.operators:beast.evolution.sitemodel:beast.evolution.substitutionmodel:beast.evolution.likelihood\" required=\"\" version=\"2.6\">\n")
+     << absl::StreamFormat("\n");
 
   // Sequence data
-  os << "  <data\n"
-     << "   id=\"input_alignment\"\n"
-     << "   spec=\"Alignment\"\n"
-     << "   name=\"alignment\">\n";
-  output_sequences(run, os);
-  os << "  </data>\n";
-  os << "\n";
+  os << absl::StreamFormat("  <data\n")
+     << absl::StreamFormat("   id=\"input_alignment\"\n")
+     << absl::StreamFormat("   spec=\"Alignment\"\n")
+     << absl::StreamFormat("   name=\"alignment\">\n");
+  output_beast2_sequences(run, os);
+  os << absl::StreamFormat("  </data>\n")
+     << absl::StreamFormat("\n");
 
   // Name aliases
-  os << "  <map name=\"Uniform\" >beast.math.distributions.Uniform</map>\n";
-  os << "  <map name=\"Exponential\" >beast.math.distributions.Exponential</map>\n";
-  os << "  <map name=\"LogNormal\" >beast.math.distributions.LogNormalDistributionModel</map>\n";
-  os << "  <map name=\"Normal\" >beast.math.distributions.Normal</map>\n";
-  os << "  <map name=\"Beta\" >beast.math.distributions.Beta</map>\n";
-  os << "  <map name=\"Gamma\" >beast.math.distributions.Gamma</map>\n";
-  os << "  <map name=\"LaplaceDistribution\" >beast.math.distributions.LaplaceDistribution</map>\n";
-  os << "  <map name=\"prior\" >beast.math.distributions.Prior</map>\n";
-  os << "  <map name=\"InverseGamma\" >beast.math.distributions.InverseGamma</map>\n";
-  os << "  <map name=\"OneOnX\" >beast.math.distributions.OneOnX</map>\n";
-  os << "\n";
+  os << absl::StreamFormat("  <map name=\"Uniform\" >beast.math.distributions.Uniform</map>\n")
+     << absl::StreamFormat("  <map name=\"Exponential\" >beast.math.distributions.Exponential</map>\n")
+     << absl::StreamFormat("  <map name=\"LogNormal\" >beast.math.distributions.LogNormalDistributionModel</map>\n")
+     << absl::StreamFormat("  <map name=\"Normal\" >beast.math.distributions.Normal</map>\n")
+     << absl::StreamFormat("  <map name=\"Beta\" >beast.math.distributions.Beta</map>\n")
+     << absl::StreamFormat("  <map name=\"Gamma\" >beast.math.distributions.Gamma</map>\n")
+     << absl::StreamFormat("  <map name=\"LaplaceDistribution\" >beast.math.distributions.LaplaceDistribution</map>\n")
+     << absl::StreamFormat("  <map name=\"prior\" >beast.math.distributions.Prior</map>\n")
+     << absl::StreamFormat("  <map name=\"InverseGamma\" >beast.math.distributions.InverseGamma</map>\n")
+     << absl::StreamFormat("  <map name=\"OneOnX\" >beast.math.distributions.OneOnX</map>\n")
+     << absl::StreamFormat("\n");
 
-  os << "  <run id=\"mcmc\" spec=\"MCMC\" chainLength=\"" << chain_length << "\">\n";
-  os << "    <state id=\"state\" spec=\"State\" storeEvery=\"5000\">\n";
-  os << "      <tree id=\"Tree.t:input_alignment\" spec=\"beast.evolution.tree.Tree\" name=\"stateNode\">\n";
-  os << "        <trait id=\"dateTrait.t:input_alignment\" spec=\"beast.evolution.tree.TraitSet\" "
-     << "dateFormat=\"yyyy-M-dd\" traitname=\"date\" value=\"";
+  os << absl::StreamFormat("  <run id=\"mcmc\" spec=\"MCMC\" chainLength=\"%d\">\n",
+                           chain_length)
+     << absl::StreamFormat("    <state id=\"state\" spec=\"State\" storeEvery=\"5000\">\n")
+     << absl::StreamFormat("      <tree id=\"Tree.t:input_alignment\" spec=\"beast.evolution.tree.Tree\" name=\"stateNode\">\n")
+     << absl::StreamFormat("        <trait id=\"dateTrait.t:input_alignment\" spec=\"beast.evolution.tree.TraitSet\" dateFormat=\"yyyy-M-dd\" traitname=\"date\" value=\"");
   auto first = true;
   for (const auto& node : index_order_traversal(tree)) {
     if (tree.at(node).is_tip()) {
       if (first) {
         first = false;
       } else {
-        os << ",";
+        os << absl::StreamFormat(",");
       }
-      os << tree.at(node).name << "=" << to_iso_date(0.5*(tree.at(node).t_min + tree.at(node).t_max));
+      os << absl::StreamFormat("%s=%s",
+                               tree.at(node).name,
+                               to_iso_date(0.5*(tree.at(node).t_min + tree.at(node).t_max)));
     }
   }
-  os << "\">\n";
-  os << "        <taxa id=\"TaxonSet.input_alignment\" spec=\"TaxonSet\">\n";
-  os << "          <alignment idref=\"input_alignment\"/>\n";
-  os << "        </taxa>\n";
-  os << "      </trait>\n";
-  os << "      <taxonset idref=\"TaxonSet.input_alignment\"/>\n";
-  os << "    </tree>\n";
-  os << "\n";
+  os << absl::StreamFormat("\">\n")
+     << absl::StreamFormat("        <taxa id=\"TaxonSet.input_alignment\" spec=\"TaxonSet\">\n")
+     << absl::StreamFormat("          <alignment idref=\"input_alignment\"/>\n")
+     << absl::StreamFormat("        </taxa>\n")
+     << absl::StreamFormat("      </trait>\n")
+     << absl::StreamFormat("      <taxonset idref=\"TaxonSet.input_alignment\"/>\n")
+     << absl::StreamFormat("    </tree>\n")
+     << absl::StreamFormat("\n");
 
   // Parameter definitions and initial values
   if (run.mu_move_enabled()) {
-    os << "    <parameter id=\"clockRate.c:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">"
-       << 1.0 << "</parameter>\n";
+    os << absl::StreamFormat("    <parameter id=\"clockRate.c:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">1.0</parameter>\n");
   }
   if (run.alpha_move_enabled()) {
-    os << "    <parameter id=\"gammaShape.s:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">"
-       << 1.0 << "</parameter>\n";
+    os << absl::StreamFormat("    <parameter id=\"gammaShape.s:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">1.0</parameter>\n");
   }
-  os << "    <parameter id=\"kappa.s:input_alignment\" spec=\"parameter.RealParameter\" lower=\"0.0\" name=\"stateNode\">"
-     << 2.0 << "</parameter>\n";
+  os << absl::StreamFormat("    <parameter id=\"kappa.s:input_alignment\" spec=\"parameter.RealParameter\" lower=\"0.0\" name=\"stateNode\">2.0</parameter>\n");
   if (run.final_pop_size_move_enabled()) {
-    os << "    <parameter id=\"ePopSize.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">"
-       << 0.3 << "</parameter>\n";
+    os << absl::StreamFormat("    <parameter id=\"ePopSize.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">0.3</parameter>\n");
   }
   if (run.pop_growth_rate_move_enabled()) {
-    os << "    <parameter id=\"growthRate.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">"
-       << 3.0E-4 << "</parameter>\n";
+    os << absl::StreamFormat("    <parameter id=\"growthRate.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">3.0E-4</parameter>\n");
   }
-  os << "    <parameter id=\"freqParameter.s:input_alignment\" spec=\"parameter.RealParameter\" dimension=\"4\" lower=\"0.0\" name=\"stateNode\" upper=\"1.0\">"
-     << 0.25 << "</parameter>\n";
-  os << "  </state>\n";
-  os << "\n";
+  os << absl::StreamFormat("    <parameter id=\"freqParameter.s:input_alignment\" spec=\"parameter.RealParameter\" dimension=\"4\" lower=\"0.0\" name=\"stateNode\" upper=\"1.0\">0.25</parameter>")
+     << absl::StreamFormat("  </state>\n")
+     << absl::StreamFormat("\n");
 
   // Initial tree
-  os << "  <init id=\"RandomTree.t:input_alignment\" spec=\"beast.evolution.tree.RandomTree\" estimate=\"false\" initial=\"@Tree.t:input_alignment\" taxa=\"@input_alignment\">\n";
-  os << "    <populationModel id=\"ConstantPopulation0.t:input_alignment\" spec=\"ConstantPopulation\">\n";
-  os << "      <parameter id=\"randomPopSize.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"popSize\">1.0</parameter>\n";
-  os << "    </populationModel>\n";
-  os << "  </init>\n";
-  os << "\n";
+  os << absl::StreamFormat("  <init id=\"RandomTree.t:input_alignment\" spec=\"beast.evolution.tree.RandomTree\" estimate=\"false\" initial=\"@Tree.t:input_alignment\" taxa=\"@input_alignment\">\n")
+     << absl::StreamFormat("    <populationModel id=\"ConstantPopulation0.t:input_alignment\" spec=\"ConstantPopulation\">\n")
+     << absl::StreamFormat("      <parameter id=\"randomPopSize.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"popSize\">1.0</parameter>\n")
+     << absl::StreamFormat("    </populationModel>\n")
+     << absl::StreamFormat("  </init>\n")
+     << absl::StreamFormat("\n");
 
   // Posterior components
-  os << "  <distribution id=\"posterior\" spec=\"util.CompoundDistribution\">\n";
-  os << "    <distribution id=\"prior\" spec=\"util.CompoundDistribution\">\n";
+  os << absl::StreamFormat("  <distribution id=\"posterior\" spec=\"util.CompoundDistribution\">\n")
+     << absl::StreamFormat("    <distribution id=\"prior\" spec=\"util.CompoundDistribution\">\n");
   
-  os << "      <distribution id=\"Coalescent.t:input_alignment\" spec=\"Coalescent\">\n";
+  os << absl::StreamFormat("      <distribution id=\"Coalescent.t:input_alignment\" spec=\"Coalescent\">\n");
 
   const auto& pop_model = run.pop_model();
   if (typeid(pop_model) == typeid(Exp_pop_model)) {
@@ -300,19 +298,17 @@ static auto export_beast_2_6_2_input(
     auto final_pop_size = exp_pop_model.pop_at_t0();
     auto pop_growth_rate = exp_pop_model.growth_rate();
     
-    os << "        <populationModel id=\"ExponentialGrowth.t:input_alignment\" spec=\"ExponentialGrowth\" growthRate=\"";
-    if (run.pop_growth_rate_move_enabled()) {
-      os << "@growthRate.t:input_alignment";
-    } else {
-      os << absl::StreamFormat("%g", pop_growth_rate*365.0);  // per year!
-    }
-    os << "\" popSize=\"";
-    if (run.final_pop_size_move_enabled()) {
-      os << "@ePopSize.t:input_alignment";
-    } else {
-      os << absl::StreamFormat("%g", final_pop_size/365.0);  // years!
-    }
-    os << "\"/>\n";
+    os << absl::StreamFormat("        <populationModel id=\"ExponentialGrowth.t:input_alignment\" spec=\"ExponentialGrowth\" growthRate=\"%s\" popSize=\"%s\"/>\n",
+                             
+                             run.pop_growth_rate_move_enabled()
+                             ? "@growthRate.t:input_alignment"                // infer vs...
+                             : absl::StrFormat("%g", pop_growth_rate*365.0),  // ...fixed, per year!
+                             
+                             run.final_pop_size_move_enabled()
+                             ? "@ePopSize.t:input_alignment"                 // infer vs...
+                             : absl::StrFormat("%g", final_pop_size/365.0)   // ...fixed, per year!
+                             
+                             );
     
   } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
     // Make invalid XML tag on purpose to stop this BEAST2 XML file from running (with God knows what population model...)
@@ -322,148 +318,142 @@ static auto export_beast_2_6_2_input(
   } else {
     // Make invalid XML tag on purpose to stop this BEAST2 XML file from running (with God knows what population model...)
     std::cerr << "ERROR: Unrecognized population model type " << typeid(pop_model).name() << '\n';
-    os << absl::StreamFormat("<ERROR>UNRECOGNIZED POPULATION MODEL TYPE: %s</ERROR>", typeid(pop_model).name());
+    os << absl::StreamFormat("<ERROR>UNRECOGNIZED POPULATION MODEL TYPE: %s</ERROR>",
+                             typeid(pop_model).name());
   }
   
-  os << "        <treeIntervals id=\"TreeIntervals.t:input_alignment\" spec=\"TreeIntervals\" tree=\"@Tree.t:input_alignment\"/>\n";
-  os << "      </distribution>\n";
+  os << absl::StreamFormat("        <treeIntervals id=\"TreeIntervals.t:input_alignment\" spec=\"TreeIntervals\" tree=\"@Tree.t:input_alignment\"/>\n")
+     << absl::StreamFormat("      </distribution>\n");
 
   if (run.mu_move_enabled()) {
-    os << "      <prior id=\"ClockPrior.c:input_alignment\" name=\"distribution\" x=\"@clockRate.c:input_alignment\">\n";
-    os << "        <Uniform id=\"Uniform.0\" name=\"distr\" upper=\"Infinity\"/>\n";
-    os << "      </prior>\n";
+    os << absl::StreamFormat("      <prior id=\"ClockPrior.c:input_alignment\" name=\"distribution\" x=\"@clockRate.c:input_alignment\">\n")
+       << absl::StreamFormat("        <Uniform id=\"Uniform.0\" name=\"distr\" upper=\"Infinity\"/>\n")
+       << absl::StreamFormat("      </prior>\n");
   }
 
   if (run.final_pop_size_move_enabled()) {
-    os << "      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n";
-    os << "        <OneOnX id=\"OneOnX.1\" name=\"distr\"/>\n";
-    os << "      </prior>\n";
+    os << absl::StreamFormat("      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n")
+       << absl::StreamFormat("        <OneOnX id=\"OneOnX.1\" name=\"distr\"/>\n")
+       << absl::StreamFormat("      </prior>\n");
   }
 
-  os << "      <prior id=\"FrequenciesPrior.s:input_alignment\" name=\"distribution\" x=\"@freqParameter.s:input_alignment\">\n";
-  os << "        <Uniform id=\"Uniform.3\" name=\"distr\"/>\n";
-  os << "      </prior>\n";
+  os << absl::StreamFormat("      <prior id=\"FrequenciesPrior.s:input_alignment\" name=\"distribution\" x=\"@freqParameter.s:input_alignment\">\n")
+     << absl::StreamFormat("        <Uniform id=\"Uniform.3\" name=\"distr\"/>\n")
+     << absl::StreamFormat("      </prior>\n");
 
   if (run.alpha_move_enabled()) {
     auto alpha_mean = 1.0;
-    os << "      <prior id=\"GammaShapePrior.s:input_alignment\" name=\"distribution\" x=\"@gammaShape.s:input_alignment\">\n";
-    os << "        <Exponential id=\"Exponential.0\" name=\"distr\">\n";
-    os << "          <parameter id=\"RealParameter.0\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mean\">"
-       << alpha_mean << "</parameter>\n";
-    os << "        </Exponential>\n";
-    os << "      </prior>\n";
+    os << absl::StreamFormat("      <prior id=\"GammaShapePrior.s:input_alignment\" name=\"distribution\" x=\"@gammaShape.s:input_alignment\">\n")
+       << absl::StreamFormat("        <Exponential id=\"Exponential.0\" name=\"distr\">\n")
+       << absl::StreamFormat("          <parameter id=\"RealParameter.0\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mean\">%g</parameter>\n",
+                             alpha_mean)
+       << absl::StreamFormat("        </Exponential>\n")
+       << absl::StreamFormat("      </prior>\n");
   }
 
   if (run.pop_growth_rate_move_enabled()) {
     auto growth_rate_mu = 0.001;  // per year - these defaults come from BEAUti2
     auto growth_rate_scale = 30.701135;  // per year - these defaults come from BEAUti2
-    os << "      <prior id=\"GrowthRatePrior.t:input_alignment\" name=\"distribution\" x=\"@growthRate.t:input_alignment\">\n";
-    os << "        <LaplaceDistribution id=\"LaplaceDistribution.0\" name=\"distr\">\n";
-    os << "          <parameter id=\"RealParameter.3\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mu\">"
-       << absl::StreamFormat("%f", growth_rate_mu) << "</parameter>\n";
-    os << "          <parameter id=\"RealParameter.4\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"scale\">"
-       << absl::StreamFormat("%f", growth_rate_scale) << "</parameter>\n";
-    os << "        </LaplaceDistribution>\n";
-    os << "      </prior>\n";
+    os << absl::StreamFormat("      <prior id=\"GrowthRatePrior.t:input_alignment\" name=\"distribution\" x=\"@growthRate.t:input_alignment\">\n")
+       << absl::StreamFormat("        <LaplaceDistribution id=\"LaplaceDistribution.0\" name=\"distr\">\n")
+       << absl::StreamFormat("          <parameter id=\"RealParameter.3\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mu\">%.3f</parameter>\n",
+                             growth_rate_mu)
+       << absl::StreamFormat("          <parameter id=\"RealParameter.4\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"scale\">%.6f</parameter>\n",
+                             growth_rate_scale)
+       << absl::StreamFormat("        </LaplaceDistribution>\n")
+       << absl::StreamFormat("      </prior>\n");
   }
 
   auto log_kappa_mu = 1.0;  // these defaults come from BEAUti2
   auto log_kappa_sigma = 1.25;  // these defaults come from BEAUti2
-  os << "      <prior id=\"KappaPrior.s:input_alignment\" name=\"distribution\" x=\"@kappa.s:input_alignment\">\n";
-  os << "        <LogNormal id=\"LogNormalDistributionModel.0\" name=\"distr\">\n";
-  os << "          <parameter id=\"RealParameter.1\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"M\">"
-     << log_kappa_mu << "</parameter>\n";
-  os << "          <parameter id=\"RealParameter.2\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"S\">"
-     << log_kappa_sigma << "</parameter>\n";
-  os << "        </LogNormal>\n";
-  os << "      </prior>\n";
+  os << absl::StreamFormat("      <prior id=\"KappaPrior.s:input_alignment\" name=\"distribution\" x=\"@kappa.s:input_alignment\">\n")
+     << absl::StreamFormat("        <LogNormal id=\"LogNormalDistributionModel.0\" name=\"distr\">\n")
+     << absl::StreamFormat("          <parameter id=\"RealParameter.1\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"M\">%g</parameter>\n",
+                           log_kappa_mu)
+     << absl::StreamFormat("          <parameter id=\"RealParameter.2\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"S\">%g</parameter>\n",
+                           log_kappa_sigma)
+     << absl::StreamFormat("        </LogNormal>\n")
+     << absl::StreamFormat("      </prior>\n");
 
   // Tip-date sampling (prior)
   // See https://www.beast2.org/2015/06/09/sampling-tip-dates.html
-  auto first_uncertain_tip = k_no_node;
   for (const auto& node : index_order_traversal(tree)) {
     if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
-      if (first_uncertain_tip == k_no_node) {
-        first_uncertain_tip = node;
-      }
-      os << "      <distribution id=\"tip-dist." << tree.at(node).name << "\" spec=\"beast.math.distributions.MRCAPrior\" tipsonly=\"true\" tree=\"@Tree.t:input_alignment\">\n";
-      os << "        <taxonset id=\"tip-taxonset." << tree.at(node).name << "\" spec=\"TaxonSet\">\n";
-      os << "          <taxon id=\"" << tree.at(node).name << "\" spec=\"Taxon\"/>\n";
-      os << "        </taxonset>\n";
-      os << "        <Uniform id=\"tip-uniform." << tree.at(node).name << "\" name=\"distr\" "
-         << "lower=\"" << absl::StreamFormat("%.5f", to_linear_year(tree.at(node).t_min)) << "\" "
-         << "upper=\"" << absl::StreamFormat("%.5f", to_linear_year(tree.at(node).t_max)) << "\"/>\n";
-      os << "      </distribution>\n";
+      os << absl::StreamFormat("      <distribution id=\"tip-dist.%s\" spec=\"beast.math.distributions.MRCAPrior\" tipsonly=\"true\" tree=\"@Tree.t:input_alignment\">\n",
+                               tree.at(node).name)
+         << absl::StreamFormat("        <taxonset id=\"tip-taxonset.%s\" spec=\"TaxonSet\">\n",
+                               tree.at(node).name)
+         << absl::StreamFormat("          <taxon id=\"%s\" spec=\"Taxon\"/>\n",
+                               tree.at(node).name)
+         << absl::StreamFormat("        </taxonset>\n")
+          
+          // NOTE: %.5f formatting vs %g is essential to not lose precision
+          // (counterexample: 2014-05-26, 2014-05-27 and 2014-05-28 all turn to 2014.4 under %g)
+         << absl::StreamFormat("        <Uniform id=\"tip-uniform.%s\" name=\"distr\" lower=\"%.5f\" upper=\"%.5f\"/>\n",
+                               tree.at(node).name,
+                               to_linear_year(tree.at(node).t_min),
+                               to_linear_year(tree.at(node).t_max))
+         << absl::StreamFormat("      </distribution>\n");
     }
   }
   
-  os << "    </distribution>\n";
+  os << absl::StreamFormat("    </distribution>\n");
 
-  os << "    <distribution id=\"likelihood\" spec=\"util.CompoundDistribution\" useThreads=\"true\">\n";
-  os << "      <distribution id=\"treeLikelihood.input_alignment\" spec=\"ThreadedTreeLikelihood\" data=\"@input_alignment\" tree=\"@Tree.t:input_alignment\">\n";
+  os << absl::StreamFormat("    <distribution id=\"likelihood\" spec=\"util.CompoundDistribution\" useThreads=\"true\">\n")
+     << absl::StreamFormat("      <distribution id=\"treeLikelihood.input_alignment\" spec=\"ThreadedTreeLikelihood\" data=\"@input_alignment\" tree=\"@Tree.t:input_alignment\">\n");
   if (run.alpha_move_enabled()) {
-    os << "        <siteModel id=\"SiteModel.s:input_alignment\" spec=\"SiteModel\" gammaCategoryCount=\"4\" shape=\"@gammaShape.s:input_alignment\">\n";
+    os << absl::StreamFormat("        <siteModel id=\"SiteModel.s:input_alignment\" spec=\"SiteModel\" gammaCategoryCount=\"4\" shape=\"@gammaShape.s:input_alignment\">\n");
   } else {
-    os << "        <siteModel id=\"SiteModel.s:input_alignment\" spec=\"SiteModel\" gammaCategoryCount=\"0\">\n";
+    os << absl::StreamFormat("        <siteModel id=\"SiteModel.s:input_alignment\" spec=\"SiteModel\" gammaCategoryCount=\"0\">\n");
   }
-  os << "          <parameter id=\"mutationRate.s:input_alignment\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mutationRate\">1.0</parameter>\n";  // Starting value
-  os << "          <parameter id=\"proportionInvariant.s:input_alignment\" spec=\"parameter.RealParameter\" estimate=\"false\" lower=\"0.0\" name=\"proportionInvariant\" upper=\"1.0\">0.0</parameter>\n";
-  os << "          <substModel id=\"hky.s:input_alignment\" spec=\"HKY\" kappa=\"@kappa.s:input_alignment\">\n";
-  os << "            <frequencies id=\"estimatedFreqs.s:input_alignment\" spec=\"Frequencies\" frequencies=\"@freqParameter.s:input_alignment\"/>\n";
-  os << "          </substModel>\n";
-  os << "        </siteModel>\n";
-  if (run.mu_move_enabled()) {
-    os << "        <branchRateModel id=\"StrictClock.c:input_alignment\" spec=\"beast.evolution.branchratemodel.StrictClockModel\" clock.rate=\"@clockRate.c:input_alignment\"/>\n";
-  } else {
-    os << "        <branchRateModel id=\"StrictClock.c:input_alignment\" spec=\"beast.evolution.branchratemodel.StrictClockModel\" clock.rate=\"" << absl::StreamFormat("%g", run.mu()*365.0) << "\"/>\n";  // per year!
-  }
-  os << "      </distribution>\n";  // treeLikelihood
-  os << "    </distribution>\n";  // likelihood
-
-  os << "  </distribution>\n";  // posterior
-  os << "\n";
+  os << absl::StreamFormat("          <parameter id=\"mutationRate.s:input_alignment\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mutationRate\">1.0</parameter>\n")  // Starting value
+     << absl::StreamFormat("          <parameter id=\"proportionInvariant.s:input_alignment\" spec=\"parameter.RealParameter\" estimate=\"false\" lower=\"0.0\" name=\"proportionInvariant\" upper=\"1.0\">0.0</parameter>\n")
+     << absl::StreamFormat("          <substModel id=\"hky.s:input_alignment\" spec=\"HKY\" kappa=\"@kappa.s:input_alignment\">\n")
+     << absl::StreamFormat("            <frequencies id=\"estimatedFreqs.s:input_alignment\" spec=\"Frequencies\" frequencies=\"@freqParameter.s:input_alignment\"/>\n")
+     << absl::StreamFormat("          </substModel>\n")
+     << absl::StreamFormat("        </siteModel>\n")
+     << absl::StreamFormat("        <branchRateModel id=\"StrictClock.c:input_alignment\" spec=\"beast.evolution.branchratemodel.StrictClockModel\" clock.rate=\"%s\"/>\n",
+                           run.mu_move_enabled()
+                           ? "@clockRate.c:input_alignment"          // infer vs...
+                           : absl::StrFormat("%g", run.mu()*365.0))  // ...fixed, per year!
+     << absl::StreamFormat("      </distribution>\n")  // treeLikelihood
+     << absl::StreamFormat("    </distribution>\n")  // likelihood
+     << absl::StreamFormat("  </distribution>\n")  // posterior
+     << absl::StreamFormat("\n");
 
   // Operators
   if (run.mu_move_enabled()) {
-    os << "  <operator id=\"StrictClockRateScaler.c:input_alignment\" spec=\"ScaleOperator\" parameter=\"@clockRate.c:input_alignment\" scaleFactor=\"0.75\" weight=\"3.0\"/>\n";
-  
-    os << "  <operator id=\"strictClockUpDownOperator.c:input_alignment\" spec=\"UpDownOperator\" scaleFactor=\"0.75\" weight=\"3.0\">\n";
-    os << "    <up idref=\"clockRate.c:input_alignment\"/>\n";
-    os << "    <down idref=\"Tree.t:input_alignment\"/>\n";
-    os << "  </operator>\n";
+    os << absl::StreamFormat("  <operator id=\"StrictClockRateScaler.c:input_alignment\" spec=\"ScaleOperator\" parameter=\"@clockRate.c:input_alignment\" scaleFactor=\"0.75\" weight=\"3.0\"/>\n")
+       << absl::StreamFormat("  <operator id=\"strictClockUpDownOperator.c:input_alignment\" spec=\"UpDownOperator\" scaleFactor=\"0.75\" weight=\"3.0\">\n")
+       << absl::StreamFormat("    <up idref=\"clockRate.c:input_alignment\"/>\n")
+       << absl::StreamFormat("    <down idref=\"Tree.t:input_alignment\"/>\n")
+       << absl::StreamFormat("  </operator>\n");
   }
 
   if (run.alpha_move_enabled()) {
-    os << "  <operator id=\"gammaShapeScaler.s:input_alignment\" spec=\"ScaleOperator\" parameter=\"@gammaShape.s:input_alignment\" scaleFactor=\"0.5\" weight=\"0.1\"/>\n";
+    os << absl::StreamFormat("  <operator id=\"gammaShapeScaler.s:input_alignment\" spec=\"ScaleOperator\" parameter=\"@gammaShape.s:input_alignment\" scaleFactor=\"0.5\" weight=\"0.1\"/>\n");
   }
 
-  os << "  <operator id=\"KappaScaler.s:input_alignment\" spec=\"ScaleOperator\" parameter=\"@kappa.s:input_alignment\" scaleFactor=\"0.5\" weight=\"0.1\"/>\n";
-
-  os << "  <operator id=\"CoalescentExponentialTreeScaler.t:input_alignment\" spec=\"ScaleOperator\" scaleFactor=\"0.5\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n";
-
-  os << "  <operator id=\"CoalescentExponentialTreeRootScaler.t:input_alignment\" spec=\"ScaleOperator\" rootOnly=\"true\" scaleFactor=\"0.5\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n";
-
-  os << "  <operator id=\"CoalescentExponentialUniformOperator.t:input_alignment\" spec=\"Uniform\" tree=\"@Tree.t:input_alignment\" weight=\"30.0\"/>\n";
-
-  os << "  <operator id=\"CoalescentExponentialSubtreeSlide.t:input_alignment\" spec=\"SubtreeSlide\" tree=\"@Tree.t:input_alignment\" weight=\"15.0\"/>\n";
-
-  os << "  <operator id=\"CoalescentExponentialNarrow.t:input_alignment\" spec=\"Exchange\" tree=\"@Tree.t:input_alignment\" weight=\"15.0\"/>\n";
-
-  os << "  <operator id=\"CoalescentExponentialWide.t:input_alignment\" spec=\"Exchange\" isNarrow=\"false\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n";
-
-  os << "  <operator id=\"CoalescentExponentialWilsonBalding.t:input_alignment\" spec=\"WilsonBalding\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n";
+  os << absl::StreamFormat("  <operator id=\"KappaScaler.s:input_alignment\" spec=\"ScaleOperator\" parameter=\"@kappa.s:input_alignment\" scaleFactor=\"0.5\" weight=\"0.1\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialTreeScaler.t:input_alignment\" spec=\"ScaleOperator\" scaleFactor=\"0.5\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialTreeRootScaler.t:input_alignment\" spec=\"ScaleOperator\" rootOnly=\"true\" scaleFactor=\"0.5\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialUniformOperator.t:input_alignment\" spec=\"Uniform\" tree=\"@Tree.t:input_alignment\" weight=\"30.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialSubtreeSlide.t:input_alignment\" spec=\"SubtreeSlide\" tree=\"@Tree.t:input_alignment\" weight=\"15.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialNarrow.t:input_alignment\" spec=\"Exchange\" tree=\"@Tree.t:input_alignment\" weight=\"15.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialWide.t:input_alignment\" spec=\"Exchange\" isNarrow=\"false\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialWilsonBalding.t:input_alignment\" spec=\"WilsonBalding\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n");
   
   if (run.final_pop_size_move_enabled()) {
-      os << "  <operator id=\"ePopSizeScaler.t:input_alignment\" spec=\"ScaleOperator\" parameter=\"@ePopSize.t:input_alignment\" scaleFactor=\"0.75\" weight=\"3.0\"/>\n";
+    os << absl::StreamFormat("  <operator id=\"ePopSizeScaler.t:input_alignment\" spec=\"ScaleOperator\" parameter=\"@ePopSize.t:input_alignment\" scaleFactor=\"0.75\" weight=\"3.0\"/>\n");
   }
 
   if (run.pop_growth_rate_move_enabled()) {
-      os << "  <operator id=\"GrowthRateRandomWalk.t:input_alignment\" spec=\"RealRandomWalkOperator\" parameter=\"@growthRate.t:input_alignment\" weight=\"3.0\" windowSize=\"1.0\"/>\n";
+    os << absl::StreamFormat("  <operator id=\"GrowthRateRandomWalk.t:input_alignment\" spec=\"RealRandomWalkOperator\" parameter=\"@growthRate.t:input_alignment\" weight=\"3.0\" windowSize=\"1.0\"/>\n");
   }
 
-  os << "  <operator id=\"FrequenciesExchanger.s:input_alignment\" spec=\"DeltaExchangeOperator\" delta=\"0.01\" weight=\"0.1\">\n";
-  os << "    <parameter idref=\"freqParameter.s:input_alignment\"/>\n";
-  os << "  </operator>\n";
+  os << absl::StreamFormat("  <operator id=\"FrequenciesExchanger.s:input_alignment\" spec=\"DeltaExchangeOperator\" delta=\"0.01\" weight=\"0.1\">\n")
+     << absl::StreamFormat("    <parameter idref=\"freqParameter.s:input_alignment\"/>\n")
+     << absl::StreamFormat("  </operator>\n");
 
   // Tip-date sampling (operators)
   auto num_uncertain_tips = 0;
@@ -483,65 +473,482 @@ static auto export_beast_2_6_2_input(
       if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
         auto window_size = std::min(max_tip_date_sampling_window_size,
                                     double{tree.at(node).t_max - tree.at(node).t_min} / 4);
-        os << "  <operator id=\"tip-operator." << tree.at(node).name << "\" "
-           << "windowSize=\"" << window_size << "\" "
-           << "spec=\"TipDatesRandomWalker\" "
-           << "taxonset=\"@tip-taxonset." << tree.at(node).name << "\" "
-           << "tree=\"@Tree.t:input_alignment\" "
-           << "weight=\"" << per_tip_weight_tip_date_sampling << "\"/>\n";
+        os << absl::StreamFormat("  <operator id=\"tip-operator.%s\" windowSize=\"%g\" spec=\"TipDatesRandomWalker\" taxonset=\"@tip-taxonset.%s\" tree=\"@Tree.t:input_alignment\" weight=\"%g\"/>\n",
+                                 tree.at(node).name,
+                                 window_size,
+                                 tree.at(node).name,
+                                 per_tip_weight_tip_date_sampling);
       }
     }
   }
   
-  os << "\n";
+  os << absl::StreamFormat("\n");
 
   // Loggers
-  os << "  <logger id=\"tracelog\" spec=\"Logger\" fileName=\"output.log\" logEvery=\"" << log_every << "\" model=\"@posterior\">\n";
-  os << "    <log idref=\"posterior\"/>\n";
-  os << "    <log idref=\"likelihood\"/>\n";
-  os << "    <log idref=\"prior\"/>\n";
-  os << "    <log idref=\"treeLikelihood.input_alignment\"/>\n";
-  os << "    <log id=\"TreeHeight.t:input_alignment\" spec=\"beast.evolution.tree.TreeHeightLogger\" tree=\"@Tree.t:input_alignment\"/>\n";
+  os << absl::StreamFormat("  <logger id=\"tracelog\" spec=\"Logger\" fileName=\"output.log\" logEvery=\"%d\" model=\"@posterior\">\n",
+                           log_every)
+     << absl::StreamFormat("    <log idref=\"posterior\"/>\n")
+     << absl::StreamFormat("    <log idref=\"likelihood\"/>\n")
+     << absl::StreamFormat("    <log idref=\"prior\"/>\n")
+     << absl::StreamFormat("    <log idref=\"treeLikelihood.input_alignment\"/>\n")
+     << absl::StreamFormat("    <log id=\"TreeHeight.t:input_alignment\" spec=\"beast.evolution.tree.TreeHeightLogger\" tree=\"@Tree.t:input_alignment\"/>\n");
   if (run.mu_move_enabled()) {
-    os << "    <log idref=\"clockRate.c:input_alignment\"/>\n";
+    os << absl::StreamFormat("    <log idref=\"clockRate.c:input_alignment\"/>\n");
   }
   if (run.alpha_move_enabled()) {
-    os << "    <log idref=\"gammaShape.s:input_alignment\"/>\n";
+    os << absl::StreamFormat("    <log idref=\"gammaShape.s:input_alignment\"/>\n");
   }
-  os << "    <log idref=\"kappa.s:input_alignment\"/>\n";
-  os << "    <log idref=\"Coalescent.t:input_alignment\"/>\n";
+  os << absl::StreamFormat("    <log idref=\"kappa.s:input_alignment\"/>\n")
+     << absl::StreamFormat("    <log idref=\"Coalescent.t:input_alignment\"/>\n");
   if (typeid(pop_model) == typeid(Exp_pop_model)) {
     if (run.final_pop_size_move_enabled()) {
-      os << "    <log idref=\"ePopSize.t:input_alignment\"/>\n";
+      os << absl::StreamFormat("    <log idref=\"ePopSize.t:input_alignment\"/>\n");
     }
     if (run.pop_growth_rate_move_enabled()) {
-      os << "    <log idref=\"growthRate.t:input_alignment\"/>\n";
+      os << absl::StreamFormat("    <log idref=\"growthRate.t:input_alignment\"/>\n");
     }
   }
-  os << "    <log idref=\"freqParameter.s:input_alignment\"/>\n";
-  if (first_uncertain_tip != k_no_node) {
-    os << "    <log idref=\"tip-dist." << tree.at(first_uncertain_tip).name << "\"/>\n";
+  os << absl::StreamFormat("    <log idref=\"freqParameter.s:input_alignment\"/>\n");
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+      os << absl::StreamFormat("    <log idref=\"tip-dist.%s\"/>\n",
+                               tree.at(node).name);
+    }
   }
-  os << "  </logger>\n";
-  os << "\n";
+  os << absl::StreamFormat("  </logger>\n")
+     << absl::StreamFormat("\n");
   
-  os << "  <logger id=\"screenlog\" spec=\"Logger\" logEvery=\"1000\">\n";
-  os << "    <log idref=\"posterior\"/>\n";
-  os << "    <log idref=\"likelihood\"/>\n";
-  os << "    <log idref=\"prior\"/>\n";
-  os << "  </logger>\n";
-  os << "\n";
+  os << absl::StreamFormat("  <logger id=\"screenlog\" spec=\"Logger\" logEvery=\"1000\">\n")
+     << absl::StreamFormat("    <log idref=\"posterior\"/>\n")
+     << absl::StreamFormat("    <log idref=\"likelihood\"/>\n")
+     << absl::StreamFormat("    <log idref=\"prior\"/>\n")
+     << absl::StreamFormat("  </logger>\n")
+     << absl::StreamFormat("\n");
 
-  os << "  <logger id=\"treelog.t:input_alignment\" spec=\"Logger\" fileName=\"output.trees\" logEvery=\"" << tree_every << "\" mode=\"tree\">\n";
-  os << "    <log id=\"TreeWithMetaDataLogger.t:input_alignment\" spec=\"beast.evolution.tree.TreeWithMetaDataLogger\" tree=\"@Tree.t:input_alignment\"/>\n";
-  os << "  </logger>\n";
-  os << "\n";
+  os << absl::StreamFormat("  <logger id=\"treelog.t:input_alignment\" spec=\"Logger\" fileName=\"output.trees\" logEvery=\"%d\" mode=\"tree\">\n",
+                           tree_every)
+     << absl::StreamFormat("    <log id=\"TreeWithMetaDataLogger.t:input_alignment\" spec=\"beast.evolution.tree.TreeWithMetaDataLogger\" tree=\"@Tree.t:input_alignment\"/>\n")
+     << absl::StreamFormat("  </logger>\n")
+     << absl::StreamFormat("\n");
   
-  os << "  <operatorschedule id=\"OperatorSchedule\" spec=\"OperatorSchedule\"/>\n";
-  os << "\n";
+  os << absl::StreamFormat("  <operatorschedule id=\"OperatorSchedule\" spec=\"OperatorSchedule\"/>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("</run>\n")
+     << absl::StreamFormat("</beast>\n");
+}
+
+static auto export_beast_2_7_7_input(
+    const Run& run,
+    std::ostream& os,
+    int64_t chain_length,
+    int64_t log_every,
+    int64_t tree_every)
+    -> void {
   
-  os << "</run>\n";
-  os << "</beast>\n";
+  const auto& tree = run.tree();
+
+  if (run.mpox_hack_enabled()) {
+    std::cerr << "ERROR: BEAST2 input XML generation not currently supported when enabling APOBEC3 treatment (mpox)\n";
+    os << "ERROR: BEAST2 input XML generation not currently supported when enabling APOBEC3 treatment (mpox)\n";
+    return;
+  }
+  
+  os << absl::StreamFormat("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("<!-- \n")
+     << stamp_version_into_log_file{}
+     << absl::StreamFormat("-->\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("<!-- BEAST2 v2.7.7 input file, modelled on run analyzed in \n")
+     << absl::StreamFormat("     LeMieux et al, \"Phylogenetic analysis of SARS-CoV-2 in Boston highlights\n")
+     << absl::StreamFormat("     the impact of superspreading events\", Science 371, 588 (2021)\n")
+     << absl::StreamFormat("     (https://dx.doi.org/10.1126/science.abe3261) -->\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("<!-- This template is essentially what comes out of BEAUti2 after loading\n")
+     << absl::StreamFormat("     the input FASTA file and choosing the appropriate:\n")
+     << absl::StreamFormat("     * date format (yyyy-M-dd, after last '|')\n")
+     << absl::StreamFormat("     * site model (Gamma site model with 0 or 4 gamma categories, HKY subst model)\n")
+     << absl::StreamFormat("     * clock model (strict)\n")
+     << absl::StreamFormat("     * population prior (Coalescent Exponential Population)\n")
+     << absl::StreamFormat("     [leaving all parameters in their default settings] \n")
+     << absl::StreamFormat("     * There are a few other subtle adjustments to match the BEAST2 2.6.2 default \n")
+     << absl::StreamFormat("       posterior on which Delphy is based, e.g., \n")
+     << absl::StreamFormat("       - no lower bound on gammaShape vs 0.1 in BEAST2 2.7.7\n")
+     << absl::StreamFormat("       - exponential pop growth rate Laplace prior scale is 30.701135, not 0.5")
+     << absl::StreamFormat("     -->\n")
+     << absl::StreamFormat("\n");
+  
+  os << absl::StreamFormat("<beast beautitemplate='Standard' beautistatus='' namespace=\"beast.core:beast.evolution.alignment:beast.evolution.tree.coalescent:beast.core.util:beast.evolution.nuc:beast.evolution.operators:beast.evolution.sitemodel:beast.evolution.substitutionmodel:beast.base.evolution.alignment:beast.pkgmgmt:beast.base.core:beast.base.inference:beast.base.evolution.tree.coalescent:beast.pkgmgmt:beast.base.core:beast.base.inference.util:beast.evolution.nuc:beast.base.evolution.operator:beast.base.inference.operator:beast.base.evolution.sitemodel:beast.base.evolution.substitutionmodel:beast.base.evolution.likelihood\" required=\"BEAST.base v2.7.7\" version=\"2.7\">\n")
+     << absl::StreamFormat("\n");
+
+  // Sequence data
+  os << absl::StreamFormat("  <data\n")
+     << absl::StreamFormat("   id=\"input_alignment\"\n")
+     << absl::StreamFormat("   spec=\"Alignment\"\n")
+     << absl::StreamFormat("   name=\"alignment\">\n");
+  output_beast2_sequences(run, os);
+  os << absl::StreamFormat("  </data>\n")
+     << absl::StreamFormat("\n");
+
+  // Name aliases
+  os << absl::StreamFormat("  <map name=\"Uniform\" >beast.base.inference.distribution.Uniform</map>\n")
+     << absl::StreamFormat("  <map name=\"Exponential\" >beast.base.inference.distribution.Exponential</map>\n")
+     << absl::StreamFormat("  <map name=\"LogNormal\" >beast.base.inference.distribution.LogNormalDistributionModel</map>\n")
+     << absl::StreamFormat("  <map name=\"Normal\" >beast.base.inference.distribution.Normal</map>\n")
+     << absl::StreamFormat("  <map name=\"Beta\" >beast.base.inference.distribution.Beta</map>\n")
+     << absl::StreamFormat("  <map name=\"Gamma\" >beast.base.inference.distribution.Gamma</map>\n")
+     << absl::StreamFormat("  <map name=\"LaplaceDistribution\" >beast.base.inference.distribution.LaplaceDistribution</map>\n")
+     << absl::StreamFormat("  <map name=\"prior\" >beast.base.inference.distribution.Prior</map>\n")
+     << absl::StreamFormat("  <map name=\"InverseGamma\" >beast.base.inference.distribution.InverseGamma</map>\n")
+     << absl::StreamFormat("  <map name=\"OneOnX\" >beast.base.inference.distribution.OneOnX</map>\n")
+     << absl::StreamFormat("\n");
+
+  os << absl::StreamFormat("  <run id=\"mcmc\" spec=\"MCMC\" chainLength=\"%d\">\n",
+                           chain_length)
+     << absl::StreamFormat("    <state id=\"state\" spec=\"State\" storeEvery=\"5000\">\n")
+     << absl::StreamFormat("      <tree id=\"Tree.t:input_alignment\" spec=\"beast.base.evolution.tree.Tree\" name=\"stateNode\">\n")
+     << absl::StreamFormat("        <trait id=\"dateTrait.t:input_alignment\" spec=\"beast.base.evolution.tree.TraitSet\" dateFormat=\"yyyy-M-dd\" traitname=\"date\" value=\"");
+  auto first = true;
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip()) {
+      if (first) {
+        first = false;
+      } else {
+        os << absl::StreamFormat(",");
+      }
+      os << absl::StreamFormat("%s=%s",
+                               tree.at(node).name,
+                               to_iso_date(0.5*(tree.at(node).t_min + tree.at(node).t_max)));
+    }
+  }
+  os << absl::StreamFormat("\">\n")
+     << absl::StreamFormat("        <taxa id=\"TaxonSet.input_alignment\" spec=\"TaxonSet\">\n")
+     << absl::StreamFormat("          <alignment idref=\"input_alignment\"/>\n")
+     << absl::StreamFormat("        </taxa>\n")
+     << absl::StreamFormat("      </trait>\n")
+     << absl::StreamFormat("      <taxonset idref=\"TaxonSet.input_alignment\"/>\n")
+     << absl::StreamFormat("    </tree>\n")
+     << absl::StreamFormat("\n");
+
+  // Parameter definitions and initial values
+  if (run.mu_move_enabled()) {
+    os << absl::StreamFormat("    <parameter id=\"clockRate.c:input_alignment\" spec=\"parameter.RealParameter\" lower=\"0.0\" name=\"stateNode\">1.0</parameter>\n");
+  }
+  if (run.alpha_move_enabled()) {
+    // NOTE: BEAST2 2.6.2 didn't set a lower bound on gammaShape, and neither does Delphy.  BEAST2 2.7.7 by default sets a lower bound of 0.1
+    os << absl::StreamFormat("    <parameter id=\"gammaShape.s:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">1.0</parameter>\n");
+  }
+  os << absl::StreamFormat("    <parameter id=\"kappa.s:input_alignment\" spec=\"parameter.RealParameter\" lower=\"0.0\" name=\"stateNode\">2.0</parameter>\n");
+  if (run.final_pop_size_move_enabled()) {
+    os << absl::StreamFormat("    <parameter id=\"ePopSize.t:input_alignment\" spec=\"parameter.RealParameter\" lower=\"0.0\" name=\"stateNode\">0.3</parameter>\n");
+  }
+  if (run.pop_growth_rate_move_enabled()) {
+    os << absl::StreamFormat("    <parameter id=\"growthRate.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">3.0E-4</parameter>\n");
+  }
+  os << absl::StreamFormat("    <parameter id=\"freqParameter.s:input_alignment\" spec=\"parameter.RealParameter\" dimension=\"4\" lower=\"0.0\" name=\"stateNode\" upper=\"1.0\">0.25</parameter>")
+     << absl::StreamFormat("  </state>\n")
+     << absl::StreamFormat("\n");
+
+  // Initial tree
+  os << absl::StreamFormat("  <init id=\"RandomTree.t:input_alignment\" spec=\"RandomTree\" estimate=\"false\" initial=\"@Tree.t:input_alignment\" taxa=\"@input_alignment\">\n")
+     << absl::StreamFormat("    <populationModel id=\"ConstantPopulation0.t:input_alignment\" spec=\"ConstantPopulation\">\n")
+     << absl::StreamFormat("      <parameter id=\"randomPopSize.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"popSize\">1.0</parameter>\n")
+     << absl::StreamFormat("    </populationModel>\n")
+     << absl::StreamFormat("  </init>\n")
+     << absl::StreamFormat("\n");
+
+  // Posterior components
+  os << absl::StreamFormat("  <distribution id=\"posterior\" spec=\"CompoundDistribution\">\n")
+     << absl::StreamFormat("    <distribution id=\"prior\" spec=\"CompoundDistribution\">\n");
+  
+  os << absl::StreamFormat("      <distribution id=\"Coalescent.t:input_alignment\" spec=\"Coalescent\">\n");
+
+  const auto& pop_model = run.pop_model();
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
+    auto final_pop_size = exp_pop_model.pop_at_t0();
+    auto pop_growth_rate = exp_pop_model.growth_rate();
+    
+    os << absl::StreamFormat("        <populationModel id=\"ExponentialGrowth.t:input_alignment\" spec=\"ExponentialGrowth\" growthRate=\"%s\" popSize=\"%s\"/>\n",
+                             
+                             run.pop_growth_rate_move_enabled()
+                             ? "@growthRate.t:input_alignment"                // infer vs...
+                             : absl::StrFormat("%g", pop_growth_rate*365.0),  // ...fixed, per year!
+                             
+                             run.final_pop_size_move_enabled()
+                             ? "@ePopSize.t:input_alignment"                 // infer vs...
+                             : absl::StrFormat("%g", final_pop_size/365.0)   // ...fixed, per year!
+                             
+                             );
+    
+  } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+    // Make invalid XML tag on purpose to stop this BEAST2 XML file from running (with God knows what population model...)
+    std::cerr << "ERROR: BEAST2 doesn't implement a Skygrid model!\n";
+    os << absl::StreamFormat("<ERROR>BEAST2 doesn't implement a Skygrid model</ERROR>");
+    
+  } else {
+    // Make invalid XML tag on purpose to stop this BEAST2 XML file from running (with God knows what population model...)
+    std::cerr << "ERROR: Unrecognized population model type " << typeid(pop_model).name() << '\n';
+    os << absl::StreamFormat("<ERROR>UNRECOGNIZED POPULATION MODEL TYPE: %s</ERROR>",
+                             typeid(pop_model).name());
+  }
+  
+  os << absl::StreamFormat("        <treeIntervals id=\"TreeIntervals.t:input_alignment\" spec=\"beast.base.evolution.tree.TreeIntervals\" tree=\"@Tree.t:input_alignment\"/>\n")
+     << absl::StreamFormat("      </distribution>\n");
+
+  if (run.mu_move_enabled()) {
+    os << absl::StreamFormat("      <prior id=\"ClockPrior.c:input_alignment\" name=\"distribution\" x=\"@clockRate.c:input_alignment\">\n")
+       << absl::StreamFormat("        <Uniform id=\"Uniform.0\" name=\"distr\" upper=\"Infinity\"/>\n")
+       << absl::StreamFormat("      </prior>\n");
+  }
+
+  if (run.final_pop_size_move_enabled()) {
+    os << absl::StreamFormat("      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n")
+       << absl::StreamFormat("        <OneOnX id=\"OneOnX.1\" name=\"distr\"/>\n")
+       << absl::StreamFormat("      </prior>\n");
+  }
+
+  os << absl::StreamFormat("      <prior id=\"FrequenciesPrior.s:input_alignment\" name=\"distribution\" x=\"@freqParameter.s:input_alignment\">\n")
+     << absl::StreamFormat("        <distr id=\"Dirichlet.0\" spec=\"distribution.Dirichlet\">\n")
+     << absl::StreamFormat("          <parameter id=\"RealParameter.5\" spec=\"parameter.RealParameter\" dimension=\"4\" estimate=\"false\" name=\"alpha\">4.0 4.0 4.0 4.0</parameter>\n")
+     << absl::StreamFormat("        </distr>\n")
+     << absl::StreamFormat("      </prior>\n");
+
+  if (run.alpha_move_enabled()) {
+    auto alpha_mean = 1.0;
+    os << absl::StreamFormat("      <prior id=\"GammaShapePrior.s:input_alignment\" name=\"distribution\" x=\"@gammaShape.s:input_alignment\">\n")
+       << absl::StreamFormat("        <Exponential id=\"Exponential.0\" name=\"distr\">\n")
+       << absl::StreamFormat("          <parameter id=\"RealParameter.0\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mean\">%g</parameter>\n",
+                             alpha_mean)
+       << absl::StreamFormat("        </Exponential>\n")
+       << absl::StreamFormat("      </prior>\n");
+  }
+
+  if (run.pop_growth_rate_move_enabled()) {
+    auto growth_rate_mu = 0.001;  // per year - these defaults come from BEAUti2
+    auto growth_rate_scale = 30.701135;  // per year - these defaults come from BEAUti2 2.6.2 - DIFFERENT FROM BEAST2 2.7.7's default of 0.5
+    os << absl::StreamFormat("      <prior id=\"GrowthRatePrior.t:input_alignment\" name=\"distribution\" x=\"@growthRate.t:input_alignment\">\n")
+       << absl::StreamFormat("        <LaplaceDistribution id=\"LaplaceDistribution.0\" name=\"distr\">\n")
+       << absl::StreamFormat("          <parameter id=\"RealParameter.3\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mu\">%.3f</parameter>\n",
+                             growth_rate_mu)
+       << absl::StreamFormat("          <parameter id=\"RealParameter.4\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"scale\">%.6f</parameter>\n",
+                             growth_rate_scale)
+       << absl::StreamFormat("        </LaplaceDistribution>\n")
+       << absl::StreamFormat("      </prior>\n");
+  }
+
+  auto log_kappa_mu = 1.0;  // these defaults come from BEAUti2
+  auto log_kappa_sigma = 1.25;  // these defaults come from BEAUti2
+  os << absl::StreamFormat("      <prior id=\"KappaPrior.s:input_alignment\" name=\"distribution\" x=\"@kappa.s:input_alignment\">\n")
+     << absl::StreamFormat("        <LogNormal id=\"LogNormalDistributionModel.0\" name=\"distr\">\n")
+     << absl::StreamFormat("          <parameter id=\"RealParameter.1\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"M\">%g</parameter>\n",
+                           log_kappa_mu)
+     << absl::StreamFormat("          <parameter id=\"RealParameter.2\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"S\">%g</parameter>\n",
+                           log_kappa_sigma)
+     << absl::StreamFormat("        </LogNormal>\n")
+     << absl::StreamFormat("      </prior>\n");
+
+  // Tip-date sampling (prior)
+  // See https://www.beast2.org/2015/06/09/sampling-tip-dates.html
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+      os << absl::StreamFormat("      <distribution id=\"tip-dist.%s\" spec=\"beast.base.evolution.tree.MRCAPrior\" tipsonly=\"true\" tree=\"@Tree.t:input_alignment\">\n",
+                               tree.at(node).name)
+         << absl::StreamFormat("        <taxonset id=\"tip-taxonset.%s\" spec=\"TaxonSet\">\n",
+                               tree.at(node).name)
+         << absl::StreamFormat("          <taxon id=\"%s\" spec=\"Taxon\"/>\n",
+                               tree.at(node).name)
+         << absl::StreamFormat("        </taxonset>\n")
+          
+          // NOTE: %.5f formatting vs %g is essential to not lose precision
+          // (counterexample: 2014-05-26, 2014-05-27 and 2014-05-28 all turn to 2014.4 under %g)
+         << absl::StreamFormat("        <Uniform id=\"tip-uniform.%s\" name=\"distr\" lower=\"%.5f\" upper=\"%.5f\"/>\n",
+                               tree.at(node).name,
+                               to_linear_year(tree.at(node).t_min),
+                               to_linear_year(tree.at(node).t_max))
+         << absl::StreamFormat("      </distribution>\n");
+    }
+  }
+  
+  os << absl::StreamFormat("    </distribution>\n");
+
+  os << absl::StreamFormat("    <distribution id=\"likelihood\" spec=\"CompoundDistribution\" useThreads=\"true\">\n")
+     << absl::StreamFormat("      <distribution id=\"treeLikelihood.input_alignment\" spec=\"ThreadedTreeLikelihood\" data=\"@input_alignment\" tree=\"@Tree.t:input_alignment\">\n");
+  if (run.alpha_move_enabled()) {
+    os << absl::StreamFormat("        <siteModel id=\"SiteModel.s:input_alignment\" spec=\"SiteModel\" gammaCategoryCount=\"4\" shape=\"@gammaShape.s:input_alignment\">\n");
+  } else {
+    os << absl::StreamFormat("        <siteModel id=\"SiteModel.s:input_alignment\" spec=\"SiteModel\" gammaCategoryCount=\"0\">\n");
+  }
+  os << absl::StreamFormat("          <parameter id=\"mutationRate.s:input_alignment\" spec=\"parameter.RealParameter\" estimate=\"false\" lower=\"0.0\" name=\"mutationRate\">1.0</parameter>\n")  // Starting value
+     << absl::StreamFormat("          <parameter id=\"proportionInvariant.s:input_alignment\" spec=\"parameter.RealParameter\" estimate=\"false\" lower=\"0.0\" name=\"proportionInvariant\" upper=\"1.0\">0.0</parameter>\n")
+     << absl::StreamFormat("          <substModel id=\"hky.s:input_alignment\" spec=\"HKY\" kappa=\"@kappa.s:input_alignment\">\n")
+     << absl::StreamFormat("            <frequencies id=\"estimatedFreqs.s:input_alignment\" spec=\"Frequencies\" frequencies=\"@freqParameter.s:input_alignment\"/>\n")
+     << absl::StreamFormat("          </substModel>\n")
+     << absl::StreamFormat("        </siteModel>\n")
+     << absl::StreamFormat("        <branchRateModel id=\"StrictClock.c:input_alignment\" spec=\"beast.base.evolution.branchratemodel.StrictClockModel\" clock.rate=\"%s\"/>\n",
+                           run.mu_move_enabled()
+                           ? "@clockRate.c:input_alignment"           // infer vs...
+                           : absl::StrFormat("%g", run.mu()*365.0))   // ...fixed, per year!
+     << absl::StreamFormat("      </distribution>\n")  // treeLikelihood
+     << absl::StreamFormat("    </distribution>\n")  // likelihood
+     << absl::StreamFormat("  </distribution>\n")  // posterior
+     << absl::StreamFormat("\n");
+
+  // Operators (these are quite different in BEAST2 2.7.7 vs 2.6.2, but they don't affect the posterior distribution
+  // being sampled, so we use the 2.7.7 operators here (they're probably more efficient!)
+  if (run.mu_move_enabled()) {
+    os << absl::StreamFormat("  <operator id=\"StrictClockRateScaler.c:input_alignment\" spec=\"AdaptableOperatorSampler\" weight=\"1.5\">\n")
+       << absl::StreamFormat("    <parameter idref=\"clockRate.c:input_alignment\"/>\n")
+       << absl::StreamFormat("    <operator id=\"AVMNOperator.input_alignment\" spec=\"kernel.AdaptableVarianceMultivariateNormalOperator\" allowNonsense=\"true\" beta=\"0.05\" burnin=\"400\" initial=\"800\" weight=\"0.1\">\n")
+       << absl::StreamFormat("      <transformations id=\"AVMNSumTransform.input_alignment\" spec=\"operator.kernel.Transform$LogConstrainedSumTransform\">\n")
+       << absl::StreamFormat("        <f idref=\"freqParameter.s:input_alignment\"/>\n")
+       << absl::StreamFormat("      </transformations>\n")
+       << absl::StreamFormat("      <transformations id=\"AVMNLogTransform.input_alignment\" spec=\"operator.kernel.Transform$LogTransform\">\n")
+       << absl::StreamFormat("        <f idref=\"clockRate.c:input_alignment\"/>\n");
+    if (run.alpha_move_enabled()) {
+      os << absl::StreamFormat("        <f idref=\"gammaShape.s:input_alignment\"/>\n");
+    }
+    os << absl::StreamFormat("        <f idref=\"kappa.s:input_alignment\"/>\n")
+       << absl::StreamFormat("      </transformations>\n")
+       << absl::StreamFormat("      <transformations id=\"AVMNNoTransform.input_alignment\" spec=\"operator.kernel.Transform$NoTransform\">\n")
+       << absl::StreamFormat("        <f idref=\"Tree.t:input_alignment\"/>\n")
+       << absl::StreamFormat("      </transformations>\n")
+       << absl::StreamFormat("    </operator>\n")
+       << absl::StreamFormat("    <operator id=\"StrictClockRateScalerX.c:input_alignment\" spec=\"kernel.BactrianScaleOperator\" parameter=\"@clockRate.c:input_alignment\" upper=\"10.0\" weight=\"3.0\"/>\n")
+       << absl::StreamFormat("  </operator>\n")
+       << absl::StreamFormat("  <operator id=\"strictClockUpDownOperator.c:input_alignment\" spec=\"AdaptableOperatorSampler\" weight=\"1.5\">\n")
+       << absl::StreamFormat("    <parameter idref=\"clockRate.c:input_alignment\"/>\n")
+       << absl::StreamFormat("    <tree idref=\"Tree.t:input_alignment\"/>\n")
+       << absl::StreamFormat("    <operator idref=\"AVMNOperator.input_alignment\"/>\n")
+       << absl::StreamFormat("    <operator id=\"strictClockUpDownOperatorX.c:input_alignment\" spec=\"operator.kernel.BactrianUpDownOperator\" scaleFactor=\"0.75\" weight=\"3.0\">\n")
+       << absl::StreamFormat("      <up idref=\"clockRate.c:input_alignment\"/>\n")
+       << absl::StreamFormat("      <down idref=\"Tree.t:input_alignment\"/>\n")
+       << absl::StreamFormat("    </operator>\n")
+       << absl::StreamFormat("  </operator>\n");
+  }
+
+  if (run.alpha_move_enabled()) {
+    os << absl::StreamFormat("  <operator id=\"gammaShapeScaler.s:input_alignment\" spec=\"AdaptableOperatorSampler\" weight=\"0.05\">\n")
+       << absl::StreamFormat("    <parameter idref=\"gammaShape.s:input_alignment\"/>\n")
+       << absl::StreamFormat("    <operator idref=\"AVMNOperator.input_alignment\"/>\n")
+       << absl::StreamFormat("    <operator id=\"gammaShapeScalerX.s:input_alignment\" spec=\"kernel.BactrianScaleOperator\" parameter=\"@gammaShape.s:input_alignment\" scaleFactor=\"0.5\" upper=\"10.0\" weight=\"0.1\"/>\n")
+       << absl::StreamFormat("  </operator>\n");
+  }
+
+  os << absl::StreamFormat("  <operator id=\"KappaScaler.s:input_alignment\" spec=\"AdaptableOperatorSampler\" weight=\"0.05\">\n")
+     << absl::StreamFormat("    <parameter idref=\"kappa.s:input_alignment\"/>\n")
+     << absl::StreamFormat("    <operator idref=\"AVMNOperator.input_alignment\"/>\n")
+     << absl::StreamFormat("    <operator id=\"KappaScalerX.s:input_alignment\" spec=\"kernel.BactrianScaleOperator\" parameter=\"@kappa.s:input_alignment\" scaleFactor=\"0.1\" upper=\"10.0\" weight=\"0.1\"/>\n")
+     << absl::StreamFormat("  </operator>\n");
+
+  os << absl::StreamFormat("  <operator id=\"FrequenciesExchanger.s:input_alignment\" spec=\"AdaptableOperatorSampler\" weight=\"0.05\">\n")
+     << absl::StreamFormat("    <parameter idref=\"freqParameter.s:input_alignment\"/>\n")
+     << absl::StreamFormat("    <operator idref=\"AVMNOperator.input_alignment\"/>\n")
+     << absl::StreamFormat("    <operator id=\"FrequenciesExchangerX.s:input_alignment\" spec=\"operator.kernel.BactrianDeltaExchangeOperator\" delta=\"0.01\" weight=\"0.1\">\n")
+     << absl::StreamFormat("      <parameter idref=\"freqParameter.s:input_alignment\"/>\n")
+     << absl::StreamFormat("    </operator>\n")
+     << absl::StreamFormat("  </operator>\n");
+
+  os << absl::StreamFormat("  <operator id=\"CoalescentExponentialBICEPSEpochTop.t:input_alignment\" spec=\"EpochFlexOperator\" scaleFactor=\"0.1\" tree=\"@Tree.t:input_alignment\" weight=\"2.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialBICEPSEpochAll.t:input_alignment\" spec=\"EpochFlexOperator\" fromOldestTipOnly=\"false\" scaleFactor=\"0.1\" tree=\"@Tree.t:input_alignment\" weight=\"2.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialBICEPSTreeFlex.t:input_alignment\" spec=\"TreeStretchOperator\" scaleFactor=\"0.01\" tree=\"@Tree.t:input_alignment\" weight=\"2.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialTreeRootScaler.t:input_alignment\" spec=\"kernel.BactrianScaleOperator\" rootOnly=\"true\" scaleFactor=\"0.1\" tree=\"@Tree.t:input_alignment\" upper=\"10.0\" weight=\"3.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialUniformOperator.t:input_alignment\" spec=\"kernel.BactrianNodeOperator\" tree=\"@Tree.t:input_alignment\" weight=\"30.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialSubtreeSlide.t:input_alignment\" spec=\"kernel.BactrianSubtreeSlide\" tree=\"@Tree.t:input_alignment\" weight=\"15.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialNarrow.t:input_alignment\" spec=\"Exchange\" tree=\"@Tree.t:input_alignment\" weight=\"15.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialWide.t:input_alignment\" spec=\"Exchange\" isNarrow=\"false\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n")
+     << absl::StreamFormat("  <operator id=\"CoalescentExponentialWilsonBalding.t:input_alignment\" spec=\"WilsonBalding\" tree=\"@Tree.t:input_alignment\" weight=\"3.0\"/>\n");
+
+  if (run.final_pop_size_move_enabled()) {
+    os << absl::StreamFormat("  <operator id=\"ePopSizeScaler.t:input_alignment\" spec=\"kernel.BactrianScaleOperator\" parameter=\"@ePopSize.t:input_alignment\" upper=\"10.0\" weight=\"3.0\"/>\n");
+  }
+
+  if (run.pop_growth_rate_move_enabled()) {
+    os << absl::StreamFormat("  <operator id=\"GrowthRateRandomWalk.t:input_alignment\" spec=\"operator.kernel.BactrianRandomWalkOperator\" parameter=\"@growthRate.t:input_alignment\" scaleFactor=\"0.1\" weight=\"3.0\"/>\n");
+  }
+
+  // Tip-date sampling (operators)
+  auto num_uncertain_tips = 0;
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+      ++num_uncertain_tips;
+    }
+  }
+  if (num_uncertain_tips > 0) {
+    auto tot_weight_tip_date_sampling = 10.0;
+    auto per_tip_weight_tip_date_sampling = tot_weight_tip_date_sampling / num_uncertain_tips;
+    auto max_tip_date_sampling_window_size = 1.0 / (tree.num_sites()*run.mu()*365.0);
+    // ^^ max chosen so that a branch ending at a tip with a fixed number of mutations is rarely
+    //    overstretched or overcompressed
+    
+    for (const auto& node : index_order_traversal(tree)) {
+      if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+        auto window_size = std::min(max_tip_date_sampling_window_size,
+                                    double{tree.at(node).t_max - tree.at(node).t_min} / 4);
+        os << absl::StreamFormat("  <operator id=\"tip-operator.%s\" windowSize=\"%g\" spec=\"TipDatesRandomWalker\" taxonset=\"@tip-taxonset.%s\" tree=\"@Tree.t:input_alignment\" weight=\"%g\"/>\n",
+                                 tree.at(node).name,
+                                 window_size,
+                                 tree.at(node).name,
+                                 per_tip_weight_tip_date_sampling);
+      }
+    }
+  }
+  
+  os << absl::StreamFormat("\n");
+
+  // Loggers
+  // Labels and order purposely identical to that in export_beast_2_6_2_input so we can share output routines
+  // between BEAST2 2.6.2 and 2.7.7
+  os << absl::StreamFormat("  <logger id=\"tracelog\" spec=\"Logger\" fileName=\"output.log\" logEvery=\"%d\" model=\"@posterior\" sanitiseHeaders=\"true\">\n",
+                           log_every)
+     << absl::StreamFormat("    <log idref=\"posterior\"/>\n")
+     << absl::StreamFormat("    <log idref=\"likelihood\"/>\n")
+     << absl::StreamFormat("    <log idref=\"prior\"/>\n")
+     << absl::StreamFormat("    <log idref=\"treeLikelihood.input_alignment\"/>\n")
+     << absl::StreamFormat("    <log id=\"TreeHeight.t:input_alignment\" spec=\"beast.base.evolution.tree.TreeStatLogger\" tree=\"@Tree.t:input_alignment\"/>\n");
+  if (run.mu_move_enabled()) {
+    os << absl::StreamFormat("    <log idref=\"clockRate.c:input_alignment\"/>\n");
+  }
+  if (run.alpha_move_enabled()) {
+    os << absl::StreamFormat("    <log idref=\"gammaShape.s:input_alignment\"/>\n");
+  }
+  os << absl::StreamFormat("    <log idref=\"kappa.s:input_alignment\"/>\n")
+     << absl::StreamFormat("    <log idref=\"Coalescent.t:input_alignment\"/>\n");
+  if (typeid(pop_model) == typeid(Exp_pop_model)) {
+    if (run.final_pop_size_move_enabled()) {
+      os << absl::StreamFormat("    <log idref=\"ePopSize.t:input_alignment\"/>\n");
+    }
+    if (run.pop_growth_rate_move_enabled()) {
+      os << absl::StreamFormat("    <log idref=\"growthRate.t:input_alignment\"/>\n");
+    }
+  }
+  os << absl::StreamFormat("    <log idref=\"freqParameter.s:input_alignment\"/>\n");
+  for (const auto& node : index_order_traversal(tree)) {
+    if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
+      os << absl::StreamFormat("    <log idref=\"tip-dist.%s\"/>\n",
+                               tree.at(node).name);
+    }
+  }
+  os << absl::StreamFormat("  </logger>\n")
+     << absl::StreamFormat("\n");
+  
+  os << absl::StreamFormat("  <logger id=\"screenlog\" spec=\"Logger\" logEvery=\"1000\">\n")
+     << absl::StreamFormat("    <log idref=\"posterior\"/>\n")
+     << absl::StreamFormat("    <log idref=\"likelihood\"/>\n")
+     << absl::StreamFormat("    <log idref=\"prior\"/>\n")
+     << absl::StreamFormat("  </logger>\n")
+     << absl::StreamFormat("\n");
+
+  os << absl::StreamFormat("  <logger id=\"treelog.t:input_alignment\" spec=\"Logger\" fileName=\"output.trees\" logEvery=\"%d\" mode=\"tree\">\n",
+                           tree_every)
+     << absl::StreamFormat("    <log id=\"TreeWithMetaDataLogger.t:input_alignment\" spec=\"beast.base.evolution.TreeWithMetaDataLogger\" tree=\"@Tree.t:input_alignment\"/>\n")
+     << absl::StreamFormat("  </logger>\n")
+     << absl::StreamFormat("\n");
+  
+  os << absl::StreamFormat("  <operatorschedule id=\"OperatorSchedule\" spec=\"OperatorSchedule\"/>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("</run>\n")
+     << absl::StreamFormat("</beast>\n");
 }
 
 static auto output_sequences_X_10_5(const Run& run, std::ostream& os) -> void {
@@ -653,29 +1060,29 @@ static auto export_beast_X_10_5_0_input(
   }
 
   // Off we go!
-  os << "<?xml version=\"1.0\" standalone=\"yes\"?>\n"
-     << "\n"
-     << "<!-- \n"
+  os << absl::StreamFormat("<?xml version=\"1.0\" standalone=\"yes\"?>\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("<!-- \n")
      << stamp_version_into_log_file{}
-     << "-->\n"
-     << "\n"
-     << "<!-- BEAST X 10.5.0 input file, modelled on run analyzed in \n"
-     << "     LeMieux et al, \"Phylogenetic analysis of SARS-CoV-2 in Boston highlights\n"
-     << "     the impact of superspreading events\", Science 371, 588 (2021)\n"
-     << "     (https://dx.doi.org/10.1126/science.abe3261) -->\n"
-     << "\n"
-     << "<!-- This template is essentially what comes out of BEAUti X after loading\n"
-     << "     the input FASTA file and choosing the appropriate:\n"
-     << "     * date format (yyyy-M-dd, after last '|')\n"
-     << "     * site model (Gamma site model with 0 or 4 gamma categories, HKY subst model)\n"
-     << "     * clock model (strict)\n"
-     << "     * population prior (Coalescent: Exponential Population or Coalescent: Hamiltonian Monte Carlo SkyGrid)\n"
-     << "     [leaving all parameters in their default settings] -->\n"
-     << "\n";
+     << absl::StreamFormat("-->\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("<!-- BEAST X 10.5.0 input file, modelled on run analyzed in \n")
+     << absl::StreamFormat("     LeMieux et al, \"Phylogenetic analysis of SARS-CoV-2 in Boston highlights\n")
+     << absl::StreamFormat("     the impact of superspreading events\", Science 371, 588 (2021)\n")
+     << absl::StreamFormat("     (https://dx.doi.org/10.1126/science.abe3261) -->\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("<!-- This template is essentially what comes out of BEAUti X after loading\n")
+     << absl::StreamFormat("     the input FASTA file and choosing the appropriate:\n")
+     << absl::StreamFormat("     * date format (yyyy-M-dd, after last '|')\n")
+     << absl::StreamFormat("     * site model (Gamma site model with 0 or 4 gamma categories, HKY subst model)\n")
+     << absl::StreamFormat("     * clock model (strict)\n")
+     << absl::StreamFormat("     * population prior (Coalescent: Exponential Population or Coalescent: Hamiltonian Monte Carlo SkyGrid)\n")
+     << absl::StreamFormat("     [leaving all parameters in their default settings] -->\n")
+     << absl::StreamFormat("\n");
   
-  os << "<beast version=\"10.5.0-beta5\">\n"
-     << "\n"
-     << "\n";
+  os << absl::StreamFormat("<beast version=\"10.5.0-beta5\">\n")
+     << absl::StreamFormat("\n")
+     << absl::StreamFormat("\n");
 
   // Sequence data
   output_sequences_X_10_5(run, os);
@@ -1243,6 +1650,8 @@ auto export_beast_input(
 
   if (beast_version == "2.6.2") {
     export_beast_2_6_2_input(run, os, chain_length, log_every, tree_every);
+  } else if (beast_version == "2.7.7") {
+    export_beast_2_7_7_input(run, os, chain_length, log_every, tree_every);
   } else if (beast_version == "X-10.5.0") {
     export_beast_X_10_5_0_input(run, os, chain_length, log_every, tree_every);
   } else {
