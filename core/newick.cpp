@@ -49,7 +49,7 @@ namespace delphy {
 //   : ( '(' children+=node (',' children+=node)* ')' )?
 //     name=( UNQUOTED_LABEL | QUOTED_LABEL | NUMBER )?
 //     nodeAttrs=ATTRIBUTES*
-//     ( ':' branchAttrs=ATTRIBUTES* length=NUMBER )?
+//     ( ':' branchAttrs=ATTRIBUTES* length=NUMBER? )?
 //   ;
 //
 //WS             : [ \r\n\t]+ -> skip ;
@@ -329,7 +329,7 @@ auto Newick_parser::parse_node(Newick_tree& tree, Node_index parent) -> Node_ind
     tree.at(node).node_attributes = parse_attributes();
   }
 
-  // ( ':' branchAttrs=ATTRIBUTES* length=NUMBER )?
+  // ( ':' branchAttrs=ATTRIBUTES* length=NUMBER? )?
   if (maybe_match(Newick_lexer::Token_kind::k_colon)) {
     if (lexer_.token_kind() == Newick_lexer::Token_kind::k_attributes) {
       tree.at(node).branch_attributes = parse_attributes();
