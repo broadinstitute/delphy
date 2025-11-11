@@ -148,5 +148,10 @@ if(EMSCRIPTEN)
     # the WASM linear memory looks like from the JS side).  See here for details:
     # https://github.com/emscripten-core/emscripten/issues/18034
     -sTEXTDECODER=0
+
+    # Use a scalable memory allocator (the default allocator has high contention
+    # and is slow in multi-threaded environments)
+    # See https://emscripten.org/docs/porting/pthreads.html#allocator-performance
+    -sMALLOC=mimalloc
     )
 endif()
