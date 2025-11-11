@@ -741,18 +741,17 @@ auto Run::run_global_moves() -> void {
     }
     
   } else if (typeid(raw_pop_model) == typeid(Skygrid_pop_model)) {
-    for (auto i = 0; i != 5; ++i) {  // With HMC, each move likely samples each quantity quite well already
-      if (skygrid_tau_move_enabled_) {
-        skygrid_tau_move();
-        check_derived_quantities();
-      }
-      
-      skygrid_gammas_zero_mode_gibbs_move();
-      check_derived_quantities();
-      
-      skygrid_gammas_hmc_move();
+    // With HMC, each move likely samples each quantity quite well already
+    if (skygrid_tau_move_enabled_) {
+      skygrid_tau_move();
       check_derived_quantities();
     }
+      
+    skygrid_gammas_zero_mode_gibbs_move();
+    check_derived_quantities();
+      
+    skygrid_gammas_hmc_move();
+    check_derived_quantities();
   }
 }
 
