@@ -10,9 +10,9 @@ cmake_minimum_required(VERSION 3.17.5)
 # 4. Commit these changes to CMakeLists.txt and push (git push)
 # 5. Tag Git commit (git tag ${VERSION} && git push origin ${VERSION})
 # 6. Compile & distribute the release artifacts
-project(delphy VERSION 1.1.3)
-set(BUILD_NUMBER 2043)
-set(BUILD_PREV_GIT_HASH 555dab8)
+project(delphy VERSION 1.1.4)
+set(BUILD_NUMBER 2044)
+set(BUILD_PREV_GIT_HASH a204592)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
