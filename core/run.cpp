@@ -1628,8 +1628,6 @@ auto Run::skygrid_gammas_hmc_move() -> void {
 
   // TODO: The code below could be significantly optimized:
   // - mutating population models in-place to remove allocations
-  // - replacing the loop over all tips in the calculation of f_k[k] for each k
-  //   by a way to identify the handful of `k`s affected by any one tip
   // - replacing `sum_{i inner} 1/N(t_i)` in the coalescent prior by `sum_c (1/N_c)^{n_c},
   //   where n_c is the number of tips in interval `k`.
   // - merging the position half-steps of consecutive steps
@@ -1709,6 +1707,21 @@ auto Run::skygrid_gammas_hmc_move() -> void {
         old_pop_model->x(), gamma_k, old_pop_model->type());
   };
 
+  // Calculate which tips and `k`s have non-zero d_log_N_d_gamma(t_tip, k)
+  auto k_2_relevant_tips = std::vector<std::vector<Node_index>>{};
+  for (auto k = 0; k <= M; ++k) {
+    auto relevant_tips = std::vector<Node_index>{};
+    auto [t_min, t_max] = new_pop_model->support_of_d_log_N_d_gamma(k);
+    for (const auto& node : index_order_traversal(tree_)) {
+      if (not tree_.at(node).is_tip()) {
+        if (t_min <= tree_.at(node).t && tree_.at(node).t <= t_max) {
+          relevant_tips.push_back(node);
+        }
+      }
+    }
+    k_2_relevant_tips.push_back(std::move(relevant_tips));
+  }
+
   auto calc_f_k_s_from_gamma_k_s = [&]() -> void {
 
     auto t_min_coal = coalescent_prior_.cell_lbound(0);
@@ -1733,10 +1746,17 @@ auto Run::skygrid_gammas_hmc_move() -> void {
             * new_pop_model->d_log_int_N_d_gamma(a, b, k);
       }
 
-      for (const auto& node : index_order_traversal(tree_)) {
-        if (not tree_.at(node).is_tip()) {
-          f_k[k] -= new_pop_model->d_log_N_d_gamma(tree_.at(node).t, k);
-        }
+      // The loop below has the same effect as this one that's commented out,
+      // but, across all knots k, executes in O(N) time instead of O(N*M) time.
+      //
+      // for (const auto& node : index_order_traversal(tree_)) {
+      //   if (not tree_.at(node).is_tip()) {
+      //     f_k[k] -= new_pop_model->d_log_N_d_gamma(tree_.at(node).t, k);
+      //   }
+      // }
+      //
+      for (const auto& node : k_2_relevant_tips[k]) {
+        f_k[k] -= new_pop_model->d_log_N_d_gamma(tree_.at(node).t, k);
       }
 
       if (k > 0) {
