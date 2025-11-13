@@ -1,6 +1,37 @@
+# Compatibility
+
+These build instructions were last tested on
+- Ubuntu 24.04 x86_64 (on a fresh AWS c7a.2xlarge instance, after running `apt update && apt upgrade` and restarting)
+- Ubuntu 22.04 x86_64 (on a fresh AWS c7a.2xlarge instance, after running `apt update && apt upgrade` and restarting)
+- macos Sequoia 15.6.1 x86-64 (on a fresh AWS mac1.metal instance)
+- macos Sequoia 15.6.1 ARM (on a fresh AWS mac2.metal instance)
+
 # Dependencies
 
+First, install build dependencies.
+
+### On Ubuntu:
+```
+sudo apt install cmake python3-venv g++  # Ubuntu (will bring on many other build dependencies)
+```
+On Ubuntu 22.04, the distribution's cmake version is too old.  Use a more recent version as follows:
+```
+mkdir -p ~/tools
+cd ~/tools/
+wget https://github.com/Kitware/CMake/releases/download/v3.31.9/cmake-3.31.9-linux-x86_64.tar.gz
+tar -xvf cmake-3.31.9-linux-x86_64.tar.gz
+export "PATH=${HOME}/tools/cmake-3.31.9-linux-x86_64/bin:${PATH}"
+```
+
+### On Mac
+On macos, we only support installations that leverage Homebrew.
+```
+brew install cmake emscripten              # macos (AWS macos AMIs have lots of build tooling preinstalled, but not cmake)
+```
+
+### Other notes
 Some third-party libraries (e.g., abseil) are linked directly in the source tree as git submodules, whereas more complex dependencies use Conan (see [conanfile.txt] for details).
+
 
 # Building locally
 
@@ -19,6 +50,7 @@ Make some config adjustment to your Conan profile (see https://docs.conan.io/2/t
 ```
 conan profile detect
 ```
+On macos, you may have to adjust the resulting Conan profile in ~/.conan2/profiles/default to say "compiler.version=16", not "17" or later, for Conan 2.8.1 to recognize your compiler.
 
 Make sure git submodules are checked out in the `third-party` directory:
 ```
@@ -47,6 +79,12 @@ of the tree inference process.
 
 # Building for WebAssembly
 
+NOTE: On macos systems with Apple Silicon (e.g., M1), conan will mistakenly try to
+download Emscripten precompiled for x86-64
+([issue](https://github.com/conan-io/conan-center-index/issues/27610)).  Instead, you need
+to ask conan to rebuild emscripten locally by adding the option `'--build=emsdk/*'` (with
+the single quotes) in both of the `conan install` commands below.
+
 First set up the build directory and install dependencies using the `wasm.profile`:
 ```
 # For Debug WASM blob
@@ -67,7 +105,7 @@ cmake --build --preset conan-emscripten-debug     # Or conan-emscripten-release
 
 After succesful compilation, you should be able to run the command
 ```
-delphy --version
+./build/release/delphy --version   # or ./build/debug/delphy
 ```
 and obtain a version string like the following:
 ```
@@ -76,7 +114,7 @@ Delphy Version 0.996 (build 2022, commit 33c06a8)
 
 If that works, you can try to run a short inference to verify that everything is working.  We have prepared [several benchmarks](https://github.com/broadinstitute/delphy-2024-paper-data), any of which can be used for a test run after compilation.  In particular, the [SARS-CoV-2 benchmark there](https://github.com/broadinstitute/delphy-2024-paper-data/tree/main/sars-cov-2-lemieux/delphy_inputs/ma_sars_cov_2.fasta) is what is used in the `delphy-web` demo (also available [here](https://delphy.fathom.info/ma_sars_cov_2.fasta)).  The following command will execute a (too short) MCMC run using this data:
 ```
-delphy --v0-in-fasta ma_sars_cov_2.fasta \
+./build/release/delphy --v0-in-fasta ma_sars_cov_2.fasta \
    --v0-init-heuristic \
    --v0-steps 10000000 \
    --v0-out-log-file delphy.log \
