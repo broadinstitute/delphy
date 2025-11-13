@@ -31,6 +31,11 @@ target_compile_options(
 )
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)  # Sane stack traces
 if(NOT DEFINED EMSCRIPTEN)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(
+      -Wno-error=maybe-uninitialized   # Ignore something in abseil's raw_hash_set.hpp that I cannot fix on Ubuntu 22.02
+    )
+  endif()
   #add_compile_options(-ffast-math)  # This is dangerous!  It mangles the behaviour of NaN's.  Never enable it!
   if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
     add_compile_options(-msse3)
