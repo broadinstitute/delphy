@@ -31,11 +31,7 @@ target_compile_options(
 )
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)  # Sane stack traces
 if(NOT DEFINED EMSCRIPTEN)
-  add_compile_options(
-    -Wno-error=maybe-uninitialized   # Ignore something in abseil's raw_hash_set.hpp that I cannot fix
-  )
   #add_compile_options(-ffast-math)  # This is dangerous!  It mangles the behaviour of NaN's.  Never enable it!
-  #if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin")  # detects macOS, but still some Intel out there
   if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
     add_compile_options(-msse3)
   endif()
@@ -148,10 +144,16 @@ if(EMSCRIPTEN)
     # the WASM linear memory looks like from the JS side).  See here for details:
     # https://github.com/emscripten-core/emscripten/issues/18034
     -sTEXTDECODER=0
+  )
 
-    # Use a scalable memory allocator (the default allocator has high contention
-    # and is slow in multi-threaded environments)
-    # See https://emscripten.org/docs/porting/pthreads.html#allocator-performance
-    -sMALLOC=mimalloc
+  if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+    # Only enable the below in non-debug builds because it conflicts with -fsanitize=address
+    
+    target_link_options(delphy PRIVATE
+      # Use a scalable memory allocator (the default allocator has high contention
+      # and is slow in multi-threaded environments)
+      # See https://emscripten.org/docs/porting/pthreads.html#allocator-performance
+      -sMALLOC=mimalloc
     )
+  endif()
 endif()
