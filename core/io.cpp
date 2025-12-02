@@ -123,6 +123,9 @@ auto read_maple(
   // Ignore reference id
 
   // Now read reference sequence
+  // Any ambiguous sites in reference are silently turned into A, but we flag any sequence that includes
+  // a mutation to those sites
+  auto ambiguous_sites = absl::flat_hash_set<Site_index>{};
   if (not getline(is, line)) {
     throw std::runtime_error("ERROR: Unexpected EOF while reading MAPLE file reference sequence");
   }
@@ -139,10 +142,15 @@ auto read_maple(
       if (std::isspace(c)) {
           continue;  // Ignore spaces and Unix/Mac/DOS line termination nonsense
       }
-      
-      if (is_valid_real_seq_letter(c)) {
-        auto s = char_to_real_seq_letter(c);
-        result.ref_sequence.push_back(s);
+
+      if (is_valid_seq_letter(c)) {
+        if (is_valid_real_seq_letter(c)) {
+          auto s = char_to_real_seq_letter(c);
+          result.ref_sequence.push_back(s);
+        } else {
+          ambiguous_sites.insert(std::ssize(result.ref_sequence));
+          result.ref_sequence.push_back(Real_seq_letter::A);
+        }
       } else {
         throw std::runtime_error(absl::StrFormat("Reference sequence has invalid state '%c' at site %d",
                                                  c, std::ssize(result.ref_sequence) + 1));
@@ -203,10 +211,11 @@ auto read_maple(
       if (is_ambiguous(s)) {
         // Gap or Missing Data
         auto start_site = Site_index{};  ss >> start_site;  --start_site;  // 0-based indexing
-        auto gap_len = Site_index{};  ss >> gap_len;
+        auto valid_start_site = not ss.fail();  // differs from ss.good() in that EOF is not a failing condition
+        auto gap_len = Site_index{1};  ss >> gap_len;  // Default to gap size of 1 if none indicated (e.g., for '?')
         auto end_site = start_site + gap_len;
 
-        if (ss
+        if (valid_start_site
             && (0 <= start_site && start_site < L) && (0 < end_site && end_site <= L)
             && (start_site < end_site)) {
           tip_desc.missations.intervals.insert(Site_interval{start_site, end_site});
@@ -222,8 +231,11 @@ auto read_maple(
         auto b = to_real_seq_letter(s);
         if (ss
             && (0 <= l && l < L)
-            && (a != b)) {
-          tip_desc.seq_deltas.push_back({l, a, b});
+            && ((a != b) || (a == Real_seq_letter::T)) // Sometimes MAPLE files have spurious "T->U" mutations 
+            && not ambiguous_sites.contains(l)) {
+          if (not (a == Real_seq_letter::T && b == Real_seq_letter::T)) {  // See above
+            tip_desc.seq_deltas.push_back({l, a, b});
+          }
         } else {
           ignore_this_tip = true;
           warning_hook(tip_desc.name, Sequence_warnings::Invalid_mutation{a, l, b});
