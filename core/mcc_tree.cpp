@@ -172,6 +172,7 @@ auto Mcc_tree::calculate_derived_quantities() -> void {
     }
 
     CHECK_GT(num_exact_matches, 0);  // Corresponding node is always monophyletic in master base tree
+    at(mcc_node).set_posterior_support(static_cast<double>(num_exact_matches) / num_base_trees());
     at(mcc_node).set_t(sum_t / num_exact_matches);
     at(mcc_node).set_t_mrca(sum_t_mrca / num_base_trees());
   }

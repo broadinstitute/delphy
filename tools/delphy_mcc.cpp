@@ -80,6 +80,10 @@ auto output_mcc_tree(const Mcc_tree& mcc_tree, std::ostream& os) -> void {
       if (mcc_tree.at(node).is_tip()) {
         os << node_to_tip_index.at(node);
       }
+      
+      auto posterior = mcc_tree.at(node).posterior_support();
+      os << "[&posterior=" << posterior << "]";
+      
       auto days = node == mcc_tree.root
           ? 0.0
           : mcc_tree.at(node).t_mrca() - mcc_tree.at_parent_of(node).t_mrca();

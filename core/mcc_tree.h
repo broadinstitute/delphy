@@ -42,6 +42,10 @@ class Mcc_node : public Binary_node {
   auto corresponding_node_infos() const -> const Base_tree_vector<Mcc_corresponding_node_info>& {
     return corresponding_node_infos_; }
 
+  // Posterior support = fraction of base trees with an exact match for this node
+  auto posterior_support() const -> double { return posterior_support_; }
+  auto set_posterior_support(double p) -> void { posterior_support_ = p; }
+
   // Mean of base tree node times over exact matches only
   auto t() const -> double { return t_; }
   auto set_t(double t) -> void { t_ = t; }
@@ -54,6 +58,7 @@ class Mcc_node : public Binary_node {
   Base_tree_vector<Mcc_corresponding_node_info> corresponding_node_infos_;
   double t_{};
   double t_mrca_{};
+  double posterior_support_{};
 };
 
 class Mcc_tree : public Tree<Mcc_node> {
