@@ -14,6 +14,9 @@ and intuitively use Delphy (currently at [https://delphy.fathom.info](https://de
 collaboration with [Fathom Information Design](https://fathom.info), and its separately licensed sources are hosted
 [here](https://github.com/fathominfo/delphy-web).
 
+**NOTE**: As of 17 Dec 2025, we have relicensed Delphy under an open-source [MIT license](LICENSE), and we have withdrawn our
+patent application, instead dedicating the relevant IP to the public domain.
+
 References
 ----------
 
