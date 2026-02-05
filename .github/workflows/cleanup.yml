@@ -1,0 +1,45 @@
+name: Cleanup
+
+on:
+  delete:
+    # Triggered when a branch or tag is deleted
+
+permissions:
+  contents: read
+
+jobs:
+  cleanup-docker-tag:
+    # Only run for branch deletions, not tag deletions
+    if: github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Sanitize branch name to Docker tag
+        id: sanitize
+        run: |
+          # Match docker/metadata-action sanitization:
+          # - Replace invalid chars with dashes
+          # - Remove leading/trailing dashes
+          # - Lowercase
+          BRANCH="${{ github.event.ref }}"
+          TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/^-*//' | sed 's/-*$//' | tr '[:upper:]' '[:lower:]')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Sanitized branch '$BRANCH' to tag '$TAG'"
+
+      - name: Delete Docker tag from Quay.io
+        run: |
+          TAG="${{ steps.sanitize.outputs.tag }}"
+          REPO="quay.io/broadinstitute/delphy"
+
+          echo "Attempting to delete tag '$TAG' from $REPO"
+
+          # Use skopeo to delete the tag using robot account credentials
+          # Note: This requires the robot account to have admin/write permissions
+          skopeo delete \
+            --creds "${{ secrets.DOCKER_USER }}:${{ secrets.DOCKER_PASSWORD }}" \
+            "docker://${REPO}:${TAG}" || {
+              echo "::warning::Failed to delete tag '$TAG' - it may not exist or credentials lack permissions"
+              exit 0  # Don't fail the workflow if tag doesn't exist
+            }
+
+          echo "Successfully deleted tag '$TAG' from $REPO"

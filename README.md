@@ -1,6 +1,10 @@
 Delphy
 ======
 
+[![CI](https://github.com/broadinstitute/delphy/actions/workflows/ci.yml/badge.svg)](https://github.com/broadinstitute/delphy/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/broadinstitute/delphy/graph/badge.svg)](https://codecov.io/gh/broadinstitute/delphy)
+[![Docker Repository on Quay](https://quay.io/repository/broadinstitute/delphy/status "Docker Repository on Quay")](https://quay.io/repository/broadinstitute/delphy)
+
 Delphy is a fast, scalable, accurate and accessible tool for Bayesian phylogenetics based on Explicit Mutation-Annotated
 Trees (EMATs).  EMATs are an extension of the Mutation-Annotated Trees (MATs) introduced by
 [UShER](https://github.com/yatisht/usher) where nodes have explicit times, mutations are represented as explicit timed
