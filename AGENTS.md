@@ -116,7 +116,11 @@ GitHub Actions CI runs on every push and PR. See [.github/workflows/ci.yml](.git
    - Tag pushes: tagged with version
    - Main branch: also tagged as `latest`
 
-4. **Release Assets** - On tag push, attaches tarballs to GitHub release
+4. **WASM Build** - WebAssembly build using Emscripten
+
+5. **Release Assets** - On tag push, attaches tarballs to GitHub release
+
+6. **Cleanup** - On branch delete, removes corresponding Docker tag from quay.io
 
 ### Build Artifacts
 
