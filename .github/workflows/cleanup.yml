@@ -6,6 +6,7 @@ on:
 
 permissions:
   contents: read
+  packages: write
 
 jobs:
   cleanup-docker-tag:
@@ -26,15 +27,30 @@ jobs:
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "Sanitized branch '$BRANCH' to tag '$TAG'"
 
-      - name: Delete Docker tag from Quay.io
+      - name: Delete Docker tag from GHCR
         run: |
           TAG="${{ steps.sanitize.outputs.tag }}"
-          REPO="quay.io/broadinstitute/delphy"
+          REPO="ghcr.io/${{ github.repository }}"
 
           echo "Attempting to delete tag '$TAG' from $REPO"
 
-          # Use skopeo to delete the tag using robot account credentials
-          # Note: This requires the robot account to have admin/write permissions
+          skopeo delete \
+            --creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            "docker://${REPO}:${TAG}" || {
+              echo "::warning::Failed to delete tag '$TAG' from GHCR - it may not exist or credentials lack permissions"
+              exit 0  # Don't fail the workflow if tag doesn't exist
+            }
+
+          echo "Successfully deleted tag '$TAG' from $REPO"
+
+      - name: Delete Docker tag from alternate registry
+        if: vars.DOCKER_ALT_REGISTRY != ''
+        run: |
+          TAG="${{ steps.sanitize.outputs.tag }}"
+          REPO="${{ vars.DOCKER_ALT_REGISTRY }}/${{ github.repository }}"
+
+          echo "Attempting to delete tag '$TAG' from $REPO"
+
           skopeo delete \
             --creds "${{ secrets.DOCKER_USER }}:${{ secrets.DOCKER_PASSWORD }}" \
             "docker://${REPO}:${TAG}" || {

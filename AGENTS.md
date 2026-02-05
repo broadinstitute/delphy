@@ -111,7 +111,8 @@ GitHub Actions CI runs on every push and PR. See [.github/workflows/ci.yml](.git
 
 2. **Code Coverage** - Runs separately with `--coverage` flags, uploads to Codecov
 
-3. **Docker** - Multi-arch image pushed to `quay.io/broadinstitute/delphy`
+3. **Docker** - Multi-arch image pushed to `ghcr.io/broadinstitute/delphy` (primary)
+   - Optionally also pushed to an alternate registry (e.g. `quay.io`) when `DOCKER_ALT_REGISTRY` repo variable is set
    - Branch pushes: tagged with branch name
    - Tag pushes: tagged with version
    - Main branch: also tagged as `latest`
@@ -120,7 +121,7 @@ GitHub Actions CI runs on every push and PR. See [.github/workflows/ci.yml](.git
 
 5. **Release Assets** - On tag push, attaches tarballs to GitHub release
 
-6. **Cleanup** - On branch delete, removes corresponding Docker tag from quay.io
+6. **Cleanup** - On branch delete, removes corresponding Docker tag from GHCR (and alt registry if configured)
 
 ### Build Artifacts
 
@@ -129,10 +130,11 @@ GitHub Actions CI runs on every push and PR. See [.github/workflows/ci.yml](.git
 - `delphy_mcc` - MCC tree computation utility
 - `beast_trees_to_dphy` - Format conversion utility
 
-### Required Secrets
+### Required Secrets & Variables
 
-- `DOCKER_USER`, `DOCKER_PASSWORD` - quay.io credentials
 - `CODECOV_TOKEN` - Code coverage uploads
+- `DOCKER_ALT_REGISTRY` (repo variable, optional) - Alternate Docker registry (e.g. `quay.io`)
+- `DOCKER_USER`, `DOCKER_PASSWORD` (secrets, optional) - Credentials for the alternate registry
 
 ---
 
