@@ -54,6 +54,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential cmake
 
+      - name: Select Xcode 16 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+          xcodebuild -version
+
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
         run: |
@@ -172,6 +178,12 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential cmake libsdl2-dev libsdl2-ttf-dev
+
+      - name: Select Xcode 16 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+          xcodebuild -version
 
       - name: Install system dependencies (macOS)
         if: runner.os == 'macOS'
