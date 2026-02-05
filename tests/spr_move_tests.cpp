@@ -1955,8 +1955,9 @@ TEST_F(Spr_move_simple_test, sample_mutational_history) {
   auto expected_p_unusual = 0.17828634147519676;
   auto expected_p_super_unusual = 0.04133406505439621;
 
-  EXPECT_THAT(p_unusual, testing::DoubleNear(expected_p_unusual, 2*err_p_unusual));
-  EXPECT_THAT(p_super_unusual, testing::DoubleNear(expected_p_super_unusual, 2*err_p_super_unusual));
+  // Use 3 sigma tolerance for CI reliability (~0.3% false failure rate instead of ~5%)
+  EXPECT_THAT(p_unusual, testing::DoubleNear(expected_p_unusual, 3*err_p_unusual));
+  EXPECT_THAT(p_super_unusual, testing::DoubleNear(expected_p_super_unusual, 3*err_p_super_unusual));
 }
 
 }  // namespace delphy
