@@ -378,6 +378,9 @@ jobs:
     needs: [build-cli, build-ui]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
 
     steps:
       - name: Checkout
@@ -418,18 +421,35 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to Quay.io
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
-          registry: quay.io
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to alternate registry
+        if: vars.DOCKER_ALT_REGISTRY != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.DOCKER_ALT_REGISTRY }}
           username: ${{ secrets.DOCKER_USER }}
           password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Compute Docker image list
+        id: images
+        run: |
+          IMAGES="ghcr.io/${{ github.repository }}"
+          if [ -n "${{ vars.DOCKER_ALT_REGISTRY }}" ]; then
+            IMAGES="${IMAGES},${{ vars.DOCKER_ALT_REGISTRY }}/${{ github.repository }}"
+          fi
+          echo "list=${IMAGES}" >> "$GITHUB_OUTPUT"
 
       - name: Generate Docker metadata
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: quay.io/broadinstitute/delphy
+          images: ${{ steps.images.outputs.list }}
           tags: |
             type=ref,event=branch
             type=ref,event=tag
