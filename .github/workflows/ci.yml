@@ -1,0 +1,292 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['*']
+  pull_request:
+    branches: [main]
+
+# Minimal permissions by default - jobs expand as needed
+permissions:
+  contents: read
+
+env:
+  CONAN_VERSION: '2.8.1'
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+            artifact_suffix: linux-x86_64
+            static_linking: true
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            artifact_suffix: linux-arm64
+            static_linking: true
+          - os: macos-14
+            arch: arm64
+            artifact_suffix: macos-arm64
+            static_linking: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libsdl2-dev libsdl2-ttf-dev
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake sdl2 sdl2_ttf
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/Library/Caches/pip
+          key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
+
+      - name: Cache Conan
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ runner.os }}-${{ matrix.arch }}-conan-${{ hashFiles('conanfile.txt') }}-v1
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-conan-
+
+      - name: Install Conan
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'conan==${{ env.CONAN_VERSION }}'
+
+      - name: Configure Conan profile
+        run: conan profile detect --force
+
+      - name: Install dependencies with Conan
+        run: |
+          conan install . --output-folder=build/release --build=missing --settings=build_type=Release
+
+      - name: Configure CMake (with static linking)
+        if: matrix.static_linking
+        run: |
+          cmake --preset conan-release \
+            -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_EXE_LINKER_FLAGS="-static"
+
+      - name: Configure CMake (without static linking)
+        if: ${{ !matrix.static_linking }}
+        run: cmake --preset conan-release
+
+      - name: Build
+        run: cmake --build --preset conan-release --parallel
+
+      - name: Verify binaries
+        run: |
+          ./build/release/delphy --version
+          ./build/release/delphy_mcc --help || true
+
+      - name: Run tests
+        run: |
+          ./build/release/tests/tests --gtest_output=xml:test-results.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.artifact_suffix }}
+          path: test-results.xml
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: delphy-${{ matrix.artifact_suffix }}
+          path: |
+            build/release/delphy
+            build/release/delphy_mcc
+            build/release/delphy_ui
+            build/release/beast_trees_to_dphy
+          if-no-files-found: error
+
+  coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake libsdl2-dev libsdl2-ttf-dev lcov
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
+
+      - name: Cache Conan
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ runner.os }}-x86_64-conan-coverage-${{ hashFiles('conanfile.txt') }}-v1
+          restore-keys: |
+            ${{ runner.os }}-x86_64-conan-
+
+      - name: Install Conan
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'conan==${{ env.CONAN_VERSION }}'
+
+      - name: Configure Conan profile
+        run: conan profile detect --force
+
+      - name: Install dependencies with Conan
+        run: |
+          conan install . --output-folder=build/coverage --build=missing --settings=build_type=Debug
+
+      - name: Configure CMake with coverage
+        run: |
+          cmake -S . -B build/coverage \
+            -DCMAKE_TOOLCHAIN_FILE=build/coverage/conan_toolchain.cmake \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+
+      - name: Build
+        run: cmake --build build/coverage --parallel
+
+      - name: Run tests
+        run: ./build/coverage/tests/tests
+
+      - name: Generate coverage report
+        run: |
+          lcov --capture --directory build/coverage --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' '*/third-party/*' '*/tests/*' '*/_deps/*' --output-file coverage.info
+          lcov --list coverage.info
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.info
+          fail_ci_if_error: true
+          verbose: true
+
+  docker:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Linux x86_64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: delphy-linux-x86_64
+          path: artifacts/linux/amd64
+
+      - name: Download Linux ARM64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: delphy-linux-arm64
+          path: artifacts/linux/arm64
+
+      - name: Make binaries executable
+        run: |
+          chmod +x artifacts/linux/amd64/*
+          chmod +x artifacts/linux/arm64/*
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Quay.io
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.DOCKER_USER }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: quay.io/broadinstitute/delphy
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          flavor: |
+            latest=false
+
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ci
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release-artifacts:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: delphy-*
+          path: artifacts
+
+      - name: Create release tarballs
+        run: |
+          cd artifacts
+          for dir in delphy-*/; do
+            name="${dir%/}"
+            tar -czvf "${name}.tar.gz" -C "$dir" .
+          done
+          ls -la *.tar.gz
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.tar.gz

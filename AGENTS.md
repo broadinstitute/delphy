@@ -34,6 +34,8 @@ These are the most important conventions from CONTRIBUTING.md that you MUST foll
 
 ```
 delphy/
+├── .github/workflows/  # GitHub Actions CI/CD
+│   └── ci.yml          # Main CI workflow
 ├── core/           # Core library (phylogenetic algorithms, ~20K lines)
 │   ├── tree.h          # Generic tree data structures
 │   ├── phylo_tree.h    # Phylogenetic tree with mutations and times
@@ -93,6 +95,40 @@ cmake --build --preset conan-release
 ```
 
 See [INSTALL.md](INSTALL.md) for WebAssembly builds and detailed instructions.
+
+---
+
+## CI/CD
+
+GitHub Actions CI runs on every push and PR. See [.github/workflows/ci.yml](.github/workflows/ci.yml).
+
+### What CI Does
+
+1. **Build & Test** - Builds on 3 platforms in parallel:
+   - `ubuntu-latest` (x86_64) - static linking
+   - `ubuntu-24.04-arm` (ARM64) - static linking
+   - `macos-14` (ARM64) - dynamic linking
+
+2. **Code Coverage** - Runs separately with `--coverage` flags, uploads to Codecov
+
+3. **Docker** - Multi-arch image pushed to `quay.io/broadinstitute/delphy`
+   - Branch pushes: tagged with branch name
+   - Tag pushes: tagged with version
+   - Main branch: also tagged as `latest`
+
+4. **Release Assets** - On tag push, attaches tarballs to GitHub release
+
+### Build Artifacts
+
+- `delphy` - Main CLI tool
+- `delphy_ui` - SDL2-based visualization UI
+- `delphy_mcc` - MCC tree computation utility
+- `beast_trees_to_dphy` - Format conversion utility
+
+### Required Secrets
+
+- `DOCKER_USER`, `DOCKER_PASSWORD` - quay.io credentials
+- `CODECOV_TOKEN` - Code coverage uploads
 
 ---
 
