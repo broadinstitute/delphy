@@ -15,7 +15,8 @@ env:
   CONAN_VERSION: '2.8.1'
 
 jobs:
-  build-and-test:
+  # Job 1: Build CLI tools with static linking (Linux) or dynamic (macOS)
+  build-cli:
     strategy:
       fail-fast: false
       matrix:
@@ -32,6 +33,125 @@ jobs:
             arch: arm64
             artifact_suffix: macos-arm64
             static_linking: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/Library/Caches/pip
+          key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
+
+      - name: Cache Conan
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ runner.os }}-${{ matrix.arch }}-conan-cli-${{ hashFiles('conanfile.txt') }}-v2
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-conan-
+
+      - name: Install Conan
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'conan==${{ env.CONAN_VERSION }}'
+
+      - name: Configure Conan profile
+        run: conan profile detect --force
+
+      - name: Fix Conan profile (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sed -i '' 's/compiler.version=.*/compiler.version=16/' ~/.conan2/profiles/default
+
+      - name: Install dependencies with Conan
+        run: |
+          conan install . --output-folder=build/release --build=missing --settings=build_type=Release
+
+      - name: Configure CMake (with static linking)
+        if: matrix.static_linking
+        run: |
+          cmake --preset conan-release \
+            -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_EXE_LINKER_FLAGS="-static"
+
+      - name: Configure CMake (without static linking)
+        if: ${{ !matrix.static_linking }}
+        run: cmake --preset conan-release
+
+      - name: Build CLI tools
+        run: |
+          cmake --build --preset conan-release --target delphy --parallel
+          cmake --build --preset conan-release --target delphy_mcc --parallel
+          cmake --build --preset conan-release --target beast_trees_to_dphy --parallel
+          cmake --build --preset conan-release --target tests --parallel
+
+      - name: Verify binaries
+        run: |
+          ./build/release/delphy --version
+          ./build/release/delphy_mcc --help || true
+
+      - name: Run tests
+        run: |
+          ./build/release/tests/tests --gtest_output=xml:test-results.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.artifact_suffix }}
+          path: test-results.xml
+
+      - name: Upload CLI artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: delphy-cli-${{ matrix.artifact_suffix }}
+          path: |
+            build/release/delphy
+            build/release/delphy_mcc
+            build/release/beast_trees_to_dphy
+          if-no-files-found: error
+
+  # Job 2: Build delphy_ui separately (no static linking)
+  build-ui:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+            artifact_suffix: linux-x86_64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            artifact_suffix: linux-arm64
+          - os: macos-14
+            arch: arm64
+            artifact_suffix: macos-arm64
 
     runs-on: ${{ matrix.os }}
 
@@ -70,7 +190,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.conan2
-          key: ${{ runner.os }}-${{ matrix.arch }}-conan-${{ hashFiles('conanfile.txt') }}-v1
+          key: ${{ runner.os }}-${{ matrix.arch }}-conan-ui-${{ hashFiles('conanfile.txt') }}-v2
           restore-keys: |
             ${{ runner.os }}-${{ matrix.arch }}-conan-
 
@@ -82,52 +202,91 @@ jobs:
       - name: Configure Conan profile
         run: conan profile detect --force
 
+      - name: Fix Conan profile (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sed -i '' 's/compiler.version=.*/compiler.version=16/' ~/.conan2/profiles/default
+
       - name: Install dependencies with Conan
         run: |
           conan install . --output-folder=build/release --build=missing --settings=build_type=Release
 
-      - name: Configure CMake (with static linking)
-        if: matrix.static_linking
-        run: |
-          cmake --preset conan-release \
-            -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
-            -DBUILD_SHARED_LIBS=OFF \
-            -DCMAKE_EXE_LINKER_FLAGS="-static"
-
-      - name: Configure CMake (without static linking)
-        if: ${{ !matrix.static_linking }}
+      - name: Configure CMake
         run: cmake --preset conan-release
 
-      - name: Build
-        run: cmake --build --preset conan-release --parallel
+      - name: Build delphy_ui
+        run: cmake --build --preset conan-release --target delphy_ui --parallel
 
-      - name: Verify binaries
-        run: |
-          ./build/release/delphy --version
-          ./build/release/delphy_mcc --help || true
-
-      - name: Run tests
-        run: |
-          ./build/release/tests/tests --gtest_output=xml:test-results.xml
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: test-results-${{ matrix.artifact_suffix }}
-          path: test-results.xml
-
-      - name: Upload build artifacts
+      - name: Upload UI artifact
         uses: actions/upload-artifact@v4
         with:
-          name: delphy-${{ matrix.artifact_suffix }}
-          path: |
-            build/release/delphy
-            build/release/delphy_mcc
-            build/release/delphy_ui
-            build/release/beast_trees_to_dphy
+          name: delphy-ui-${{ matrix.artifact_suffix }}
+          path: build/release/delphy_ui
           if-no-files-found: error
 
+  # Job 3: WASM build
+  wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
+
+      - name: Cache Conan
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ runner.os }}-wasm-conan-${{ hashFiles('conanfile.txt', 'wasm.profile') }}-v2
+          restore-keys: |
+            ${{ runner.os }}-wasm-conan-
+
+      - name: Install Conan
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'conan==${{ env.CONAN_VERSION }}'
+
+      - name: Configure Conan profile
+        run: conan profile detect --force
+
+      - name: Install dependencies with Conan (WASM)
+        run: |
+          conan install . --profile=wasm.profile --output-folder=build/wasm-release --build=missing --settings=build_type=Release
+
+      - name: Configure CMake (WASM)
+        run: cmake --preset conan-emscripten-release
+
+      - name: Build WASM
+        run: cmake --build --preset conan-emscripten-release --parallel
+
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: delphy-wasm
+          path: |
+            build/wasm-release/delphy.js
+            build/wasm-release/delphy.wasm
+          if-no-files-found: warn
+
+  # Job 4: Code coverage
   coverage:
     runs-on: ubuntu-latest
 
@@ -146,7 +305,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential cmake libsdl2-dev libsdl2-ttf-dev lcov
+          sudo apt-get install -y build-essential cmake lcov
 
       - name: Cache pip
         uses: actions/cache@v4
@@ -158,7 +317,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.conan2
-          key: ${{ runner.os }}-x86_64-conan-coverage-${{ hashFiles('conanfile.txt') }}-v1
+          key: ${{ runner.os }}-x86_64-conan-coverage-${{ hashFiles('conanfile.txt') }}-v2
           restore-keys: |
             ${{ runner.os }}-x86_64-conan-
 
@@ -190,8 +349,8 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          lcov --capture --directory build/coverage --output-file coverage.info
-          lcov --remove coverage.info '/usr/*' '*/third-party/*' '*/tests/*' '*/_deps/*' --output-file coverage.info
+          lcov --capture --directory build/coverage --output-file coverage.info --ignore-errors mismatch
+          lcov --remove coverage.info '/usr/*' '*/third-party/*' '*/tests/*' '*/_deps/*' --output-file coverage.info --ignore-errors unused
           lcov --list coverage.info
 
       - name: Upload to Codecov
@@ -202,8 +361,9 @@ jobs:
           fail_ci_if_error: true
           verbose: true
 
+  # Job 5: Docker multi-arch image
   docker:
-    needs: build-and-test
+    needs: [build-cli, build-ui]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
 
@@ -211,16 +371,28 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download Linux x86_64 artifacts
+      - name: Download Linux x86_64 CLI artifacts
         uses: actions/download-artifact@v4
         with:
-          name: delphy-linux-x86_64
+          name: delphy-cli-linux-x86_64
           path: artifacts/linux/amd64
 
-      - name: Download Linux ARM64 artifacts
+      - name: Download Linux x86_64 UI artifact
         uses: actions/download-artifact@v4
         with:
-          name: delphy-linux-arm64
+          name: delphy-ui-linux-x86_64
+          path: artifacts/linux/amd64
+
+      - name: Download Linux ARM64 CLI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: delphy-cli-linux-arm64
+          path: artifacts/linux/arm64
+
+      - name: Download Linux ARM64 UI artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: delphy-ui-linux-arm64
           path: artifacts/linux/arm64
 
       - name: Make binaries executable
@@ -263,27 +435,45 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+  # Job 6: Release artifacts
   release-artifacts:
-    needs: build-and-test
+    needs: [build-cli, build-ui, wasm]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
 
     steps:
-      - name: Download all build artifacts
+      - name: Download all CLI artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: delphy-*
+          pattern: delphy-cli-*
           path: artifacts
 
-      - name: Create release tarballs
+      - name: Download all UI artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: delphy-ui-*
+          path: artifacts
+
+      - name: Download WASM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: delphy-wasm
+          path: artifacts/delphy-wasm
+
+      - name: Combine artifacts and create release tarballs
         run: |
           cd artifacts
-          for dir in delphy-*/; do
-            name="${dir%/}"
-            tar -czvf "${name}.tar.gz" -C "$dir" .
+          # Combine CLI and UI for each platform
+          for suffix in linux-x86_64 linux-arm64 macos-arm64; do
+            mkdir -p "delphy-${suffix}"
+            cp delphy-cli-${suffix}/* "delphy-${suffix}/" 2>/dev/null || true
+            cp delphy-ui-${suffix}/* "delphy-${suffix}/" 2>/dev/null || true
+            tar -czvf "delphy-${suffix}.tar.gz" -C "delphy-${suffix}" .
           done
+          # WASM tarball
+          tar -czvf "delphy-wasm.tar.gz" -C delphy-wasm .
           ls -la *.tar.gz
 
       - name: Upload release assets
