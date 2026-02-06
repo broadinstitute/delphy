@@ -39,8 +39,11 @@ function(CheckGitVersion)
         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
         OUTPUT_VARIABLE GIT_STATUS_UNCOMMITTED_CHANGES
         OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE GIT_STATUS_RESULT
         )
-    if ("${GIT_STATUS_UNCOMMITTED_CHANGES}" STREQUAL "")
+    if (GIT_STATUS_RESULT)
+        set(GIT_UNCOMMITED_CHANGES false)
+    elseif ("${GIT_STATUS_UNCOMMITTED_CHANGES}" STREQUAL "")
         set(GIT_UNCOMMITED_CHANGES false)
     else ()
         set(GIT_UNCOMMITED_CHANGES true)
@@ -52,10 +55,25 @@ function(CheckGitVersion)
         WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
         OUTPUT_VARIABLE TWO_GIT_HASHES_STR
         OUTPUT_STRIP_TRAILING_WHITESPACE
+        RESULT_VARIABLE GIT_LOG_RESULT
         )
-    string(REPLACE "\n" ";" TWO_GIT_HASHES_LIST "${TWO_GIT_HASHES_STR}")
-    LIST(GET TWO_GIT_HASHES_LIST 0 GIT_HASH)
-    LIST(GET TWO_GIT_HASHES_LIST 1 PREV_GIT_HASH)
+    if (GIT_LOG_RESULT)
+        set(GIT_HASH "unknown")
+        set(PREV_GIT_HASH "unknown")
+    else ()
+        string(REPLACE "\n" ";" TWO_GIT_HASHES_LIST "${TWO_GIT_HASHES_STR}")
+        list(LENGTH TWO_GIT_HASHES_LIST TWO_GIT_HASHES_LEN)
+        if (TWO_GIT_HASHES_LEN GREATER_EQUAL 1)
+            list(GET TWO_GIT_HASHES_LIST 0 GIT_HASH)
+        else ()
+            set(GIT_HASH "unknown")
+        endif ()
+        if (TWO_GIT_HASHES_LEN GREATER_EQUAL 2)
+            list(GET TWO_GIT_HASHES_LIST 1 PREV_GIT_HASH)
+        else ()
+            set(PREV_GIT_HASH "unknown")
+        endif ()
+    endif ()
 
     CheckGitRead(GIT_HASH_CACHE PREV_GIT_HASH_CACHE GIT_UNCOMMITED_CHANGES_CACHE)
     if (NOT EXISTS ${post_configure_dir})
