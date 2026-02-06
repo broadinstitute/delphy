@@ -52,7 +52,7 @@ jobs:
           echo "Attempting to delete tag '$TAG' from $REPO"
 
           skopeo delete \
-            --creds "${{ secrets.DOCKER_USER }}:${{ secrets.DOCKER_PASSWORD }}" \
+            --creds "${{ secrets.DOCKER_USERNAME }}:${{ secrets.DOCKER_PASSWORD }}" \
             "docker://${REPO}:${TAG}" || {
               echo "::warning::Failed to delete tag '$TAG' - it may not exist or credentials lack permissions"
               exit 0  # Don't fail the workflow if tag doesn't exist
