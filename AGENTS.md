@@ -183,7 +183,7 @@ for (const auto& node : index_order_traversal(tree)) { ... }
 
 3. **Times are fractional days** - `t` values are days since 2020-01-01.
 
-4. **Reference sequence is the baseline** - `Phylo_tree::ref_sequence` is the root state; mutations are deltas from it.
+4. **Reference sequence is the baseline** - `Phylo_tree::ref_sequence` is an arbitrary reference state, usually close to the root; mutations are deltas from it.  The mutations above the root node list the deltas from the reference state to the root state.
 
 5. **Branch vs Node** - A branch is identified by its endpoint. Branch X connects parent(X) to X.
 
