@@ -110,11 +110,15 @@ jobs:
         if: ${{ !matrix.static_linking }}
         run: cmake --preset conan-release
 
+      # Don't build and ship `beast_trees_to_dphy`: this is a one-off utility program that was used
+      # to investigate the correspondence between Delphy and BEAST X in the mpox analyses
+      # of Parker et al 2025 (subtly different evolution models lead to subtly different clades
+      # near the top, which result from the BEAST X model completely disallowing T->C
+      # or A->G mutations in sites with APOBEC3 context).
       - name: Build CLI tools
         run: |
           cmake --build --preset conan-release --target delphy --parallel
           cmake --build --preset conan-release --target delphy_mcc --parallel
-          cmake --build --preset conan-release --target beast_trees_to_dphy --parallel
           cmake --build --preset conan-release --target tests --parallel
 
       - name: Verify binaries
@@ -140,7 +144,6 @@ jobs:
           path: |
             build/release/delphy
             build/release/delphy_mcc
-            build/release/beast_trees_to_dphy
           if-no-files-found: error
 
   # Job 2: Build delphy_ui separately (no static linking)
