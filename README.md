@@ -29,13 +29,13 @@ References
 * [Whitepaper with overview of key ideas and accuracy+speed benchmarks](delphywp.pdf)
 
 Installation
--------------------
+------------
 Pre-built Delphy binaries are available for Linux (x86_64 and ARM64) and macOS (ARM64) via [GitHub Releases](https://github.com/broadinstitute/delphy/releases), and as multi-arch Docker images from [GitHub Container Registry](https://github.com/broadinstitute/delphy/pkgs/container/delphy).  Delphy can also be compiled from source as a native command-line program or as a WebAssembly bundle for [`delphy-web`](https://github.com/fathominfo/delphy-web).  See [`INSTALL.md`](INSTALL.md) for all installation options, including building from source.  Delphy does not require special hardware, such as a GPU.
 
 Delphy was developed and is primarily tested under Linux (Ubuntu 22.04.4 LTS and Ubuntu 24.04 LTS, x86-64).  [Delphy-web](https://github.com/fathominfo/delphy-web), deployed at [https://delphy.fathom.info](https://delphy.fathom.info), should work in any modern web browser; see the [Delphy-web README.md](https://github.com/fathominfo/delphy-web) for specific browsers and operating systems on which it has been tested.
 
 Google Colab Tutorials
--------------------
+----------------------
 Ready-to-use Google Colab tutorials for downloading and formatting sequencing data from the [NCBI Virus database](https://www.ncbi.nlm.nih.gov/labs/virus/vssi/#/), as well as user-provided data, can be accessed [here](https://colab.research.google.com/github/broadinstitute/delphy/blob/main/tutorials/delphy_workflow.ipynb) (blank notebook) and [here](https://colab.research.google.com/github/broadinstitute/delphy/blob/main/tutorials/delphy_workflow_sars_example.ipynb) (SARS-CoV-2 example).  These notebooks streamline the uniform formatting of sequencing data and the associated metadata for input into Delphy, and then run Delphy using a pre-compiled binary.  The output files can be visualized on the [Delphy web interface](https://delphy.fathom.info).  
 
 Credits and Acknowledgements
