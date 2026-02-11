@@ -205,6 +205,7 @@ jobs:
           name: delphy-wasm
           path: |
             build/wasm-release/delphy.js
+            build/wasm-release/delphy.worker.js
             build/wasm-release/delphy.wasm
           if-no-files-found: warn
 
