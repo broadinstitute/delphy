@@ -403,7 +403,7 @@ jobs:
       - name: Combine artifacts and create release tarballs
         run: |
           cd artifacts
-          for suffix in linux-x86_64 linux-arm64 macos-arm64; do
+          for suffix in linux-x86_64 linux-x86_64-ubuntu22 linux-arm64 macos-arm64; do
             tar -czvf "delphy-${suffix}.tar.gz" -C "delphy-${suffix}" .
           done
           # WASM tarball
