@@ -1,3 +1,55 @@
+# Pre-built binaries
+
+The easiest way to get started with Delphy is to use pre-built binaries. No build tools or dependencies are required.
+
+### GitHub Releases
+
+Pre-built binaries are available as tarballs attached to [GitHub Releases](https://github.com/broadinstitute/delphy/releases) for the following platforms:
+
+- `delphy-linux-x86_64.tar.gz` — Linux x86_64 (statically linked)
+- `delphy-linux-arm64.tar.gz` — Linux ARM64 (statically linked)
+- `delphy-macos-arm64.tar.gz` — macOS ARM64 (Apple Silicon)
+- `delphy-wasm.tar.gz` — WebAssembly bundle
+
+The Linux and macOS tarballs contain the `delphy` and `delphy_mcc` tools.  The WebAssembly tarball contains a WASM bundle that implements the core of Delphy (see [`delphy-web`](https://github.com/fathominfo/delphy-web) for the Delphy Web interface built atop this bundle, usually deployed at https://delphy.fathom.info).
+
+To install, download and extract the tarball for your platform:
+```
+tar -xzvf delphy-linux-x86_64.tar.gz
+./delphy --version
+```
+
+### Docker
+
+Multi-arch Docker images (linux/amd64 and linux/arm64) are available from GitHub Container Registry:
+
+```
+docker run --rm ghcr.io/broadinstitute/delphy:latest delphy --version
+```
+
+Tagged releases are available as `ghcr.io/broadinstitute/delphy:<version>`.
+
+To run an inference on a local FASTA file:
+```
+docker run --rm -v "$PWD":/data ghcr.io/broadinstitute/delphy:latest \
+    delphy --v0-in-fasta /data/input.fasta \
+    --v0-steps 10000000 \
+    --v0-out-log-file /data/delphy.log \
+    --v0-log-every 200000 \
+    --v0-out-trees-file /data/delphy.trees \
+    --v0-tree-every 2000000
+```
+
+### Google Colab tutorials
+
+Ready-to-use Google Colab tutorials that download and run pre-compiled Delphy binaries are also available — see [Google Colab Tutorials](README.md#google-colab-tutorials) in the README for details.
+
+---
+
+# Building from source
+
+The remainder of this document describes how to build Delphy from source.
+
 # Compatibility
 
 These build instructions were last tested on
@@ -115,7 +167,6 @@ Delphy Version 0.996 (build 2022, commit 33c06a8)
 If that works, you can try to run a short inference to verify that everything is working.  We have prepared [several benchmarks](https://github.com/broadinstitute/delphy-2024-paper-data), any of which can be used for a test run after compilation.  In particular, the [SARS-CoV-2 benchmark there](https://github.com/broadinstitute/delphy-2024-paper-data/tree/main/sars-cov-2-lemieux/delphy_inputs/ma_sars_cov_2.fasta) is what is used in the `delphy-web` demo (also available [here](https://delphy.fathom.info/ma_sars_cov_2.fasta)).  The following command will execute a (too short) MCMC run using this data:
 ```
 ./build/release/delphy --v0-in-fasta ma_sars_cov_2.fasta \
-   --v0-init-heuristic \
    --v0-steps 10000000 \
    --v0-out-log-file delphy.log \
    --v0-log-every 200000 \

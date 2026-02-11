@@ -956,7 +956,7 @@ auto keyboard_func(char key) -> void {
       switch (key) {
         case '=': steps_per_refresh = (steps_per_refresh < 1) ? 1 : steps_per_refresh * 10; break;
         case '+': steps_per_refresh = 100'000; break;
-        case '-': steps_per_refresh = std::max(0L, steps_per_refresh / 10); break;
+        case '-': steps_per_refresh = std::max(int64_t{0}, steps_per_refresh / 10); break;
         case '0': steps_per_refresh = 0; break;
       }
       std::cerr << "*** " << steps_per_refresh << " steps per refresh ***" << std::endl;

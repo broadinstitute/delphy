@@ -8,4 +8,10 @@ scratch
 *~
 /.vscode
 
-
+# AI coding agent artifacts
+.aider*
+.continue/
+.cursor/
+.copilot/
+*.bak
+*.orig

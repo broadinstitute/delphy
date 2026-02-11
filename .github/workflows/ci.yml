@@ -1,0 +1,416 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+    tags: ['*']
+  pull_request:
+    branches: [main]
+
+# Minimal permissions by default - jobs expand as needed
+permissions:
+  contents: read
+
+env:
+  CONAN_VERSION: '2.8.1'
+
+jobs:
+  # Job 1: Build tools with static linking (Linux) or dynamic (macOS)
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            arch: x86_64
+            artifact_suffix: linux-x86_64
+            static_linking: true
+          - os: ubuntu-22.04
+            arch: x86_64
+            artifact_suffix: linux-x86_64-ubuntu22
+            static_linking: true
+          - os: ubuntu-24.04-arm
+            arch: arm64
+            artifact_suffix: linux-arm64
+            static_linking: true
+          - os: macos-14
+            arch: arm64
+            artifact_suffix: macos-arm64
+            static_linking: false
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Install newer CMake (Ubuntu 22.04)
+        if: matrix.os == 'ubuntu-22.04'
+        run: |
+          mkdir -p ~/tools
+          cd ~/tools/
+          wget https://github.com/Kitware/CMake/releases/download/v3.31.9/cmake-3.31.9-linux-x86_64.tar.gz
+          tar -xf cmake-3.31.9-linux-x86_64.tar.gz
+          echo "${HOME}/tools/cmake-3.31.9-linux-x86_64/bin" >> $GITHUB_PATH
+
+      - name: Select Xcode 16 (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install cmake
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/pip
+            ~/Library/Caches/pip
+          key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
+
+      - name: Cache Conan
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ runner.os }}-${{ matrix.arch }}-conan-${{ hashFiles('conanfile.txt') }}-v2
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-conan-
+
+      - name: Install Conan
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'conan==${{ env.CONAN_VERSION }}'
+
+      - name: Configure Conan profile
+        run: conan profile detect --force
+
+      - name: Fix Conan profile (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          sed -i '' 's/compiler.version=.*/compiler.version=16/' ~/.conan2/profiles/default
+
+      - name: Install dependencies with Conan
+        run: |
+          conan install . --output-folder=build/release --build=missing --settings=build_type=Release
+
+      - name: Configure CMake (with static linking)
+        if: matrix.static_linking
+        run: |
+          cmake --preset conan-release \
+            -DCMAKE_FIND_LIBRARY_SUFFIXES=".a" \
+            -DBUILD_SHARED_LIBS=OFF \
+            -DCMAKE_EXE_LINKER_FLAGS="-static"
+
+      - name: Configure CMake (without static linking)
+        if: ${{ !matrix.static_linking }}
+        run: cmake --preset conan-release
+
+      # Don't build and ship `beast_trees_to_dphy`: this is a one-off utility program that was used
+      # to investigate the correspondence between Delphy and BEAST X in the mpox analyses
+      # of Parker et al 2025 (subtly different evolution models lead to subtly different clades
+      # near the top, which result from the BEAST X model completely disallowing T->C
+      # or A->G mutations in sites with APOBEC3 context).
+      - name: Build tools
+        run: |
+          cmake --build --preset conan-release --target delphy --parallel
+          cmake --build --preset conan-release --target delphy_mcc --parallel
+          cmake --build --preset conan-release --target tests --parallel
+
+      - name: Verify binaries
+        run: |
+          ./build/release/delphy --version
+          ./build/release/delphy_mcc --help || true
+
+      - name: Run tests
+        run: |
+          ./build/release/tests/tests --gtest_output=xml:test-results.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results-${{ matrix.artifact_suffix }}
+          path: test-results.xml
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: delphy-${{ matrix.artifact_suffix }}
+          path: |
+            build/release/delphy
+            build/release/delphy_mcc
+          if-no-files-found: error
+
+  # Job 2: WASM build
+  wasm:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
+
+      - name: Cache Conan
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ runner.os }}-wasm-conan-${{ hashFiles('conanfile.txt', 'wasm.profile') }}-v2
+          restore-keys: |
+            ${{ runner.os }}-wasm-conan-
+
+      - name: Install Conan
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'conan==${{ env.CONAN_VERSION }}'
+
+      - name: Configure Conan profile
+        run: conan profile detect --force
+
+      - name: Install dependencies with Conan (WASM)
+        run: |
+          conan install . --profile=wasm.profile --output-folder=build/wasm-release --build=missing --settings=build_type=Release
+
+      - name: Configure CMake (WASM)
+        run: cmake --preset conan-emscripten-release
+
+      - name: Build WASM
+        run: cmake --build --preset conan-emscripten-release --parallel
+
+      - name: Upload WASM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: delphy-wasm
+          path: |
+            build/wasm-release/delphy.js
+            build/wasm-release/delphy.worker.js
+            build/wasm-release/delphy.wasm
+          if-no-files-found: warn
+
+  # Job 3: Code coverage
+  coverage:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential cmake lcov
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
+
+      - name: Cache Conan
+        uses: actions/cache@v4
+        with:
+          path: ~/.conan2
+          key: ${{ runner.os }}-x86_64-conan-coverage-${{ hashFiles('conanfile.txt') }}-v2
+          restore-keys: |
+            ${{ runner.os }}-x86_64-conan-
+
+      - name: Install Conan
+        run: |
+          python -m pip install --upgrade pip
+          pip install 'conan==${{ env.CONAN_VERSION }}'
+
+      - name: Configure Conan profile
+        run: conan profile detect --force
+
+      - name: Install dependencies with Conan
+        run: |
+          conan install . --output-folder=build/coverage --build=missing --settings=build_type=Debug
+
+      - name: Configure CMake with coverage
+        run: |
+          cmake -S . -B build/coverage \
+            -DCMAKE_TOOLCHAIN_FILE=build/coverage/conan_toolchain.cmake \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DCMAKE_CXX_FLAGS="--coverage -fprofile-arcs -ftest-coverage" \
+            -DCMAKE_EXE_LINKER_FLAGS="--coverage"
+
+      - name: Build
+        run: cmake --build build/coverage --parallel
+
+      - name: Run tests
+        run: ./build/coverage/tests/tests
+
+      - name: Generate coverage report
+        run: |
+          lcov --capture --directory build/coverage --output-file coverage.info --ignore-errors mismatch
+          lcov --remove coverage.info '/usr/*' '*/third-party/*' '*/tests/*' '*/_deps/*' --output-file coverage.info --ignore-errors unused
+          lcov --list coverage.info
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.info
+          fail_ci_if_error: true
+          verbose: true
+
+  # Job 4: Docker multi-arch image
+  docker:
+    needs: [build]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Linux x86_64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: delphy-linux-x86_64
+          path: artifacts/linux/amd64
+
+      - name: Download Linux ARM64 artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: delphy-linux-arm64
+          path: artifacts/linux/arm64
+
+      - name: Make binaries executable
+        run: |
+          chmod +x artifacts/linux/amd64/*
+          chmod +x artifacts/linux/arm64/*
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Login to alternate registry
+        if: vars.DOCKER_ALT_REGISTRY != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ vars.DOCKER_ALT_REGISTRY }}
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+
+      - name: Compute Docker image list
+        id: images
+        run: |
+          IMAGES="ghcr.io/${{ github.repository }}"
+          if [ -n "${{ vars.DOCKER_ALT_REGISTRY }}" ]; then
+            IMAGES="${IMAGES},${{ vars.DOCKER_ALT_REGISTRY }}/${{ github.repository }}"
+          fi
+          echo "list=${IMAGES}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ steps.images.outputs.list }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+          flavor: |
+            latest=false
+
+      - name: Build and push multi-arch image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile.ci
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # Job 5: Release artifacts
+  release-artifacts:
+    needs: [build, wasm]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: delphy-*
+          path: artifacts
+
+      - name: Download WASM artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: delphy-wasm
+          path: artifacts/delphy-wasm
+
+      - name: Combine artifacts and create release tarballs
+        run: |
+          cd artifacts
+          for suffix in linux-x86_64 linux-arm64 macos-arm64; do
+            tar -czvf "delphy-${suffix}.tar.gz" -C "delphy-${suffix}" .
+          done
+          # WASM tarball
+          tar -czvf "delphy-wasm.tar.gz" -C delphy-wasm .
+          ls -la *.tar.gz
+
+      - name: Upload release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/*.tar.gz

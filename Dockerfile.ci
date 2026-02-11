@@ -1,0 +1,30 @@
+# Dockerfile.ci - Streamlined CI build using pre-compiled binaries
+# This avoids the compilation step and uses binaries from GitHub Actions
+#
+# Usage (from CI):
+#   docker buildx build --platform linux/amd64,linux/arm64 -f Dockerfile.ci .
+#
+# The CI workflow places binaries in artifacts/linux/{amd64,arm64}/
+
+ARG TARGETARCH
+
+FROM alpine:3.19
+
+ARG TARGETARCH
+
+LABEL org.opencontainers.image.title="Delphy" \
+      org.opencontainers.image.description="Fast, scalable Bayesian phylogenetics with Explicit Mutation-Annotated Trees" \
+      org.opencontainers.image.url="https://github.com/broadinstitute/delphy" \
+      org.opencontainers.image.source="https://github.com/broadinstitute/delphy"
+
+# Copy the pre-built binaries for the target architecture
+COPY artifacts/linux/${TARGETARCH}/delphy /usr/local/bin/delphy
+COPY artifacts/linux/${TARGETARCH}/delphy_mcc /usr/local/bin/delphy_mcc
+
+RUN chmod +x /usr/local/bin/delphy \
+             /usr/local/bin/delphy_mcc
+
+# Verify the binary runs
+RUN /usr/local/bin/delphy --version
+
+ENTRYPOINT ["/usr/local/bin/delphy"]

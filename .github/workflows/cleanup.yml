@@ -1,0 +1,61 @@
+name: Cleanup
+
+on:
+  delete:
+    # Triggered when a branch or tag is deleted
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  cleanup-docker-tag:
+    # Only run for branch deletions, not tag deletions
+    if: github.event.ref_type == 'branch'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Sanitize branch name to Docker tag
+        id: sanitize
+        run: |
+          # Match docker/metadata-action sanitization:
+          # - Replace invalid chars with dashes
+          # - Remove leading/trailing dashes
+          # - Lowercase
+          BRANCH="${{ github.event.ref }}"
+          TAG=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | sed 's/^-*//' | sed 's/-*$//' | tr '[:upper:]' '[:lower:]')
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "Sanitized branch '$BRANCH' to tag '$TAG'"
+
+      - name: Delete Docker tag from GHCR
+        run: |
+          TAG="${{ steps.sanitize.outputs.tag }}"
+          REPO="ghcr.io/${{ github.repository }}"
+
+          echo "Attempting to delete tag '$TAG' from $REPO"
+
+          skopeo delete \
+            --creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+            "docker://${REPO}:${TAG}" || {
+              echo "::warning::Failed to delete tag '$TAG' from GHCR - it may not exist or credentials lack permissions"
+              exit 0  # Don't fail the workflow if tag doesn't exist
+            }
+
+          echo "Successfully deleted tag '$TAG' from $REPO"
+
+      - name: Delete Docker tag from alternate registry
+        if: vars.DOCKER_ALT_REGISTRY != ''
+        run: |
+          TAG="${{ steps.sanitize.outputs.tag }}"
+          REPO="${{ vars.DOCKER_ALT_REGISTRY }}/${{ github.repository }}"
+
+          echo "Attempting to delete tag '$TAG' from $REPO"
+
+          skopeo delete \
+            --creds "${{ secrets.DOCKER_USERNAME }}:${{ secrets.DOCKER_PASSWORD }}" \
+            "docker://${REPO}:${TAG}" || {
+              echo "::warning::Failed to delete tag '$TAG' - it may not exist or credentials lack permissions"
+              exit 0  # Don't fail the workflow if tag doesn't exist
+            }
+
+          echo "Successfully deleted tag '$TAG' from $REPO"
