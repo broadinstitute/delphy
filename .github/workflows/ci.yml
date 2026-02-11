@@ -400,6 +400,10 @@ jobs:
           name: delphy-wasm
           path: artifacts/delphy-wasm
 
+      - name: Make binaries executable
+        run: |
+          chmod +x artifacts/delphy-*/delphy artifacts/delphy-*/delphy_mcc
+
       - name: Combine artifacts and create release tarballs
         run: |
           cd artifacts
