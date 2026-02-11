@@ -17,19 +17,12 @@ LABEL org.opencontainers.image.title="Delphy" \
       org.opencontainers.image.url="https://github.com/broadinstitute/delphy" \
       org.opencontainers.image.source="https://github.com/broadinstitute/delphy"
 
-# Install SDL2 runtime libraries for delphy_ui
-RUN apk add --no-cache sdl2 sdl2_ttf
-
 # Copy the pre-built binaries for the target architecture
 COPY artifacts/linux/${TARGETARCH}/delphy /usr/local/bin/delphy
 COPY artifacts/linux/${TARGETARCH}/delphy_mcc /usr/local/bin/delphy_mcc
-COPY artifacts/linux/${TARGETARCH}/delphy_ui /usr/local/bin/delphy_ui
-COPY artifacts/linux/${TARGETARCH}/beast_trees_to_dphy /usr/local/bin/beast_trees_to_dphy
 
 RUN chmod +x /usr/local/bin/delphy \
-             /usr/local/bin/delphy_mcc \
-             /usr/local/bin/delphy_ui \
-             /usr/local/bin/beast_trees_to_dphy
+             /usr/local/bin/delphy_mcc
 
 # Verify the binary runs
 RUN /usr/local/bin/delphy --version

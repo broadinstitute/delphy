@@ -15,8 +15,8 @@ env:
   CONAN_VERSION: '2.8.1'
 
 jobs:
-  # Job 1: Build CLI tools with static linking (Linux) or dynamic (macOS)
-  build-cli:
+  # Job 1: Build tools with static linking (Linux) or dynamic (macOS)
+  build:
     strategy:
       fail-fast: false
       matrix:
@@ -77,7 +77,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.conan2
-          key: ${{ runner.os }}-${{ matrix.arch }}-conan-cli-${{ hashFiles('conanfile.txt') }}-v2
+          key: ${{ runner.os }}-${{ matrix.arch }}-conan-${{ hashFiles('conanfile.txt') }}-v2
           restore-keys: |
             ${{ runner.os }}-${{ matrix.arch }}-conan-
 
@@ -115,7 +115,7 @@ jobs:
       # of Parker et al 2025 (subtly different evolution models lead to subtly different clades
       # near the top, which result from the BEAST X model completely disallowing T->C
       # or A->G mutations in sites with APOBEC3 context).
-      - name: Build CLI tools
+      - name: Build tools
         run: |
           cmake --build --preset conan-release --target delphy --parallel
           cmake --build --preset conan-release --target delphy_mcc --parallel
@@ -137,109 +137,16 @@ jobs:
           name: test-results-${{ matrix.artifact_suffix }}
           path: test-results.xml
 
-      - name: Upload CLI artifacts
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: delphy-cli-${{ matrix.artifact_suffix }}
+          name: delphy-${{ matrix.artifact_suffix }}
           path: |
             build/release/delphy
             build/release/delphy_mcc
           if-no-files-found: error
 
-  # Job 2: Build delphy_ui separately (no static linking)
-  build-ui:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: ubuntu-latest
-            arch: x86_64
-            artifact_suffix: linux-x86_64
-          - os: ubuntu-24.04-arm
-            arch: arm64
-            artifact_suffix: linux-arm64
-          - os: macos-14
-            arch: arm64
-            artifact_suffix: macos-arm64
-
-    runs-on: ${{ matrix.os }}
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 2
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install system dependencies (Linux)
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential cmake libsdl2-dev libsdl2-ttf-dev
-
-      - name: Select Xcode 16 (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          sudo xcode-select -s /Applications/Xcode_16.2.app/Contents/Developer
-          xcodebuild -version
-
-      - name: Install system dependencies (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          brew install cmake sdl2 sdl2_ttf
-
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/pip
-            ~/Library/Caches/pip
-          key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
-
-      - name: Cache Conan
-        uses: actions/cache@v4
-        with:
-          path: ~/.conan2
-          key: ${{ runner.os }}-${{ matrix.arch }}-conan-ui-${{ hashFiles('conanfile.txt') }}-v2
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.arch }}-conan-
-
-      - name: Install Conan
-        run: |
-          python -m pip install --upgrade pip
-          pip install 'conan==${{ env.CONAN_VERSION }}'
-
-      - name: Configure Conan profile
-        run: conan profile detect --force
-
-      - name: Fix Conan profile (macOS)
-        if: runner.os == 'macOS'
-        run: |
-          sed -i '' 's/compiler.version=.*/compiler.version=16/' ~/.conan2/profiles/default
-
-      - name: Install dependencies with Conan
-        run: |
-          conan install . --output-folder=build/release --build=missing --settings=build_type=Release
-
-      - name: Configure CMake
-        run: cmake --preset conan-release
-
-      - name: Build delphy_ui
-        run: cmake --build --preset conan-release --target delphy_ui --parallel
-
-      - name: Upload UI artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: delphy-ui-${{ matrix.artifact_suffix }}
-          path: build/release/delphy_ui
-          if-no-files-found: error
-
-  # Job 3: WASM build
+  # Job 2: WASM build
   wasm:
     runs-on: ubuntu-latest
 
@@ -301,7 +208,7 @@ jobs:
             build/wasm-release/delphy.wasm
           if-no-files-found: warn
 
-  # Job 4: Code coverage
+  # Job 3: Code coverage
   coverage:
     runs-on: ubuntu-latest
 
@@ -376,9 +283,9 @@ jobs:
           fail_ci_if_error: true
           verbose: true
 
-  # Job 5: Docker multi-arch image
+  # Job 4: Docker multi-arch image
   docker:
-    needs: [build-cli, build-ui]
+    needs: [build]
     runs-on: ubuntu-latest
     if: github.event_name == 'push'
     permissions:
@@ -389,28 +296,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download Linux x86_64 CLI artifacts
+      - name: Download Linux x86_64 artifacts
         uses: actions/download-artifact@v4
         with:
-          name: delphy-cli-linux-x86_64
+          name: delphy-linux-x86_64
           path: artifacts/linux/amd64
 
-      - name: Download Linux x86_64 UI artifact
+      - name: Download Linux ARM64 artifacts
         uses: actions/download-artifact@v4
         with:
-          name: delphy-ui-linux-x86_64
-          path: artifacts/linux/amd64
-
-      - name: Download Linux ARM64 CLI artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: delphy-cli-linux-arm64
-          path: artifacts/linux/arm64
-
-      - name: Download Linux ARM64 UI artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: delphy-ui-linux-arm64
+          name: delphy-linux-arm64
           path: artifacts/linux/arm64
 
       - name: Make binaries executable
@@ -470,25 +365,19 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  # Job 6: Release artifacts
+  # Job 5: Release artifacts
   release-artifacts:
-    needs: [build-cli, build-ui, wasm]
+    needs: [build, wasm]
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     permissions:
       contents: write
 
     steps:
-      - name: Download all CLI artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: delphy-cli-*
-          path: artifacts
-
-      - name: Download all UI artifacts
-        uses: actions/download-artifact@v4
-        with:
-          pattern: delphy-ui-*
+          pattern: delphy-*
           path: artifacts
 
       - name: Download WASM artifacts
@@ -500,11 +389,7 @@ jobs:
       - name: Combine artifacts and create release tarballs
         run: |
           cd artifacts
-          # Combine CLI and UI for each platform
           for suffix in linux-x86_64 linux-arm64 macos-arm64; do
-            mkdir -p "delphy-${suffix}"
-            cp delphy-cli-${suffix}/* "delphy-${suffix}/" 2>/dev/null || true
-            cp delphy-ui-${suffix}/* "delphy-${suffix}/" 2>/dev/null || true
             tar -czvf "delphy-${suffix}.tar.gz" -C "delphy-${suffix}" .
           done
           # WASM tarball
