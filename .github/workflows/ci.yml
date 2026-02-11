@@ -418,3 +418,4 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*.tar.gz
+          draft: true    # Since we have immutable releases on, automatic releases are drafts to allow editing of description
