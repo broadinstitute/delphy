@@ -216,15 +216,16 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
   try {
     auto opts = options.parse(argc, argv);
 
-    if (opts.count("version")) {
+    if (opts.count("version") || opts.count("help") || argc == 1) {
       std::cout << absl::StreamFormat("Delphy Version %s (build %d, commit %s)",
                                       k_delphy_version_string,
                                       k_delphy_build_number,
                                       k_delphy_commit_string) << "\n";
-      std::exit(EXIT_SUCCESS);
-    }
-    if (opts.count("help")) {
-      std::cout << options.help() << "\n";
+      
+      if (opts.count("help") || argc == 1) {
+        std::cout << options.help() << "\n";
+      }
+      
       std::exit(EXIT_SUCCESS);
     }
 

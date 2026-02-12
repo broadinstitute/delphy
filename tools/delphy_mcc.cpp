@@ -1,9 +1,12 @@
+#include <iostream>
+
 #include "absl/log/initialize.h"
 #include "absl/log/check.h"
 #include "absl/random/random.h"
 
 #include "beasty_input.h"
 #include "mcc_tree.h"
+#include "version.h"
 
 namespace delphy {
 
@@ -104,7 +107,18 @@ auto main(int argc, char** argv) -> int {
   
   auto scope = Local_arena_scope{};
 
-  CHECK_EQ(argc, 3);
+  if (argc != 3) {
+    std::cerr << absl::StreamFormat("Delphy MCC Version %s (build %d, commit %s)",
+                                    k_delphy_version_string,
+                                    k_delphy_build_number,
+                                    k_delphy_commit_string) << "\n\n";
+    std::cerr << "Usage: delphy_mcc <input-trees-file> <output-mcc-file>\n\n";
+    std::cerr << "Reads a BEAST-format posterior trees files and computes a\n"
+              << "Maximum Clade Credibility (MCC) tree.\n"
+              << "A 30% burn-in is applied automatically.\n";
+    return EXIT_FAILURE;
+  }
+
   auto tree_is = std::ifstream{argv[1]};
   CHECK(tree_is);
 
