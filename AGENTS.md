@@ -203,8 +203,6 @@ for (const auto& node : index_order_traversal(tree)) { ... }
 
 1. **Never amend pushed commits** - Always create fresh commits. Do not use `git commit --amend` or `git rebase` on commits that have already been pushed.
 
-2. **No agent attribution in commits** - Do not add `Co-Authored-By` or similar agent attribution lines in commit messages. However, agents should identify themselves in code reviews, pull request descriptions, and issue comments.
-
 ---
 
 ## Dependencies
