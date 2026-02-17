@@ -130,6 +130,9 @@ auto cli_main_loop(Processed_cmd_line& c) -> int {
   auto beasty_log_output = std::unique_ptr<Beasty_log_output>{};
   if (c.log_filename.has_value()) {
     auto os_ptr = std::make_unique<std::ofstream>(c.log_filename.value());
+    if (not *os_ptr) {
+      throw std::runtime_error(absl::StrFormat("Could not open log file '%s' for writing", c.log_filename.value()));
+    }
     beasty_log_output = std::make_unique<Beasty_log_output>(os_ptr.get(), c.beast_version, true);
     os_ptr.release();
     beasty_log_output->output_headers(*c.run);
@@ -137,6 +140,9 @@ auto cli_main_loop(Processed_cmd_line& c) -> int {
   auto beasty_trees_output = std::unique_ptr<Beasty_trees_output>{};
   if (c.trees_filename.has_value()) {
     auto os_ptr = std::make_unique<std::ofstream>(c.trees_filename.value());
+    if (not *os_ptr) {
+      throw std::runtime_error(absl::StrFormat("Could not open trees file '%s' for writing", c.trees_filename.value()));
+    }
     beasty_trees_output = std::make_unique<Beasty_trees_output>(os_ptr.get(), c.beast_version, true);
     os_ptr.release();
     beasty_trees_output->output_headers(*c.run);
@@ -144,6 +150,10 @@ auto cli_main_loop(Processed_cmd_line& c) -> int {
   auto delphy_output = std::unique_ptr<Delphy_output>{};
   if (c.delphy_output_filename.has_value()) {
     auto os_ptr = std::make_unique<std::ofstream>(c.delphy_output_filename.value(), std::ios::binary);
+    if (not *os_ptr) {
+      throw std::runtime_error(absl::StrFormat("Could not open output file '%s' for writing",
+                                               c.delphy_output_filename.value()));
+    }
     delphy_output = std::make_unique<Delphy_output>(os_ptr.get(), true);
     os_ptr.release();
     if (c.delphy_output_metadata.has_value()) {
