@@ -43,7 +43,28 @@ struct Spr_graft {
     k_branch_info_P_S = 1,
     k_branch_info_S_P_X = 2
   };
-  
+
+  // # Inner grafts:
+  //
+  // Let phi_0 = X, phi_1 = parent(X) = P, ..., phi_i = parent(phi_{i-1}), ..., phi_I = root
+  // With this, the path phi_0 -> phi_1 -> ... -> phi_I is the path from X to the root.
+  // Within this path, `branch_info[i]` describes information about the branch between A = phi_{i+1} and B = phi_i,
+  // as well as about the path between A = phi_{i+1} -> ... -> X, which covers evolutionary time T_to_X.
+  // A site l is "warm" at a point Y on the tree if all informative tips downstream of Y are also downstream of X
+  // (so pruning X would remove point Y from the site-l pruned tree).
+  // `branch_info[i].warm_sites` lists the warm sites on the branch between phi_{i+1} and phi_i.
+  // The warm sites in branch_info[i+1] are a subset of the warm sites in branch_info[i].
+  // A site l is "hot" in branch_info[i] if it is warm there, but not in branch_info[i+1].  Hence,
+  // the path phi_{i+1} -> phi_i -> ... -> X is the entirely of the path in the site-l pruned tree that
+  // connects X to the rest of the tree.  Mutations at l will be sampled along the entirety of that path.
+  // The list of mutations on that path on hot sites is stored (in increasing time order) in hot_muts_to_X.
+  // These mutations imply a set of deltas between the states at hot sites between A and X, stored
+  // in hot_deltas_to_X.  If hot_muts_to_X contains at most one mutation per site, then hot_deltas_to_X
+  // has the same information as hot_muts_to_X except for exact mutation times.
+  //
+  // branch_info[i].partial_lambda_at_X is the contribution to the overall mutation rate lambda at X
+  // from the hot sites in path `A = phi_{i+1} -> ... -> X`.  Similarly, branch_info[i].partial_lambda_at_A
+  // is the analogous contribution from those same host sites to the lambda at A = phi_{i+1}.
   struct Branch_info {
     Node_index A;
     Node_index B;

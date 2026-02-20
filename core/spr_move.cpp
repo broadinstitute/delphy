@@ -618,7 +618,9 @@ auto Spr_move::start_inner_graft_analysis(Node_index X) const -> Spr_graft {
     P_X_path.partial_lambda_at_A += evo->mu_l(m.site) * evo->nu_l.at(m.site) *
         (-evo->q_l_a(m.site, m.to) + evo->q_l_a(m.site, m.from));
   }
-  // Remove contribution to partial_lambda missations that will continue sliding
+  // Remove contribution to partial_lambda from sites that are not hot on the A->X path
+  // (next_partial_lambda_at_B is the contribution to lambda just above A ["the next B"] coming from sites that
+  // are are warm both below and above A)
   auto next_partial_lambda_at_B = -1 * calc_delta_lambda_across_missations(*evo, tree->ref_sequence, *ref_cum_Q_l,
                                                                            sliding_missations);
   P_X_path.partial_lambda_at_A -= next_partial_lambda_at_B;
@@ -746,7 +748,6 @@ auto Spr_move::propose_new_inner_graft_mutations(Spr_graft& graft, absl::BitGenR
       continue;
     }
     
-    // TODO: if path is open at root, do not constrain state at start
     auto new_mutations =
         branch_info.is_open
         ? sample_unconstrained_mutational_history(
@@ -758,7 +759,7 @@ auto Spr_move::propose_new_inner_graft_mutations(Spr_graft& graft, absl::BitGenR
       std::erase_if(new_mutations, [&](const auto& m) { return not branch_info.hot_sites.contains(m.site); });
       if (branch_info.B == X) {
         // In the very first branch, `hot_sites` may cover sites that are actually missing at X
-        // (but we don't know about them because the missations are further above X than we every look).
+        // (but we don't know about them because the missations are further above X than we ever look).
         // Any mutations that show up in new_mutations but not in deltas_to_X_on_hot_sites are very rare,
         // so we can afford an expensive check for them
         std::erase_if(new_mutations, [&](const auto& m) {
@@ -826,7 +827,7 @@ auto Spr_move::finish_inner_graft_analysis(Spr_graft& graft) const -> void {
       
       auto P_AC_JC = -0.25 * std::expm1(-4./3.*mu_proposal * T);
       auto log_P_AC_JC = std::log(P_AC_JC);
-      //auto P_AA_JC = 1.0 + 3 * P_AC_JC;
+      //auto P_AA_JC = 1.0 - 3 * P_AC_JC;
       auto log_P_AA_JC = std::log1p(-3 * P_AC_JC);
       
       graft.log_alpha_mut -=(L-d)*log_P_AA_JC + d*log_P_AC_JC;
@@ -959,7 +960,7 @@ auto Spr_move::apply_inner_graft(const Spr_graft& graft) -> void {
 
   auto& final_path = graft.branch_infos.back();
   
-  // We assume the graft was either peeled before, or we're here after an `move` operation,
+  // We assume the graft was either peeled before, or we're here after a `move` operation,
   // which never inserts spurious mutations outside the P-X branch.
   
   // We're about to put in place all the recorded mutations on the P-X branch, so nuke what's already there
