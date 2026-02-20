@@ -685,7 +685,7 @@ auto Spr_move::start_inner_graft_analysis(Node_index X) const -> Spr_graft {
           final_open_branch_info.A = k_no_node;
           final_open_branch_info.B = tree->root;
           final_open_branch_info.is_open = true;
-          final_open_branch_info.T_to_X = branch_info.T_to_X;
+          final_open_branch_info.T_to_X = t_X - tree->at(parent).t;
           final_open_branch_info.warm_sites = sliding_missations.intervals;
           final_open_branch_info.hot_sites = final_open_branch_info.warm_sites;
           final_open_branch_info.partial_lambda_at_A = partial_lambda;
