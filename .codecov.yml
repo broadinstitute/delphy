@@ -1,0 +1,25 @@
+codecov:
+  require_ci_to_pass: false  # Code coverage is great as a quality metric, but don't let it be a yes/no gate
+
+coverage:
+  status:
+    project:
+      default:
+        target: auto
+        threshold: 1%   # Allow up to 1% drop in coverage from a single PR
+    patch:
+      default:
+        target: 80%     # Require 80% coverage for any new/changed lines in a PR
+
+ignore:
+  - "third-party/**"
+  - "tests/**"
+  - "_deps/**"
+
+  # Ignore run.cpp and subrun.cpp for code coverage.  These files are essentially impossible to test
+  # with deterministic unit tests (all MCMC moves involve randomness, and the definition of "correct"
+  # is "do they sample the correct distribution?", which doesn't translate easily to an assertion).
+  # Over time, the intent is to move as much deterministic "machinery" out of these files as possible,
+  # and ensure that machinery is covered well by unit tests.
+  - "core/run.cpp"
+  - "core/subrun.cpp"
