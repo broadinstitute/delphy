@@ -150,7 +150,10 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<bool>()->default_value("false"))
       ("v0-fix-mutation-rate", "Fix mutation rate",
        cxxopts::value<bool>()->default_value("false"))
-      ("v0-init-mutation-rate", "Initial (or fixed) value of mutation rate, in subst / site / year",
+      ("v0-init-mutation-rate",
+       "Initial (or fixed) value of mutation rate, in subst / site / year.  "
+       "If not specified and a proper Gamma prior is set, defaults to the prior mean; "
+       "otherwise defaults to 1e-3.",
        cxxopts::value<double>()->default_value("1e-3"))
       ("v0-mu-prior-alpha",
        "Shape (alpha) parameter of the Gamma prior on the mutation rate mu: "
@@ -471,6 +474,12 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         std::exit(EXIT_FAILURE);
       }
       mu_prior_beta = beta_cli * 365.0;  // convert per-year to per-day
+    }
+
+    // If the user didn't explicitly set an initial mu and the prior is proper,
+    // use the prior mean as the initial value
+    if (opts.count("v0-init-mutation-rate") == 0 && mu_prior_alpha > 0.0 && mu_prior_beta > 0.0) {
+      init_mu = mu_prior_alpha / mu_prior_beta;  // already in per-day units
     }
 
     auto mpox_hack_enabled = opts["v0-mpox-hack"].as<bool>();
