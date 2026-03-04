@@ -43,6 +43,10 @@ class Run {
   auto set_coalescent_prior_t_step(double t_step) -> void;
   auto mu() const -> double { return hky_model_.mu; }
   auto set_mu(double mu) -> void { hky_model_.mu = mpox_mu_ = mu, invalidate_derived_quantities(); }
+  auto mu_prior_alpha() const -> double { return mu_prior_alpha_; }
+  auto set_mu_prior_alpha(double mu_prior_alpha) -> void { mu_prior_alpha_ = mu_prior_alpha, invalidate_derived_quantities(); }
+  auto mu_prior_beta() const -> double { return mu_prior_beta_; }
+  auto set_mu_prior_beta(double mu_prior_beta) -> void { mu_prior_beta_ = mu_prior_beta, invalidate_derived_quantities(); }
   auto alpha() const -> double { return alpha_; }
   auto set_alpha(double alpha) -> void { alpha_ = alpha, invalidate_derived_quantities(); }
   auto nu() const -> const std::vector<double>& { return nu_; }
@@ -231,6 +235,8 @@ class Run {
   double alpha_;
   Site_vector<double> nu_;
   Hky_model hky_model_;
+  double mu_prior_alpha_;
+  double mu_prior_beta_;
 
   bool mpox_hack_enabled_ = false;
   double mpox_mu_ = 0.0;

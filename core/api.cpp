@@ -250,6 +250,8 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   params_builder.add_num_local_moves_per_global_move(run.local_moves_per_global_move());
   params_builder.add_num_parts(run.num_parts());
   params_builder.add_mu(run.mu());
+  params_builder.add_mu_prior_alpha(run.mu_prior_alpha());
+  params_builder.add_mu_prior_beta(run.mu_prior_beta());
   params_builder.add_alpha(run.alpha());
   params_builder.add_nu(api_nu);
   params_builder.add_hky_kappa(run.hky_kappa());
@@ -312,6 +314,8 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
   run.set_local_moves_per_global_move(api_params->num_local_moves_per_global_move());
   run.set_num_parts(api_params->num_parts());
   run.set_mu(api_params->mu());
+  run.set_mu_prior_alpha(api_params->mu_prior_alpha());
+  run.set_mu_prior_beta(api_params->mu_prior_beta());
   run.set_alpha(api_params->alpha());
   if (api_params->nu() != nullptr) {
     auto new_nu = std::vector<double>{api_params->nu()->cbegin(), api_params->nu()->cend()};

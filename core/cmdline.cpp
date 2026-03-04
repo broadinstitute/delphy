@@ -152,6 +152,25 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<bool>()->default_value("false"))
       ("v0-init-mutation-rate", "Initial (or fixed) value of mutation rate, in subst / site / year",
        cxxopts::value<double>()->default_value("1e-3"))
+      ("v0-mu-prior-alpha",
+       "Shape (alpha) parameter of the Gamma prior on the mutation rate mu: "
+       "p(mu) ~ mu^{alpha-1} exp[-beta mu].  Default alpha=1, beta=0 gives a uniform prior.",
+       cxxopts::value<double>()->default_value("1.0"))
+      ("v0-mu-prior-beta",
+       "Rate (beta) parameter of the Gamma prior on the mutation rate mu: "
+       "p(mu) ~ mu^{alpha-1} exp[-beta mu].  Default alpha=1, beta=0 gives a uniform prior.  "
+       "Units: years.",
+       cxxopts::value<double>()->default_value("0.0"))
+      ("v0-mu-prior-mean",
+       "Mean of the Gamma prior on the mutation rate mu, in subst / site / year.  "
+       "Must be specified together with --v0-mu-prior-stddev.  "
+       "Mutually exclusive with --v0-mu-prior-alpha / --v0-mu-prior-beta.",
+       cxxopts::value<double>())
+      ("v0-mu-prior-stddev",
+       "Standard deviation of the Gamma prior on the mutation rate mu, in subst / site / year.  "
+       "Must be specified together with --v0-mu-prior-mean.  "
+       "Mutually exclusive with --v0-mu-prior-alpha / --v0-mu-prior-beta.",
+       cxxopts::value<double>())
       ("v0-out-beast-xml", "Filename for XML input file suitable for BEAST X or BEAST2 (see --v0-out-beast-version)",
        cxxopts::value<std::string>())
       ("v0-out-beast-version", "BEAST version to target for XML and output files.  Currently allowed values are '2.6.2', '2.7.7', and 'X-10.5.0'.",
@@ -409,6 +428,51 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     }
     init_mu /= 365.0;  // convert to subst / site / day
 
+    auto has_mu_prior_alpha_beta =
+        (opts.count("v0-mu-prior-alpha") > 0 || opts.count("v0-mu-prior-beta") > 0);
+    auto has_mu_prior_mean_stddev =
+        (opts.count("v0-mu-prior-mean") > 0 || opts.count("v0-mu-prior-stddev") > 0);
+
+    if (has_mu_prior_alpha_beta && has_mu_prior_mean_stddev) {
+      std::cerr << "ERROR: --v0-mu-prior-alpha/beta and --v0-mu-prior-mean/stddev "
+                << "are mutually exclusive\n";
+      std::exit(EXIT_FAILURE);
+    }
+
+    auto mu_prior_alpha = 1.0;
+    auto mu_prior_beta = 0.0;
+    if (has_mu_prior_mean_stddev) {
+      if (opts.count("v0-mu-prior-mean") == 0 || opts.count("v0-mu-prior-stddev") == 0) {
+        std::cerr << "ERROR: --v0-mu-prior-mean and --v0-mu-prior-stddev "
+                  << "must be specified together\n";
+        std::exit(EXIT_FAILURE);
+      }
+      auto mean = opts["v0-mu-prior-mean"].as<double>();     // per year
+      auto stddev = opts["v0-mu-prior-stddev"].as<double>(); // per year
+      if (mean <= 0.0) {
+        std::cerr << "ERROR: --v0-mu-prior-mean must be positive, got " << mean << "\n";
+        std::exit(EXIT_FAILURE);
+      }
+      if (stddev <= 0.0) {
+        std::cerr << "ERROR: --v0-mu-prior-stddev must be positive, got " << stddev << "\n";
+        std::exit(EXIT_FAILURE);
+      }
+      mu_prior_alpha = std::pow(mean / stddev, 2);
+      mu_prior_beta = mean * 365.0 / (stddev * stddev);  // convert per-year to per-day
+    } else {
+      mu_prior_alpha = opts["v0-mu-prior-alpha"].as<double>();
+      auto beta_cli = opts["v0-mu-prior-beta"].as<double>();
+      if (mu_prior_alpha < 0.0) {
+        std::cerr << "ERROR: --v0-mu-prior-alpha must be non-negative, got " << mu_prior_alpha << "\n";
+        std::exit(EXIT_FAILURE);
+      }
+      if (beta_cli < 0.0) {
+        std::cerr << "ERROR: --v0-mu-prior-beta must be non-negative, got " << beta_cli << "\n";
+        std::exit(EXIT_FAILURE);
+      }
+      mu_prior_beta = beta_cli * 365.0;  // convert per-year to per-day
+    }
+
     auto mpox_hack_enabled = opts["v0-mpox-hack"].as<bool>();
 
     auto target_coal_prior_cells = opts["v0-target-coal-prior-cells"].as<int>();
@@ -420,6 +484,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     run->set_alpha_move_enabled(alpha_move_enabled);
     run->set_mu_move_enabled(not fix_mutation_rate);
     run->set_mu(init_mu);
+    run->set_mu_prior_alpha(mu_prior_alpha);
+    run->set_mu_prior_beta(mu_prior_beta);
     run->set_target_coal_prior_cells(target_coal_prior_cells);
 
     // Population model

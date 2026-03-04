@@ -24,6 +24,8 @@ Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
       skygrid_low_gamma_barrier_scale_{-std::log(0.70)},  // by 1 nat for every 30% drop
       alpha_{10.0},
       nu_(tree_.num_sites(), 1.0),
+      mu_prior_alpha_{1.0},   // Default: uniform prior on mu
+      mu_prior_beta_{0.0},
       evo_{make_single_partition_global_evo_model(tree_.num_sites())},
       coalescent_prior_{pop_model_, tree_.size(), calc_max_tip_time(tree_), 1.0} {
 
@@ -467,9 +469,11 @@ auto Run::calc_cur_log_other_priors() const -> double {
   auto log_prior = 0.0;
 
   if (not mpox_hack_enabled_) {
-    // Mu - Uniform prior
+    // Mu - Gamma(mu_prior_alpha_, mu_prior_beta_) prior
+    log_prior += (mu_prior_alpha_ - 1) * std::log(mu()) - mu_prior_beta_ * mu();
   } else {
-    // Mu & Mu* - Uniform priors
+    // Mu - Gamma(mu_prior_alpha_, mu_prior_beta_) prior (mu* has a uniform prior)
+    log_prior += (mu_prior_alpha_ - 1) * std::log(mpox_mu_) - mu_prior_beta_ * mpox_mu_;
   }
 
   // Alpha - Exponential prior with mean 1.0
@@ -756,13 +760,14 @@ auto Run::run_global_moves() -> void {
 }
 
 auto Run::mu_move() -> void {
-  // We follow LeMieux et al (2021) and use a uniform prior for mu.
+  // We use a Gamma(mu_prior_alpha_, mu_prior_beta_) prior for mu.
+  // The defaults alpha=1, beta=0 give the uniform prior used in LeMieux et al (2021).
   // For concreteness, we assume the mutation rates across all partitions are linked,
   // though the infrastructure is already here to allow for unlinked rates.
   //
   // We can Gibbs sample a new value of mu using a Gamma with
-  // shape alpha = M+1 and rate beta = Ttwiddle, where M = num_muts() and
-  // Ttwiddle = sum_{beta,a} q^[beta]_a * Ttwiddle^beta_a
+  // shape = M + mu_prior_alpha_ and rate = Ttwiddle + mu_prior_beta_,
+  // where M = num_muts() and Ttwiddle = sum_{beta,a} q^[beta]_a * Ttwiddle^beta_a
 
   CHECK_GE(evo_.num_partitions(), 1);
   for (auto beta = 0; beta != evo_.num_partitions(); ++beta) {
@@ -779,11 +784,11 @@ auto Run::mu_move() -> void {
     }
     Ttwiddle += Ttwiddle_beta;
   }
-  
+
   // WARNING: C++ calls "beta" the *scale* of the distribution, i.e., the reciprocal of the rate
   auto mu_dist = std::gamma_distribution<double>{
-      num_muts_ + 1.0,
-      1.0 / Ttwiddle};
+      num_muts_ + mu_prior_alpha_,
+      1.0 / (Ttwiddle + mu_prior_beta_)};
 
   auto old_mu = hky_model_.mu;
   auto new_mu = mu_dist(bitgen_);
@@ -792,16 +797,20 @@ auto Run::mu_move() -> void {
     evo_.partition_evo_model[beta] = hky_model_.derive_site_evo_model();
   }
   log_G_ += -(new_mu - old_mu) * Ttwiddle + num_muts_ * std::log(new_mu / old_mu);
-  log_other_priors_ += 0.0;
+  log_other_priors_ += (mu_prior_alpha_ - 1) * std::log(new_mu / old_mu)
+                       - mu_prior_beta_ * (new_mu - old_mu);
 }
 
 auto Run::mpox_hack_moves() -> void {
-  // We use a uniform prior for mu and mu*.  The dependence of the posterior on mu and mu*
-  // conditional on everything else being fixed is thus:
+  // We use a Gamma(mu_prior_alpha_, mu_prior_beta_) prior for mu and a uniform prior for mu*.
+  // The dependence of the posterior on mu and mu* conditional on everything else being fixed is thus:
   //
-  // P ~ exp{-mu Ttwiddle + 2 mu* TTwiddle*} * (mu / 3)^(M-M*) * (mu / 3 + 2 mu*)^M*,
+  // P ~ mu^{alpha-1} exp{-beta mu}
+  //     * exp{-mu Ttwiddle + 2 mu* TTwiddle*} * (mu / 3)^(M-M*) * (mu / 3 + 2 mu*)^M*,
   //
   // where
+  // - alpha = mu_prior_alpha_          // Shape parameter of Gamma prior on mu
+  // - beta = mu_prior_beta_            // Rate parameter of Gamma prior on mu
   // - M^beta_ab = num_muts_beta_ab(),  // Number of a->b mutations in partition beta
   // - M = sum_{beta,a,b} M^beta_ab     // Total number of mutations
   // - M* = M^1_CT + M^1_GA             // APOBEC-like mutations in sites with APOBEC context
@@ -812,11 +821,12 @@ auto Run::mpox_hack_moves() -> void {
   //
   // Change variables to mu = mu and rho = mu* / mu.  The Jacobian |d(mu,rho)/d(mu,mu*)| is 1/mu, so
   //
-  //  P(mu,rho) ~ e^{-mu (Ttwiddle + 2 rho TTwiddle*)} * (mu / 3)^{M-1} * (1 + 6 rho)^M*.  // M-1 from Jacobian
+  //  P(mu,rho) ~ e^{-(beta + Ttwiddle + 2 rho TTwiddle*) mu}
+  //              * (mu / 3)^{M+alpha-1-1} * (1 + 6 rho)^M*.  // second -1 from Jacobian
   //
   //  It follows that
   //
-  //         mu|rho ~ Gamma[M, Ttwiddle + 2 rho Ttwiddle*], and
+  //         mu|rho ~ Gamma[M + alpha - 1, beta + Ttwiddle + 2 rho Ttwiddle*], and
   // (1 + 6 rho)|mu ~ Gamma[M* + 1, (mu / 3) * Ttwiddle*]  (subject to rho >= 0)
   //
   // Hence, we can Gibbs sample both mu and rho.
@@ -884,14 +894,17 @@ auto Run::mpox_hack_moves() -> void {
 
     // mu
     if (mu_move_enabled_) {
-      auto mu_dist = std::gamma_distribution<double>{(double)M, 1.0 / Ttwiddle_eff};
+      auto mu_dist = std::gamma_distribution<double>{
+          M + mu_prior_alpha_ - 1.0,
+          1.0 / (Ttwiddle_eff + mu_prior_beta_)};
 
       auto old_mu = mpox_mu_;
       auto new_mu = mu_dist(bitgen_);
       mpox_mu_ = new_mu;
-      
+
       log_G_ += -(new_mu - old_mu) * Ttwiddle_eff + num_muts_ * std::log(new_mu / old_mu);
-      log_other_priors_ += 0.0;
+      log_other_priors_ += (mu_prior_alpha_ - 1) * std::log(new_mu / old_mu)
+                           - mu_prior_beta_ * (new_mu - old_mu);
     }
       
     // rho

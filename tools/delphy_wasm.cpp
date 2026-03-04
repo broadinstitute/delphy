@@ -851,6 +851,30 @@ auto delphy_run_set_mu(Delphy_context& /*ctx*/, Run& run, double mu) -> void {
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
+auto delphy_run_get_mu_prior_alpha(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.mu_prior_alpha();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_mu_prior_alpha(Delphy_context& /*ctx*/, Run& run, double mu_prior_alpha) -> void {
+  run.set_mu_prior_alpha(mu_prior_alpha);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_mu_prior_beta(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.mu_prior_beta();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_mu_prior_beta(Delphy_context& /*ctx*/, Run& run, double mu_prior_beta) -> void {
+  run.set_mu_prior_beta(mu_prior_beta);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
 auto delphy_run_get_alpha(Delphy_context& /*ctx*/, const Run& run) -> double {
   return run.alpha();
 }

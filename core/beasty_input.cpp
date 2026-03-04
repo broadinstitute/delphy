@@ -326,9 +326,18 @@ static auto export_beast_2_6_2_input(
      << absl::StreamFormat("      </distribution>\n");
 
   if (run.mu_move_enabled()) {
-    os << absl::StreamFormat("      <prior id=\"ClockPrior.c:input_alignment\" name=\"distribution\" x=\"@clockRate.c:input_alignment\">\n")
-       << absl::StreamFormat("        <Uniform id=\"Uniform.0\" name=\"distr\" upper=\"Infinity\"/>\n")
-       << absl::StreamFormat("      </prior>\n");
+    os << absl::StreamFormat("      <prior id=\"ClockPrior.c:input_alignment\" name=\"distribution\" x=\"@clockRate.c:input_alignment\">\n");
+    if (run.mu_prior_alpha() != 1.0 || run.mu_prior_beta() != 0.0) {
+      os << absl::StreamFormat("        <Gamma id=\"Gamma.clockRate\" name=\"distr\" mode=\"ShapeRate\">\n")
+         << absl::StreamFormat("          <parameter id=\"RealParameter.clockRate.alpha\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"alpha\">%g</parameter>\n",
+                               run.mu_prior_alpha())
+         << absl::StreamFormat("          <parameter id=\"RealParameter.clockRate.beta\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"beta\">%g</parameter>\n",
+                               run.mu_prior_beta() / 365.0)
+         << absl::StreamFormat("        </Gamma>\n");
+    } else {
+      os << absl::StreamFormat("        <Uniform id=\"Uniform.0\" name=\"distr\" upper=\"Infinity\"/>\n");
+    }
+    os << absl::StreamFormat("      </prior>\n");
   }
 
   if (run.final_pop_size_move_enabled()) {
@@ -697,9 +706,18 @@ static auto export_beast_2_7_7_input(
      << absl::StreamFormat("      </distribution>\n");
 
   if (run.mu_move_enabled()) {
-    os << absl::StreamFormat("      <prior id=\"ClockPrior.c:input_alignment\" name=\"distribution\" x=\"@clockRate.c:input_alignment\">\n")
-       << absl::StreamFormat("        <Uniform id=\"Uniform.0\" name=\"distr\" upper=\"Infinity\"/>\n")
-       << absl::StreamFormat("      </prior>\n");
+    os << absl::StreamFormat("      <prior id=\"ClockPrior.c:input_alignment\" name=\"distribution\" x=\"@clockRate.c:input_alignment\">\n");
+    if (run.mu_prior_alpha() != 1.0 || run.mu_prior_beta() != 0.0) {
+      os << absl::StreamFormat("        <Gamma id=\"Gamma.clockRate\" name=\"distr\" mode=\"ShapeRate\">\n")
+         << absl::StreamFormat("          <parameter id=\"RealParameter.clockRate.alpha\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"alpha\">%g</parameter>\n",
+                               run.mu_prior_alpha())
+         << absl::StreamFormat("          <parameter id=\"RealParameter.clockRate.beta\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"beta\">%g</parameter>\n",
+                               run.mu_prior_beta() / 365.0)
+         << absl::StreamFormat("        </Gamma>\n");
+    } else {
+      os << absl::StreamFormat("        <Uniform id=\"Uniform.0\" name=\"distr\" upper=\"Infinity\"/>\n");
+    }
+    os << absl::StreamFormat("      </prior>\n");
   }
 
   if (run.final_pop_size_move_enabled()) {
@@ -1472,7 +1490,15 @@ static auto export_beast_X_10_5_0_input(
   }
   
   // No CTMC prior in Delphy
-  
+
+  if (run.mu_move_enabled() && (run.mu_prior_alpha() != 1.0 || run.mu_prior_beta() != 0.0)) {
+    os << absl::StreamFormat("        <gammaPrior id=\"clock.rate.prior\" shape=\"%g\" scale=\"%g\" offset=\"0.0\">\n",
+                             run.mu_prior_alpha(),
+                             365.0 / run.mu_prior_beta())
+       << absl::StreamFormat("          <parameter idref=\"clock.rate\"/>\n")
+       << absl::StreamFormat("        </gammaPrior>\n");
+  }
+
   if (typeid(pop_model) == typeid(Exp_pop_model)) {
     
     if (run.final_pop_size_move_enabled()) {

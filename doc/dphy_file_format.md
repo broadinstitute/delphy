@@ -144,12 +144,14 @@ union PopModel {
 // --------------
 
 table Params {
-  // Next free id: 38
+  // Next free id: 40
   
   step: int64   (id:  0);      // MCMC steps taken so far [unitless, >= 0]
   num_local_moves_per_global_move: int64 = -1 (id: 1);  // [unitless, >= 1].  -1 => use reasonable default
   num_parts: int32   (id:  2); // Parallelism [unitless, >= 1]
   mu: float64        (id:  3); // Mutation rate [muts / site / day, > 0]
+  mu_prior_alpha: float64 = 1.0 (id: 38);// alpha (shape) parameter of Gamma prior on mu [unitless, >= 0]
+  mu_prior_beta: float64 (id: 39);       // beta (rate) parameter of Gamma prior on mu [units: days, >= 0]
   alpha: float64     (id:  4); // Site rate heterogeneity parameter [unitless, > 0, never *too* far from 1.0, say 0.01 - 10.0]
   nu: [float64]      (id:  5); // Pointer to an array of L site relative rates [unitless, > 0, avg to 1.0]
   hky_kappa: float64 (id:  6); // Ratio of transition vs transversion exchangeabilities [unitless, > 0, typically 2 - 20]
