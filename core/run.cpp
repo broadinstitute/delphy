@@ -17,6 +17,8 @@ Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
       num_parts_{1},
       target_coal_prior_cells_{400},
       pop_model_{std::make_shared<Exp_pop_model>(calc_max_tip_time(tree_), 1000.0, 0.0)},
+      pop_inv_n0_prior_alpha_{0.0},  // Default: Jeffreys 1/x prior on n0
+      pop_inv_n0_prior_beta_{0.0},
       skygrid_tau_{1.0},  // Prior mean, Gill et al 2012 Eq. 15
       skygrid_tau_prior_alpha_{0.001},  // Prior, Gill et al 2012 discussion below Eq. 16
       skygrid_tau_prior_beta_{0.001},
@@ -507,8 +509,9 @@ auto Run::calc_cur_log_other_priors() const -> double {
   if (typeid(raw_pop_model) == typeid(Exp_pop_model)) {
     const auto& exp_pop_model = static_cast<const Exp_pop_model&>(raw_pop_model);
     
-    // pop_n0 - 1/x prior
-    log_prior -= std::log(exp_pop_model.pop_at_t0());
+    // pop_n0 - Inverse-Gamma(pop_inv_n0_prior_alpha_, pop_inv_n0_prior_beta_) prior
+    log_prior += -(pop_inv_n0_prior_alpha_ + 1) * std::log(exp_pop_model.pop_at_t0())
+                 - pop_inv_n0_prior_beta_ / exp_pop_model.pop_at_t0();
     
     // pop_g - Laplace prior on the growth rate, with mu 0.001/365 and scale 30.701135/365
     //      pdf(g; mu, scale) = 1/(2*scale) exp(-|g - mu| / scale)
@@ -1223,20 +1226,22 @@ auto Run::pop_size_move() -> void {
   CHECK(typeid(raw_pop_model) == typeid(Exp_pop_model));
   auto exp_pop_model = std::static_pointer_cast<const Exp_pop_model>(pop_model_);
     
-  // We follow LeMieux et al (2021) and use
+  // We use an Inverse-Gamma(alpha, beta) prior on n0:
+  //   pi(n0) ~ n0^{-(alpha+1)} * exp(-beta / n0)
+  // The default alpha=0, beta=0 gives the 1/x prior used in LeMieux et al (2021).
+  // A scale operator with scale factor [0.75, 1/0.75] proposes new_n0 = scale * old_n0.
   //
-  // - a 1/x prior on the pop size at time 0  (this makes the choice of t = 0 irrelevant)
-  // - a scale operator with scale factor [0.75, 1/0.75] to change the pop size
-    
+  //   log pi(new) - log pi(old) = -(alpha + 1) * log(scale) - beta * (1/new_n0 - 1/old_n0)
+
   auto scale_factor = 0.75;
   auto old_n0 = exp_pop_model->pop_at_t0();
   auto scale = absl::Uniform(bitgen_, scale_factor, 1 / scale_factor);
   auto new_n0 = scale * old_n0;
   auto alpha_n_to_o_over_o_to_n = old_n0 / new_n0;
-    
-  // 1/x prior for n0:
-  //  pi(n0) ~ 1/n0  => pi(new_n0)/pi(old_n0) = 1/scale
-  auto log_prior_new_over_prior_old = -std::log(scale);
+
+  auto log_prior_new_over_prior_old =
+      -(pop_inv_n0_prior_alpha_ + 1) * std::log(scale)
+      - pop_inv_n0_prior_beta_ * (1.0 / new_n0 - 1.0 / old_n0);
     
   auto old_log_coal = log_coalescent_prior_;
   auto old_pop_model = exp_pop_model;

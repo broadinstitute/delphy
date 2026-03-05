@@ -263,6 +263,8 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   if (pop_model_type != api::PopModel_NONE) {
     params_builder.add_pop_model(pop_model_offset);
   }
+  params_builder.add_pop_inv_n0_prior_alpha(run.pop_inv_n0_prior_alpha());
+  params_builder.add_pop_inv_n0_prior_beta(run.pop_inv_n0_prior_beta());
   params_builder.add_skygrid_tau(run.skygrid_tau());
   params_builder.add_skygrid_tau_prior_alpha(run.skygrid_tau_prior_alpha());
   params_builder.add_skygrid_tau_prior_beta(run.skygrid_tau_prior_beta());
@@ -365,6 +367,8 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
         CHECK(false) << "unrecognized pop_model_type " << api_params->pop_model_type();
     }
   }
+  run.set_pop_inv_n0_prior_alpha(api_params->pop_inv_n0_prior_alpha());
+  run.set_pop_inv_n0_prior_beta(api_params->pop_inv_n0_prior_beta());
   run.set_skygrid_tau(api_params->skygrid_tau());
   run.set_skygrid_tau_prior_alpha(api_params->skygrid_tau_prior_alpha());
   run.set_skygrid_tau_prior_beta(api_params->skygrid_tau_prior_beta());

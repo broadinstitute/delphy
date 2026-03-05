@@ -1472,6 +1472,30 @@ auto delphy_exp_pop_model_get_g(Delphy_context& /*ctx*/, const Exp_pop_model& ex
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
+auto delphy_run_get_pop_inv_n0_prior_alpha(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.pop_inv_n0_prior_alpha();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_pop_inv_n0_prior_alpha(Delphy_context& /*ctx*/, Run& run, double alpha) -> void {
+  run.set_pop_inv_n0_prior_alpha(alpha);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_pop_inv_n0_prior_beta(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.pop_inv_n0_prior_beta();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_pop_inv_n0_prior_beta(Delphy_context& /*ctx*/, Run& run, double beta) -> void {
+  run.set_pop_inv_n0_prior_beta(beta);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
 auto delphy_skygrid_pop_model_new(
     Delphy_context& /*ctx*/,
     int32_t num_knots,

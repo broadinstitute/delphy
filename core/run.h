@@ -60,6 +60,12 @@ class Run {
     pop_model_ = std::move(pop_model);
     coalescent_prior_.pop_model_changed(pop_model_);
     invalidate_derived_quantities(); }
+  auto pop_inv_n0_prior_alpha() const -> double { return pop_inv_n0_prior_alpha_; }
+  auto set_pop_inv_n0_prior_alpha(double pop_inv_n0_prior_alpha) -> void {
+    pop_inv_n0_prior_alpha_ = pop_inv_n0_prior_alpha, invalidate_derived_quantities(); }
+  auto pop_inv_n0_prior_beta() const -> double { return pop_inv_n0_prior_beta_; }
+  auto set_pop_inv_n0_prior_beta(double pop_inv_n0_prior_beta) -> void {
+    pop_inv_n0_prior_beta_ = pop_inv_n0_prior_beta, invalidate_derived_quantities(); }
   auto skygrid_tau() const -> double { return skygrid_tau_; }
   auto set_skygrid_tau(double skygrid_tau) -> void { skygrid_tau_ = skygrid_tau, invalidate_derived_quantities(); }
   auto skygrid_tau_prior_alpha() const -> double { return skygrid_tau_prior_alpha_; }
@@ -227,6 +233,8 @@ class Run {
 
   // Parameters
   std::shared_ptr<const Pop_model> pop_model_;
+  double pop_inv_n0_prior_alpha_;
+  double pop_inv_n0_prior_beta_;
   double skygrid_tau_;
   double skygrid_tau_prior_alpha_;
   double skygrid_tau_prior_beta_;

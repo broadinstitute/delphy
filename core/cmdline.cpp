@@ -190,12 +190,35 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       // The following only make sense for an exponential population model
       ("v0-fix-final-pop-size", "[pop-model == exponential] Fix effective population size at time of last tip",
        cxxopts::value<bool>()->default_value("false"))
-      ("v0-init-final-pop-size", "[pop-model == exponential] Initial (or fixed) value of effective population size at time of last tip, in years (the effective population size includes a factor of the generation time)",
+      ("v0-init-final-pop-size", "[pop-model == exponential] Initial (or fixed) value of effective population size at time of last tip, in years (the effective population size includes a factor of the generation time).  "
+       "Default: prior mean if an Inverse-Gamma prior with a defined mean is specified, otherwise 3.0 years.",
        cxxopts::value<double>()->default_value("3.0"))
       ("v0-fix-pop-growth-rate", "[pop-model == exponential] Fix effective population size growth rate",
        cxxopts::value<bool>()->default_value("false"))
       ("v0-init-pop-growth-rate", "[pop-model == exponential] Initial (or fixed) value of effective population size growth rate, in e-foldings / year",
        cxxopts::value<double>()->default_value("0.0"))
+      ("v0-pop-inv-n0-prior-alpha",
+       "[pop-model == exponential] Alpha parameter of the Inverse-Gamma prior on the effective "
+       "population size n0: pi(n0) ~ n0^{-(alpha+1)} exp[-beta/n0].  "
+       "Default alpha=0, beta=0 gives the Jeffreys 1/x prior.",
+       cxxopts::value<double>()->default_value("0.0"))
+      ("v0-pop-inv-n0-prior-beta",
+       "[pop-model == exponential] Beta parameter of the Inverse-Gamma prior on the effective "
+       "population size n0: pi(n0) ~ n0^{-(alpha+1)} exp[-beta/n0].  "
+       "Default alpha=0, beta=0 gives the Jeffreys 1/x prior.  Units: years.",
+       cxxopts::value<double>()->default_value("0.0"))
+      ("v0-pop-n0-prior-mean",
+       "[pop-model == exponential] Mean of the Inverse-Gamma prior on effective population size "
+       "n0, in years (mean = beta / (alpha - 1)).  "
+       "Must be specified together with --v0-pop-n0-prior-stddev.  "
+       "Mutually exclusive with --v0-pop-inv-n0-prior-alpha / --v0-pop-inv-n0-prior-beta.",
+       cxxopts::value<double>())
+      ("v0-pop-n0-prior-stddev",
+       "[pop-model == exponential] Standard deviation of the Inverse-Gamma prior on effective "
+       "population size n0, in years (var = beta^2 / ((alpha-1)^2 (alpha-2))).  "
+       "Must be specified together with --v0-pop-n0-prior-mean.  "
+       "Mutually exclusive with --v0-pop-inv-n0-prior-alpha / --v0-pop-inv-n0-prior-beta.",
+       cxxopts::value<double>())
 
       // The following only make sense for a Skygrid population model
       ("v0-skygrid-type",
@@ -502,7 +525,11 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         (opts.count("v0-fix-final-pop-size") > 0) ||
         (opts.count("v0-init-final-pop-size") > 0) ||
         (opts.count("v0-fix-pop-growth-rate") > 0) ||
-        (opts.count("v0-init-pop-growth-rate") > 0);
+        (opts.count("v0-init-pop-growth-rate") > 0) ||
+        (opts.count("v0-pop-inv-n0-prior-alpha") > 0) ||
+        (opts.count("v0-pop-inv-n0-prior-beta") > 0) ||
+        (opts.count("v0-pop-n0-prior-mean") > 0) ||
+        (opts.count("v0-pop-n0-prior-stddev") > 0);
     auto has_skygrid_pop_model_parameters =
         (opts.count("v0-skygrid-type") > 0) ||
         (opts.count("v0-skygrid-num-parameters") > 0) ||
@@ -542,7 +569,66 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       run->set_pop_model(std::make_unique<Exp_pop_model>(t0, init_final_pop_size, init_pop_growth_rate));
       run->set_final_pop_size_move_enabled(not fix_final_pop_size);
       run->set_pop_growth_rate_move_enabled(not fix_pop_growth_rate);
-    
+
+      // Inverse-Gamma prior on n0
+      auto has_inv_n0_prior_alpha_beta =
+          (opts.count("v0-pop-inv-n0-prior-alpha") > 0 || opts.count("v0-pop-inv-n0-prior-beta") > 0);
+      auto has_n0_prior_mean_stddev =
+          (opts.count("v0-pop-n0-prior-mean") > 0 || opts.count("v0-pop-n0-prior-stddev") > 0);
+
+      if (has_inv_n0_prior_alpha_beta && has_n0_prior_mean_stddev) {
+        std::cerr << "ERROR: --v0-pop-inv-n0-prior-alpha/beta and --v0-pop-n0-prior-mean/stddev "
+                  << "are mutually exclusive\n";
+        std::exit(EXIT_FAILURE);
+      }
+
+      if (has_n0_prior_mean_stddev) {
+        if (opts.count("v0-pop-n0-prior-mean") == 0 || opts.count("v0-pop-n0-prior-stddev") == 0) {
+          std::cerr << "ERROR: --v0-pop-n0-prior-mean and --v0-pop-n0-prior-stddev "
+                    << "must be specified together\n";
+          std::exit(EXIT_FAILURE);
+        }
+        auto mean = opts["v0-pop-n0-prior-mean"].as<double>();   // years
+        auto stddev = opts["v0-pop-n0-prior-stddev"].as<double>(); // years
+        if (mean <= 0.0) {
+          std::cerr << "ERROR: --v0-pop-n0-prior-mean must be positive, got " << mean << "\n";
+          std::exit(EXIT_FAILURE);
+        }
+        if (stddev <= 0.0) {
+          std::cerr << "ERROR: --v0-pop-n0-prior-stddev must be positive, got " << stddev << "\n";
+          std::exit(EXIT_FAILURE);
+        }
+        auto alpha = 2.0 + std::pow(mean / stddev, 2);
+        auto beta_years = mean * (alpha - 1.0);
+        run->set_pop_inv_n0_prior_alpha(alpha);
+        run->set_pop_inv_n0_prior_beta(beta_years * 365.0);  // convert to days
+
+        // Set initial n0 to prior mean
+        if (opts.count("v0-init-final-pop-size") == 0) {
+          run->set_pop_model(std::make_unique<Exp_pop_model>(t0, mean * 365.0, init_pop_growth_rate));
+        }
+      } else {
+        auto alpha = opts["v0-pop-inv-n0-prior-alpha"].as<double>();
+        auto beta_cli = opts["v0-pop-inv-n0-prior-beta"].as<double>();
+        if (alpha < 0.0) {
+          std::cerr << "ERROR: --v0-pop-inv-n0-prior-alpha must be non-negative, got " << alpha << "\n";
+          std::exit(EXIT_FAILURE);
+        }
+        if (beta_cli < 0.0) {
+          std::cerr << "ERROR: --v0-pop-inv-n0-prior-beta must be non-negative, got " << beta_cli << "\n";
+          std::exit(EXIT_FAILURE);
+        }
+        run->set_pop_inv_n0_prior_alpha(alpha);
+        run->set_pop_inv_n0_prior_beta(beta_cli * 365.0);  // convert years to days
+
+        // If the user didn't explicitly set an initial n0 and the prior mean is defined,
+        // use the prior mean as the initial value
+        if (opts.count("v0-init-final-pop-size") == 0 && alpha > 1.0 && beta_cli > 0.0) {
+          auto mean_years = beta_cli / (alpha - 1.0);
+          run->set_pop_model(std::make_unique<Exp_pop_model>(t0, mean_years * 365.0, init_pop_growth_rate));
+        }
+      }
+
     } else if (opts["v0-pop-model"].as<std::string>() == "skygrid") {
       
       // Skygrid population model

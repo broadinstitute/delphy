@@ -341,9 +341,20 @@ static auto export_beast_2_6_2_input(
   }
 
   if (run.final_pop_size_move_enabled()) {
-    os << absl::StreamFormat("      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n")
-       << absl::StreamFormat("        <OneOnX id=\"OneOnX.1\" name=\"distr\"/>\n")
-       << absl::StreamFormat("      </prior>\n");
+    if (run.pop_inv_n0_prior_alpha() != 0.0 || run.pop_inv_n0_prior_beta() != 0.0) {
+      os << absl::StreamFormat("      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n")
+         << absl::StreamFormat("        <InverseGamma id=\"InverseGamma.popSize\" name=\"distr\">\n")
+         << absl::StreamFormat("          <parameter id=\"RealParameter.popSize.alpha\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"alpha\">%g</parameter>\n",
+                               run.pop_inv_n0_prior_alpha())
+         << absl::StreamFormat("          <parameter id=\"RealParameter.popSize.beta\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"beta\">%g</parameter>\n",
+                               run.pop_inv_n0_prior_beta() / 365.0)
+         << absl::StreamFormat("        </InverseGamma>\n")
+         << absl::StreamFormat("      </prior>\n");
+    } else {
+      os << absl::StreamFormat("      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n")
+         << absl::StreamFormat("        <OneOnX id=\"OneOnX.1\" name=\"distr\"/>\n")
+         << absl::StreamFormat("      </prior>\n");
+    }
   }
 
   os << absl::StreamFormat("      <prior id=\"FrequenciesPrior.s:input_alignment\" name=\"distribution\" x=\"@freqParameter.s:input_alignment\">\n")
@@ -721,9 +732,20 @@ static auto export_beast_2_7_7_input(
   }
 
   if (run.final_pop_size_move_enabled()) {
-    os << absl::StreamFormat("      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n")
-       << absl::StreamFormat("        <OneOnX id=\"OneOnX.1\" name=\"distr\"/>\n")
-       << absl::StreamFormat("      </prior>\n");
+    if (run.pop_inv_n0_prior_alpha() != 0.0 || run.pop_inv_n0_prior_beta() != 0.0) {
+      os << absl::StreamFormat("      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n")
+         << absl::StreamFormat("        <InverseGamma id=\"InverseGamma.popSize\" name=\"distr\">\n")
+         << absl::StreamFormat("          <parameter id=\"RealParameter.popSize.alpha\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"alpha\">%g</parameter>\n",
+                               run.pop_inv_n0_prior_alpha())
+         << absl::StreamFormat("          <parameter id=\"RealParameter.popSize.beta\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"beta\">%g</parameter>\n",
+                               run.pop_inv_n0_prior_beta() / 365.0)
+         << absl::StreamFormat("        </InverseGamma>\n")
+         << absl::StreamFormat("      </prior>\n");
+    } else {
+      os << absl::StreamFormat("      <prior id=\"ePopSizePrior.t:input_alignment\" name=\"distribution\" x=\"@ePopSize.t:input_alignment\">\n")
+         << absl::StreamFormat("        <OneOnX id=\"OneOnX.1\" name=\"distr\"/>\n")
+         << absl::StreamFormat("      </prior>\n");
+    }
   }
 
   os << absl::StreamFormat("      <prior id=\"FrequenciesPrior.s:input_alignment\" name=\"distribution\" x=\"@freqParameter.s:input_alignment\">\n")
@@ -1502,11 +1524,19 @@ static auto export_beast_X_10_5_0_input(
   if (typeid(pop_model) == typeid(Exp_pop_model)) {
     
     if (run.final_pop_size_move_enabled()) {
-      os << absl::StreamFormat("        <oneOnXPrior>\n")
-         << absl::StreamFormat("          <parameter idref=\"exponential.popSize\"/>\n")
-         << absl::StreamFormat("        </oneOnXPrior>\n");
+      if (run.pop_inv_n0_prior_alpha() != 0.0 || run.pop_inv_n0_prior_beta() != 0.0) {
+        os << absl::StreamFormat("        <invgammaPrior shape=\"%g\" scale=\"%g\" offset=\"0.0\">\n",
+                                 run.pop_inv_n0_prior_alpha(),
+                                 run.pop_inv_n0_prior_beta() / 365.0)
+           << absl::StreamFormat("          <parameter idref=\"exponential.popSize\"/>\n")
+           << absl::StreamFormat("        </invgammaPrior>\n");
+      } else {
+        os << absl::StreamFormat("        <oneOnXPrior>\n")
+           << absl::StreamFormat("          <parameter idref=\"exponential.popSize\"/>\n")
+           << absl::StreamFormat("        </oneOnXPrior>\n");
+      }
     }
-    
+
     if (run.pop_growth_rate_move_enabled()) {
       auto growth_rate_mu = 0.001;  // per year - these defaults come from BEAUti2
       auto growth_rate_scale = 30.701135;  // per year - these defaults come from BEAUti2

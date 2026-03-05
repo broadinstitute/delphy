@@ -144,7 +144,7 @@ union PopModel {
 // --------------
 
 table Params {
-  // Next free id: 40
+  // Next free id: 42
   
   step: int64   (id:  0);      // MCMC steps taken so far [unitless, >= 0]
   num_local_moves_per_global_move: int64 = -1 (id: 1);  // [unitless, >= 1].  -1 => use reasonable default
@@ -160,6 +160,8 @@ table Params {
   hky_pi_G: float64  (id:  9); // Stationary state frequency of G (should roughly match proportion of G's in root sequence)
   hky_pi_T: float64  (id: 10); // Stationary state frequency of T (should roughly match proportion of T's in root sequence)
   pop_model: PopModel (id: 30);// Population model type and parameters (union-type => uses up two ids)
+  pop_inv_n0_prior_alpha: float64 (id: 40);// alpha parameter of InvGamma prior on n0 [unitless, >= 0]
+  pop_inv_n0_prior_beta: float64 (id: 41);// beta parameter of InvGamma prior on n0 [units: days, >= 0]
   skygrid_tau: float64 (id: 31);// `tau` parameter of Skygrid model (if in use) [unitless, >= 0]
   skygrid_tau_prior_alpha: float64 (id: 32);// alpha parameter of Skygrid `tau` prior (if in use) [unitless, >= 0]
   skygrid_tau_prior_beta: float64 (id: 33);// beta parameter of Skygrid `tau` prior (if in use) [unitless, >= 0]
