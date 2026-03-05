@@ -18,7 +18,7 @@ The Gamma(alpha, beta) prior has a finite mean iff `beta > 0` (and `alpha > 0`).
   current default of `1e-3`.
 - `alpha > 0, beta > 0`: proper Gamma — mean = `alpha / beta` (in per-day units
   internally).
-- `alpha = 0, beta > 0`: improper Jeffreys prior (`p(mu) ~ 1/mu`) — the mean is
+- `alpha = 0, beta > 0`: improper Jeffreys prior (`pi(mu) ~ 1/mu`) — the mean is
   undefined (the distribution is improper); keep the current default of `1e-3`.
 
 Decision rule: if `mu_prior_alpha > 0` and `mu_prior_beta > 0` and the user did not

@@ -196,16 +196,16 @@ log_other_priors_ += 0.0;
 ```
 
 The Gibbs sampler shape is `M + 1` (where M = num_muts_), consistent with a uniform prior.
-With a `Gamma(alpha, beta)` prior on mu where `p(mu) ~ mu^{alpha-1} exp(-beta*mu)`:
+With a `Gamma(alpha, beta)` prior on mu where `pi(mu) ~ mu^{alpha-1} exp(-beta*mu)`:
 - The full conditional posterior is `Gamma(M + alpha, Ttwiddle + beta)`
 - Defaults of `alpha = 1, beta = 0` reproduce the current uniform prior (shape = M + 1,
-  rate = Ttwiddle), since `Gamma(1, 0)` gives `p(mu) ~ mu^0 * exp(0) = 1` (uniform).
+  rate = Ttwiddle), since `Gamma(1, 0)` gives `pi(mu) ~ mu^0 * exp(0) = 1` (uniform).
 
 
 ## Implementation Plan
 
 Add `mu_prior_alpha` and `mu_prior_beta` parameters following the same pattern as the
-skygrid tau prior parameters.  The prior on mu is `p(mu) ~ mu^{alpha-1} exp(-beta*mu)`.
+skygrid tau prior parameters.  The prior on mu is `pi(mu) ~ mu^{alpha-1} exp(-beta*mu)`.
 Defaults: `alpha = 1, beta = 0` (uniform prior, matching current behavior).
 
 ### Step 1: `core/run.h` — Add accessors, setters, and private members
@@ -313,11 +313,11 @@ Option definitions (near `v0-fix-mutation-rate` / `v0-init-mutation-rate`):
 ```cpp
 ("v0-mu-prior-alpha",
  "Shape (alpha) parameter of the Gamma prior on the mutation rate mu: "
- "p(mu) ~ mu^{alpha-1} exp[-beta mu].  Default alpha=1, beta=0 gives a uniform prior.",
+ "pi(mu) ~ mu^{alpha-1} exp[-beta mu].  Default alpha=1, beta=0 gives a uniform prior.",
  cxxopts::value<double>()->default_value("1.0"))
 ("v0-mu-prior-beta",
  "Rate (beta) parameter of the Gamma prior on the mutation rate mu: "
- "p(mu) ~ mu^{alpha-1} exp[-beta mu].  Default alpha=1, beta=0 gives a uniform prior.  "
+ "pi(mu) ~ mu^{alpha-1} exp[-beta mu].  Default alpha=1, beta=0 gives a uniform prior.  "
  "Units: years.",
  cxxopts::value<double>()->default_value("0.0"))
 ```

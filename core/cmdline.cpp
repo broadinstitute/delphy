@@ -157,11 +157,11 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<double>()->default_value("1e-3"))
       ("v0-mu-prior-alpha",
        "Shape (alpha) parameter of the Gamma prior on the mutation rate mu: "
-       "p(mu) ~ mu^{alpha-1} exp[-beta mu].  Default alpha=1, beta=0 gives a uniform prior.",
+       "pi(mu) ~ mu^{alpha-1} exp[-beta mu].  Default alpha=1, beta=0 gives a uniform prior.",
        cxxopts::value<double>()->default_value("1.0"))
       ("v0-mu-prior-beta",
        "Rate (beta) parameter of the Gamma prior on the mutation rate mu: "
-       "p(mu) ~ mu^{alpha-1} exp[-beta mu].  Default alpha=1, beta=0 gives a uniform prior.  "
+       "pi(mu) ~ mu^{alpha-1} exp[-beta mu].  Default alpha=1, beta=0 gives a uniform prior.  "
        "Units: years.",
        cxxopts::value<double>()->default_value("0.0"))
       ("v0-mu-prior-mean",
