@@ -381,8 +381,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     if (opts.count("v0-steps")) {
       steps = opts["v0-steps"].as<int64_t>();
     }
-    if (steps <= 0) {
-      std::cerr << "ERROR: Number of steps must be positive, got " << steps << "\n";
+    if (steps < 0) {
+      std::cerr << "ERROR: Number of steps must be non-negative, got " << steps << "\n";
       std::exit(EXIT_FAILURE);
     }
 
@@ -391,7 +391,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       log_filename = opts["v0-out-log-file"].as<std::string>();
     }
 
-    auto log_every = steps / 10000;
+    auto log_every = std::max(1L, steps / 10000);
     if (opts.count("v0-log-every")) {
       log_every = opts["v0-log-every"].as<int64_t>();
     }
@@ -405,7 +405,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       trees_filename = opts["v0-out-trees-file"].as<std::string>();
     }
 
-    auto tree_every = steps / 1000;
+    auto tree_every = std::max(1L, steps / 1000);
     if (opts.count("v0-tree-every")) {
       tree_every = opts["v0-tree-every"].as<int64_t>();
     }
@@ -434,7 +434,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       std::cerr << *delphy_output_metadata << "\n";
     }
 
-    auto delphy_snapshot_every = steps / 1000;
+    auto delphy_snapshot_every = std::max(1L, steps / 1000);
     if (opts.count("v0-delphy-snapshot-every")) {
       delphy_snapshot_every = opts["v0-delphy-snapshot-every"].as<int64_t>();
     }
