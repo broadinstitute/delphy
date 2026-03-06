@@ -1496,6 +1496,54 @@ auto delphy_run_set_pop_inv_n0_prior_beta(Delphy_context& /*ctx*/, Run& run, dou
 
 EMSCRIPTEN_KEEPALIVE
 extern "C"
+auto delphy_run_get_pop_g_prior_mu(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.pop_g_prior_mu();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_pop_g_prior_mu(Delphy_context& /*ctx*/, Run& run, double mu) -> void {
+  run.set_pop_g_prior_mu(mu);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_pop_g_prior_scale(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.pop_g_prior_scale();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_pop_g_prior_scale(Delphy_context& /*ctx*/, Run& run, double scale) -> void {
+  run.set_pop_g_prior_scale(scale);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_pop_g_min(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.pop_g_min();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_pop_g_min(Delphy_context& /*ctx*/, Run& run, double g_min) -> void {
+  run.set_pop_g_min(g_min);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_pop_g_max(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.pop_g_max();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_pop_g_max(Delphy_context& /*ctx*/, Run& run, double g_max) -> void {
+  run.set_pop_g_max(g_max);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
 auto delphy_skygrid_pop_model_new(
     Delphy_context& /*ctx*/,
     int32_t num_knots,

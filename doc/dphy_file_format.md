@@ -144,7 +144,7 @@ union PopModel {
 // --------------
 
 table Params {
-  // Next free id: 42
+  // Next free id: 46
   
   step: int64   (id:  0);      // MCMC steps taken so far [unitless, >= 0]
   num_local_moves_per_global_move: int64 = -1 (id: 1);  // [unitless, >= 1].  -1 => use reasonable default
@@ -162,6 +162,15 @@ table Params {
   pop_model: PopModel (id: 30);// Population model type and parameters (union-type => uses up two ids)
   pop_inv_n0_prior_alpha: float64 (id: 40);// alpha parameter of InvGamma prior on n0 [unitless, >= 0]
   pop_inv_n0_prior_beta: float64 (id: 41);// beta parameter of InvGamma prior on n0 [units: days, >= 0]
+  // Laplace prior on exponential pop model growth rate g.
+  // FlatBuffers defaults to 0.0, but actual defaults are nonzero:
+  //   mu = 0.001/365, scale = 30.701135/365, min = -inf, max = +inf.
+  // Since pop_g_prior_scale should never be 0 in valid data,
+  // a value of 0.0 reliably indicates "field not present in old file".
+  pop_g_prior_mu: float64 (id: 42);    // mu (location) of Laplace prior on g [units: 1/day]
+  pop_g_prior_scale: float64 (id: 43); // scale of Laplace prior on g [units: 1/day, > 0]
+  pop_g_min: float64 (id: 44);         // lower bound on g [units: 1/day]
+  pop_g_max: float64 (id: 45);         // upper bound on g [units: 1/day]
   skygrid_tau: float64 (id: 31);// `tau` parameter of Skygrid model (if in use) [unitless, >= 0]
   skygrid_tau_prior_alpha: float64 (id: 32);// alpha parameter of Skygrid `tau` prior (if in use) [unitless, >= 0]
   skygrid_tau_prior_beta: float64 (id: 33);// beta parameter of Skygrid `tau` prior (if in use) [unitless, >= 0]

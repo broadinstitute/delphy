@@ -265,6 +265,10 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   }
   params_builder.add_pop_inv_n0_prior_alpha(run.pop_inv_n0_prior_alpha());
   params_builder.add_pop_inv_n0_prior_beta(run.pop_inv_n0_prior_beta());
+  params_builder.add_pop_g_prior_mu(run.pop_g_prior_mu());
+  params_builder.add_pop_g_prior_scale(run.pop_g_prior_scale());
+  params_builder.add_pop_g_min(run.pop_g_min());
+  params_builder.add_pop_g_max(run.pop_g_max());
   params_builder.add_skygrid_tau(run.skygrid_tau());
   params_builder.add_skygrid_tau_prior_alpha(run.skygrid_tau_prior_alpha());
   params_builder.add_skygrid_tau_prior_beta(run.skygrid_tau_prior_beta());
@@ -369,6 +373,21 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
   }
   run.set_pop_inv_n0_prior_alpha(api_params->pop_inv_n0_prior_alpha());
   run.set_pop_inv_n0_prior_beta(api_params->pop_inv_n0_prior_beta());
+  auto pop_g_prior_scale = api_params->pop_g_prior_scale();
+  if (pop_g_prior_scale != 0.0) {
+    run.set_pop_g_prior_mu(api_params->pop_g_prior_mu());
+    run.set_pop_g_prior_scale(pop_g_prior_scale);
+    run.set_pop_g_min(api_params->pop_g_min());
+    run.set_pop_g_max(api_params->pop_g_max());
+  } else {
+    // Old file without these fields — scale == 0.0 is never a valid value,
+    // so this reliably indicates the fields are absent.
+    // Use values hard-coded into earlier versions of Delphy.
+    run.set_pop_g_prior_mu(0.001 / 365.0);
+    run.set_pop_g_prior_scale(30.701135 / 365.0);
+    run.set_pop_g_min(-std::numeric_limits<double>::infinity());
+    run.set_pop_g_max(+std::numeric_limits<double>::infinity());
+  }
   run.set_skygrid_tau(api_params->skygrid_tau());
   run.set_skygrid_tau_prior_alpha(api_params->skygrid_tau_prior_alpha());
   run.set_skygrid_tau_prior_beta(api_params->skygrid_tau_prior_beta());

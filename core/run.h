@@ -66,6 +66,18 @@ class Run {
   auto pop_inv_n0_prior_beta() const -> double { return pop_inv_n0_prior_beta_; }
   auto set_pop_inv_n0_prior_beta(double pop_inv_n0_prior_beta) -> void {
     pop_inv_n0_prior_beta_ = pop_inv_n0_prior_beta, invalidate_derived_quantities(); }
+  auto pop_g_prior_mu() const -> double { return pop_g_prior_mu_; }
+  auto set_pop_g_prior_mu(double pop_g_prior_mu) -> void {
+    pop_g_prior_mu_ = pop_g_prior_mu, invalidate_derived_quantities(); }
+  auto pop_g_prior_scale() const -> double { return pop_g_prior_scale_; }
+  auto set_pop_g_prior_scale(double pop_g_prior_scale) -> void {
+    pop_g_prior_scale_ = pop_g_prior_scale, invalidate_derived_quantities(); }
+  auto pop_g_min() const -> double { return pop_g_min_; }
+  auto set_pop_g_min(double pop_g_min) -> void {
+    pop_g_min_ = pop_g_min, invalidate_derived_quantities(); }
+  auto pop_g_max() const -> double { return pop_g_max_; }
+  auto set_pop_g_max(double pop_g_max) -> void {
+    pop_g_max_ = pop_g_max, invalidate_derived_quantities(); }
   auto skygrid_tau() const -> double { return skygrid_tau_; }
   auto set_skygrid_tau(double skygrid_tau) -> void { skygrid_tau_ = skygrid_tau, invalidate_derived_quantities(); }
   auto skygrid_tau_prior_alpha() const -> double { return skygrid_tau_prior_alpha_; }
@@ -235,6 +247,10 @@ class Run {
   std::shared_ptr<const Pop_model> pop_model_;
   double pop_inv_n0_prior_alpha_;
   double pop_inv_n0_prior_beta_;
+  double pop_g_prior_mu_;
+  double pop_g_prior_scale_;
+  double pop_g_min_;
+  double pop_g_max_;
   double skygrid_tau_;
   double skygrid_tau_prior_alpha_;
   double skygrid_tau_prior_beta_;

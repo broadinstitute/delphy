@@ -26,6 +26,15 @@ These are the most important conventions from CONTRIBUTING.md that you MUST foll
 | Error handling | exceptions | error codes |
 | Function style (AAA) | `auto func(int x) -> int;` | `int func(int x);` |
 
+**Include order** (each section separated by a blank line, sorted lexicographically within each section):
+1. Corresponding header for this `.cpp` file, using `"..."`
+2. System/standard library includes, using `<...>` (e.g., `<iostream>`, `<vector>`)
+3. Third-party/library includes, using `"..."` (e.g., `"absl/log/check.h"`, `"boost/math/..."`)
+4. Other Delphy project includes, using `"..."` (e.g., `"run.h"`, `"phylo_tree.h"`)
+
+The corresponding header is listed first so that missing transitive dependencies in that
+header are caught immediately.  Every header should include everything it uses directly.
+
 **Compiler flags:** Code must compile cleanly with `-Wall -Wextra -Werror`.
 
 ---

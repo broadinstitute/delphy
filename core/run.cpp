@@ -19,6 +19,10 @@ Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
       pop_model_{std::make_shared<Exp_pop_model>(calc_max_tip_time(tree_), 1000.0, 0.0)},
       pop_inv_n0_prior_alpha_{0.0},  // Default: Jeffreys 1/x prior on n0
       pop_inv_n0_prior_beta_{0.0},
+      pop_g_prior_mu_{0.001 / 365.0},       // BEAUti2 2.6.2 default, in e-foldings / day
+      pop_g_prior_scale_{30.701135 / 365.0}, // BEAUti2 2.6.2 default, in e-foldings / day
+      pop_g_min_{-std::numeric_limits<double>::infinity()},  // No lower bound by default
+      pop_g_max_{+std::numeric_limits<double>::infinity()},   // No upper bound by default
       skygrid_tau_{1.0},  // Prior mean, Gill et al 2012 Eq. 15
       skygrid_tau_prior_alpha_{0.001},  // Prior, Gill et al 2012 discussion below Eq. 16
       skygrid_tau_prior_beta_{0.001},
@@ -513,11 +517,10 @@ auto Run::calc_cur_log_other_priors() const -> double {
     log_prior += -(pop_inv_n0_prior_alpha_ + 1) * std::log(exp_pop_model.pop_at_t0())
                  - pop_inv_n0_prior_beta_ / exp_pop_model.pop_at_t0();
     
-    // pop_g - Laplace prior on the growth rate, with mu 0.001/365 and scale 30.701135/365
-    //      pdf(g; mu, scale) = 1/(2*scale) exp(-|g - mu| / scale)
-    const auto mu_g = 0.001 / 365.0;
-    const auto scale_g = 30.701135 / 365.0;
-    log_prior += -std::abs(exp_pop_model.growth_rate() - mu_g) / scale_g - std::log(2 * scale_g);
+    // pop_g - Laplace(pop_g_prior_mu_, pop_g_prior_scale_) prior on g in [pop_g_min_, pop_g_max_]
+    //   pi(g) ~ exp(-|g - mu| / scale) * I(g_min <= g <= g_max)
+    log_prior += -std::abs(exp_pop_model.growth_rate() - pop_g_prior_mu_) / pop_g_prior_scale_
+                 - std::log(2 * pop_g_prior_scale_);
     
   } else if (typeid(raw_pop_model) == typeid(Skygrid_pop_model)) {
     const auto tau = skygrid_tau_;
@@ -1267,24 +1270,25 @@ auto Run::pop_growth_rate_move() -> void {
   CHECK(typeid(raw_pop_model) == typeid(Exp_pop_model));
   auto exp_pop_model = std::static_pointer_cast<const Exp_pop_model>(pop_model_);
     
-  // We follow LeMieux et al (2021) and use
-  //
-  // - a Laplace prior on the growth rate, with mu 0.001/365 and scale 30.701135/365
-  //     pdf(g; mu, scale) = 1/(2*scale) exp(-|g - mu| / scale)
-  // - a random walk operator on the growth rate that adds a uniform perturbation in [-delta, +delta],
-  //   with delta = 1.0 / 365.0
-    
+  // Truncated Laplace prior on g with optional bounds [pop_g_min_, pop_g_max_]:
+  //   pi(g) ~ exp(-|g - mu| / scale) * I(g_min <= g <= g_max)
+  // By default (following LeMieux et al (2021)), mu = 0.001/365, scale = 30.701135/365,
+  // and no bounds.
+  // Random walk operator: uniform perturbation in [-delta, +delta], delta = 1.0 / 365.0.
+
   auto window_size = 1.0 / 365.0;
-  auto mu = 0.001 / 365.0;
-  auto scale = 30.701135 / 365.0;
-    
-  auto delta = absl::Uniform(bitgen_, -window_size, +window_size);
   auto old_g = exp_pop_model->growth_rate();
+  CHECK(old_g >= pop_g_min_ && old_g <= pop_g_max_)
+      << "Growth rate " << old_g << " outside bounds [" << pop_g_min_ << ", " << pop_g_max_ << "]";
+
+  auto delta = absl::Uniform(bitgen_, -window_size, +window_size);
   auto new_g = old_g + delta;
-    
-  // Laplace prior for g
-  //   pi(g) ~ exp(-|g - mu| / b)
-  auto log_prior_new_over_prior_old = (std::abs(old_g - mu) - std::abs(new_g - mu)) / scale;
+
+  // Reject if outside bounds
+  if (new_g < pop_g_min_ || new_g > pop_g_max_) { return; }
+
+  auto log_prior_new_over_prior_old =
+      (std::abs(old_g - pop_g_prior_mu_) - std::abs(new_g - pop_g_prior_mu_)) / pop_g_prior_scale_;
     
   auto old_log_coal = log_coalescent_prior_;
   auto old_pop_model = exp_pop_model;

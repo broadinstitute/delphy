@@ -1,19 +1,20 @@
 #include "cmdline.h"
 
-#include <iostream>
 #include <fstream>
+#include <iostream>
 #include <optional>
 
+#include "absl/log/check.h"
 #include "absl/random/random.h"
 #include "cxxopts.hpp"
 
+#include "beasty_input.h"
 #include "dates.h"
 #include "io.h"
 #include "phylo_tree.h"
 #include "phylo_tree_calc.h"
 #include "sequence_utils.h"
 #include "version.h"
-#include "beasty_input.h"
 
 namespace delphy {
 
@@ -103,6 +104,41 @@ auto build_rough_initial_tree_from_maple(
   } else {
     return build_usher_like_tree(std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen, progress_hook);
   }
+}
+
+// Mean of a Laplace(mu, s) distribution truncated to [a, b].
+// Assumes a <= mu <= b (or a/b may be ±inf for unbounded cases).
+static auto truncated_laplace_mean(double mu, double s, double a, double b) -> double {
+  CHECK_GT(s, 0.0);
+  CHECK_LE(a, b);
+  CHECK_LE(a, mu);
+  CHECK_LE(mu, b);
+
+  auto p = (mu - a) / s;  // may be +inf
+  auto q = (b - mu) / s;  // may be +inf
+
+  auto result = 0.0;
+
+  // Common special cases (avoid inf arithmetic)
+  if (std::isinf(p) && std::isinf(q)) {
+    result = mu;                                               // no bounds
+  } else if (std::isinf(p)) {                                 // only upper bound
+    auto eq = std::exp(-q);
+    result = mu + (s / 2) * (-(q + 1) * eq) / (1 - eq / 2);
+  } else if (std::isinf(q)) {                                 // only lower bound
+    auto ep = std::exp(-p);
+    result = mu + (s / 2) * ((p + 1) * ep) / (1 - ep / 2);
+  } else if (p + q < 1e-4) {
+    result = (a + b) / 2;                                      // Taylor fallback for tight bounds
+  } else {
+    auto ep = std::exp(-p);
+    auto eq = std::exp(-q);
+    result = mu + (s / 2) * ((1 + p) * ep - (1 + q) * eq) / (1 - (ep + eq) / 2);
+  }
+
+  CHECK_GE(result, a);
+  CHECK_LE(result, b);
+  return result;
 }
 
 auto process_args(int argc, char** argv) -> Processed_cmd_line {
@@ -195,7 +231,10 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<double>()->default_value("3.0"))
       ("v0-fix-pop-growth-rate", "[pop-model == exponential] Fix effective population size growth rate",
        cxxopts::value<bool>()->default_value("false"))
-      ("v0-init-pop-growth-rate", "[pop-model == exponential] Initial (or fixed) value of effective population size growth rate, in e-foldings / year",
+      ("v0-init-pop-growth-rate",
+       "[pop-model == exponential] Initial (or fixed) value of effective population size growth rate, "
+       "in e-foldings / year.  If not specified and a Laplace prior with non-default parameters is set, "
+       "defaults to the truncated prior mean; otherwise defaults to 0.",
        cxxopts::value<double>()->default_value("0.0"))
       ("v0-pop-inv-n0-prior-alpha",
        "[pop-model == exponential] Alpha parameter of the Inverse-Gamma prior on the effective "
@@ -212,6 +251,31 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        "n0, in years (mean = beta / (alpha - 1)).  "
        "Must be specified together with --v0-pop-n0-prior-stddev.  "
        "Mutually exclusive with --v0-pop-inv-n0-prior-alpha / --v0-pop-inv-n0-prior-beta.",
+       cxxopts::value<double>())
+      ("v0-pop-g-prior-mu",
+       "[pop-model == exponential] Location (mu) of the Laplace prior on the growth rate g: "
+       "pi(g) ~ exp(-|g - mu| / scale).  Units: e-foldings / year.",
+       cxxopts::value<double>()->default_value("0.001"))
+      ("v0-pop-g-prior-scale",
+       "[pop-model == exponential] Scale of the Laplace prior on the growth rate g: "
+       "pi(g) ~ exp(-|g - mu| / scale).  Units: e-foldings / year.",
+       cxxopts::value<double>()->default_value("30.701135"))
+      ("v0-pop-growth-rate-min",
+       "[pop-model == exponential] Lower bound on the growth rate g, in e-foldings / year.  "
+       "E.g., use 0 to constrain the population to be non-declining.  "
+       "When g_min = mu = 0, the prior reduces to Exponential(rate = 1/scale).",
+       cxxopts::value<double>())
+      ("v0-pop-growth-rate-max",
+       "[pop-model == exponential] Upper bound on the growth rate g, in e-foldings / year.",
+       cxxopts::value<double>())
+      ("v0-pop-g-prior-exponential-with-mean",
+       "[pop-model == exponential] Shorthand for an Exponential prior on the growth rate g "
+       "with the specified mean, in e-foldings / year.  "
+       "If positive, enforces g >= 0 (growing population); if negative, enforces g <= 0 "
+       "(declining population).  Equivalent to setting mu = 0, scale = |mean|, and the "
+       "appropriate bound.  "
+       "Mutually exclusive with --v0-pop-g-prior-mu, --v0-pop-g-prior-scale, "
+       "--v0-pop-growth-rate-min, and --v0-pop-growth-rate-max.",
        cxxopts::value<double>())
       ("v0-pop-n0-prior-stddev",
        "[pop-model == exponential] Standard deviation of the Inverse-Gamma prior on effective "
@@ -529,7 +593,12 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         (opts.count("v0-pop-inv-n0-prior-alpha") > 0) ||
         (opts.count("v0-pop-inv-n0-prior-beta") > 0) ||
         (opts.count("v0-pop-n0-prior-mean") > 0) ||
-        (opts.count("v0-pop-n0-prior-stddev") > 0);
+        (opts.count("v0-pop-n0-prior-stddev") > 0) ||
+        (opts.count("v0-pop-g-prior-mu") > 0) ||
+        (opts.count("v0-pop-g-prior-scale") > 0) ||
+        (opts.count("v0-pop-growth-rate-min") > 0) ||
+        (opts.count("v0-pop-growth-rate-max") > 0) ||
+        (opts.count("v0-pop-g-prior-exponential-with-mean") > 0);
     auto has_skygrid_pop_model_parameters =
         (opts.count("v0-skygrid-type") > 0) ||
         (opts.count("v0-skygrid-num-parameters") > 0) ||
@@ -560,15 +629,10 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         std::exit(EXIT_FAILURE);
       }
       init_final_pop_size *= 365.0;  // convert to days
-      
+
       auto fix_pop_growth_rate = opts["v0-fix-pop-growth-rate"].as<bool>();
       auto init_pop_growth_rate = opts["v0-init-pop-growth-rate"].as<double>();
       init_pop_growth_rate /= 365.0;  // convert to e-foldings / day
-
-      // Configure run
-      run->set_pop_model(std::make_unique<Exp_pop_model>(t0, init_final_pop_size, init_pop_growth_rate));
-      run->set_final_pop_size_move_enabled(not fix_final_pop_size);
-      run->set_pop_growth_rate_move_enabled(not fix_pop_growth_rate);
 
       // Inverse-Gamma prior on n0
       auto has_inv_n0_prior_alpha_beta =
@@ -605,7 +669,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
 
         // Set initial n0 to prior mean
         if (opts.count("v0-init-final-pop-size") == 0) {
-          run->set_pop_model(std::make_unique<Exp_pop_model>(t0, mean * 365.0, init_pop_growth_rate));
+          init_final_pop_size = mean * 365.0;
         }
       } else {
         auto alpha = opts["v0-pop-inv-n0-prior-alpha"].as<double>();
@@ -624,10 +688,90 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         // If the user didn't explicitly set an initial n0 and the prior mean is defined,
         // use the prior mean as the initial value
         if (opts.count("v0-init-final-pop-size") == 0 && alpha > 1.0 && beta_cli > 0.0) {
-          auto mean_years = beta_cli / (alpha - 1.0);
-          run->set_pop_model(std::make_unique<Exp_pop_model>(t0, mean_years * 365.0, init_pop_growth_rate));
+          init_final_pop_size = beta_cli / (alpha - 1.0) * 365.0;
         }
       }
+
+      // Laplace prior on g, with optional bounds
+      auto has_g_prior_direct =
+          (opts.count("v0-pop-g-prior-mu") > 0) ||
+          (opts.count("v0-pop-g-prior-scale") > 0) ||
+          (opts.count("v0-pop-growth-rate-min") > 0) ||
+          (opts.count("v0-pop-growth-rate-max") > 0);
+      auto has_g_prior_exponential =
+          (opts.count("v0-pop-g-prior-exponential-with-mean") > 0);
+
+      if (has_g_prior_direct && has_g_prior_exponential) {
+        std::cerr << "ERROR: --v0-pop-g-prior-exponential-with-mean is mutually exclusive with "
+                  << "--v0-pop-g-prior-mu, --v0-pop-g-prior-scale, "
+                  << "--v0-pop-growth-rate-min, and --v0-pop-growth-rate-max\n";
+        std::exit(EXIT_FAILURE);
+      }
+
+      auto pop_g_prior_mu = opts["v0-pop-g-prior-mu"].as<double>() / 365.0;
+      auto pop_g_prior_scale = opts["v0-pop-g-prior-scale"].as<double>() / 365.0;
+      auto pop_g_min = -std::numeric_limits<double>::infinity();
+      auto pop_g_max = +std::numeric_limits<double>::infinity();
+
+      if (has_g_prior_exponential) {
+        auto exp_mean = opts["v0-pop-g-prior-exponential-with-mean"].as<double>();
+        if (exp_mean == 0.0) {
+          std::cerr << "ERROR: --v0-pop-g-prior-exponential-with-mean must be nonzero\n";
+          std::exit(EXIT_FAILURE);
+        }
+        pop_g_prior_mu = 0.0;
+        pop_g_prior_scale = std::abs(exp_mean) / 365.0;
+        if (exp_mean > 0.0) {
+          pop_g_min = 0.0;
+        } else {
+          pop_g_max = 0.0;
+        }
+      } else {
+        if (opts.count("v0-pop-growth-rate-min") > 0) {
+          pop_g_min = opts["v0-pop-growth-rate-min"].as<double>() / 365.0;
+        }
+        if (opts.count("v0-pop-growth-rate-max") > 0) {
+          pop_g_max = opts["v0-pop-growth-rate-max"].as<double>() / 365.0;
+        }
+      }
+
+      if (pop_g_prior_scale <= 0.0) {
+        std::cerr << "ERROR: --v0-pop-g-prior-scale must be positive, got "
+                  << (pop_g_prior_scale * 365.0) << " e-foldings / year\n";
+        std::exit(EXIT_FAILURE);
+      }
+      if (pop_g_min > pop_g_max) {
+        std::cerr << "ERROR: --v0-pop-growth-rate-min (" << (pop_g_min * 365.0)
+                  << ") must be <= --v0-pop-growth-rate-max (" << (pop_g_max * 365.0)
+                  << ") e-foldings / year\n";
+        std::exit(EXIT_FAILURE);
+      }
+
+      run->set_pop_g_prior_mu(pop_g_prior_mu);
+      run->set_pop_g_prior_scale(pop_g_prior_scale);
+      run->set_pop_g_min(pop_g_min);
+      run->set_pop_g_max(pop_g_max);
+
+      // If the user specified any g prior options but didn't explicitly set the initial growth rate,
+      // override init_pop_growth_rate to the mean of the truncated prior.
+      // This is only done when new options are explicitly specified, to preserve the behavior of
+      // older versions of Delphy (which always used an initial value of 0, not the prior location mu).
+      if ((has_g_prior_direct || has_g_prior_exponential) &&
+          opts.count("v0-init-pop-growth-rate") == 0) {
+        init_pop_growth_rate = truncated_laplace_mean(
+            pop_g_prior_mu, pop_g_prior_scale, pop_g_min, pop_g_max);
+      }
+
+      if (init_pop_growth_rate < pop_g_min || init_pop_growth_rate > pop_g_max) {
+        std::cerr << "ERROR: Initial growth rate " << (init_pop_growth_rate * 365.0)
+                  << " e-foldings / year is outside bounds ["
+                  << (pop_g_min * 365.0) << ", " << (pop_g_max * 365.0) << "]\n";
+        std::exit(EXIT_FAILURE);
+      }
+
+      run->set_pop_model(std::make_unique<Exp_pop_model>(t0, init_final_pop_size, init_pop_growth_rate));
+      run->set_final_pop_size_move_enabled(not fix_final_pop_size);
+      run->set_pop_growth_rate_move_enabled(not fix_pop_growth_rate);
 
     } else if (opts["v0-pop-model"].as<std::string>() == "skygrid") {
       

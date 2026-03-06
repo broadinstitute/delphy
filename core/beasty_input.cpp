@@ -272,7 +272,10 @@ static auto export_beast_2_6_2_input(
     os << absl::StreamFormat("    <parameter id=\"ePopSize.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">0.3</parameter>\n");
   }
   if (run.pop_growth_rate_move_enabled()) {
-    os << absl::StreamFormat("    <parameter id=\"growthRate.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">3.0E-4</parameter>\n");
+    os << absl::StreamFormat("    <parameter id=\"growthRate.t:input_alignment\" spec=\"parameter.RealParameter\"");
+    if (std::isfinite(run.pop_g_min())) { os << absl::StreamFormat(" lower=\"%g\"", run.pop_g_min() * 365.0); }
+    if (std::isfinite(run.pop_g_max())) { os << absl::StreamFormat(" upper=\"%g\"", run.pop_g_max() * 365.0); }
+    os << absl::StreamFormat(" name=\"stateNode\">3.0E-4</parameter>\n");
   }
   os << absl::StreamFormat("    <parameter id=\"freqParameter.s:input_alignment\" spec=\"parameter.RealParameter\" dimension=\"4\" lower=\"0.0\" name=\"stateNode\" upper=\"1.0\">0.25</parameter>")
      << absl::StreamFormat("  </state>\n")
@@ -372,13 +375,13 @@ static auto export_beast_2_6_2_input(
   }
 
   if (run.pop_growth_rate_move_enabled()) {
-    auto growth_rate_mu = 0.001;  // per year - these defaults come from BEAUti2
-    auto growth_rate_scale = 30.701135;  // per year - these defaults come from BEAUti2
+    auto growth_rate_mu = run.pop_g_prior_mu() * 365.0;    // convert to per year
+    auto growth_rate_scale = run.pop_g_prior_scale() * 365.0;  // convert to per year
     os << absl::StreamFormat("      <prior id=\"GrowthRatePrior.t:input_alignment\" name=\"distribution\" x=\"@growthRate.t:input_alignment\">\n")
        << absl::StreamFormat("        <LaplaceDistribution id=\"LaplaceDistribution.0\" name=\"distr\">\n")
-       << absl::StreamFormat("          <parameter id=\"RealParameter.3\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mu\">%.3f</parameter>\n",
+       << absl::StreamFormat("          <parameter id=\"RealParameter.3\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mu\">%g</parameter>\n",
                              growth_rate_mu)
-       << absl::StreamFormat("          <parameter id=\"RealParameter.4\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"scale\">%.6f</parameter>\n",
+       << absl::StreamFormat("          <parameter id=\"RealParameter.4\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"scale\">%g</parameter>\n",
                              growth_rate_scale)
        << absl::StreamFormat("        </LaplaceDistribution>\n")
        << absl::StreamFormat("      </prior>\n");
@@ -663,7 +666,10 @@ static auto export_beast_2_7_7_input(
     os << absl::StreamFormat("    <parameter id=\"ePopSize.t:input_alignment\" spec=\"parameter.RealParameter\" lower=\"0.0\" name=\"stateNode\">0.3</parameter>\n");
   }
   if (run.pop_growth_rate_move_enabled()) {
-    os << absl::StreamFormat("    <parameter id=\"growthRate.t:input_alignment\" spec=\"parameter.RealParameter\" name=\"stateNode\">3.0E-4</parameter>\n");
+    os << absl::StreamFormat("    <parameter id=\"growthRate.t:input_alignment\" spec=\"parameter.RealParameter\"");
+    if (std::isfinite(run.pop_g_min())) { os << absl::StreamFormat(" lower=\"%g\"", run.pop_g_min() * 365.0); }
+    if (std::isfinite(run.pop_g_max())) { os << absl::StreamFormat(" upper=\"%g\"", run.pop_g_max() * 365.0); }
+    os << absl::StreamFormat(" name=\"stateNode\">3.0E-4</parameter>\n");
   }
   os << absl::StreamFormat("    <parameter id=\"freqParameter.s:input_alignment\" spec=\"parameter.RealParameter\" dimension=\"4\" lower=\"0.0\" name=\"stateNode\" upper=\"1.0\">0.25</parameter>")
      << absl::StreamFormat("  </state>\n")
@@ -765,13 +771,15 @@ static auto export_beast_2_7_7_input(
   }
 
   if (run.pop_growth_rate_move_enabled()) {
-    auto growth_rate_mu = 0.001;  // per year - these defaults come from BEAUti2
-    auto growth_rate_scale = 30.701135;  // per year - these defaults come from BEAUti2 2.6.2 - DIFFERENT FROM BEAST2 2.7.7's default of 0.5
+    auto growth_rate_mu = run.pop_g_prior_mu() * 365.0;    // convert to per year
+    auto growth_rate_scale = run.pop_g_prior_scale() * 365.0;  // convert to per year
+    // Note: BEAUti2 2.7.7's default Laplace scale for growth rate is 0.5, not 30.701135.
+    // We emit whatever value the user configured (default: 30.701135, matching BEAUti2 2.6.2).
     os << absl::StreamFormat("      <prior id=\"GrowthRatePrior.t:input_alignment\" name=\"distribution\" x=\"@growthRate.t:input_alignment\">\n")
        << absl::StreamFormat("        <LaplaceDistribution id=\"LaplaceDistribution.0\" name=\"distr\">\n")
-       << absl::StreamFormat("          <parameter id=\"RealParameter.3\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mu\">%.3f</parameter>\n",
+       << absl::StreamFormat("          <parameter id=\"RealParameter.3\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"mu\">%g</parameter>\n",
                              growth_rate_mu)
-       << absl::StreamFormat("          <parameter id=\"RealParameter.4\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"scale\">%.6f</parameter>\n",
+       << absl::StreamFormat("          <parameter id=\"RealParameter.4\" spec=\"parameter.RealParameter\" estimate=\"false\" name=\"scale\">%g</parameter>\n",
                              growth_rate_scale)
        << absl::StreamFormat("        </LaplaceDistribution>\n")
        << absl::StreamFormat("      </prior>\n");
@@ -1153,10 +1161,13 @@ static auto export_beast_X_10_5_0_input(
                              : final_pop_size/365.0)  // ... vs. fixed  (units: years)
        << absl::StreamFormat("    </populationSize>\n")
        << absl::StreamFormat("    <growthRate>\n")
-       << absl::StreamFormat("      <parameter id=\"exponential.growthRate\" value=\"%g\"/>\n",
+       << absl::StreamFormat("      <parameter id=\"exponential.growthRate\" value=\"%g\"",
                              run.final_pop_size_move_enabled()
                              ? 0.0                    // Will infer...
-                             : pop_growth_rate*365.0)  // ... vs. fixed  (units: e-foldings per year)
+                             : pop_growth_rate*365.0);  // ... vs. fixed  (units: e-foldings per year)
+    if (std::isfinite(run.pop_g_min())) { os << absl::StreamFormat(" lower=\"%g\"", run.pop_g_min() * 365.0); }
+    if (std::isfinite(run.pop_g_max())) { os << absl::StreamFormat(" upper=\"%g\"", run.pop_g_max() * 365.0); }
+    os << absl::StreamFormat("/>\n")
        << absl::StreamFormat("    </growthRate>\n")
        << absl::StreamFormat("  </exponentialGrowth>\n")
        << absl::StreamFormat("\n")
@@ -1538,9 +1549,9 @@ static auto export_beast_X_10_5_0_input(
     }
 
     if (run.pop_growth_rate_move_enabled()) {
-      auto growth_rate_mu = 0.001;  // per year - these defaults come from BEAUti2
-      auto growth_rate_scale = 30.701135;  // per year - these defaults come from BEAUti2
-      
+      auto growth_rate_mu = run.pop_g_prior_mu() * 365.0;    // convert to per year
+      auto growth_rate_scale = run.pop_g_prior_scale() * 365.0;  // convert to per year
+
       os << absl::StreamFormat("        <laplacePrior mean=\"%g\" scale=\"%g\">\n",
                                growth_rate_mu, growth_rate_scale)
          << absl::StreamFormat("          <parameter idref=\"exponential.growthRate\"/>\n")

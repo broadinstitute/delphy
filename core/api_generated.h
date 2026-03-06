@@ -690,7 +690,11 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_MU_PRIOR_ALPHA = 80,
     VT_MU_PRIOR_BETA = 82,
     VT_POP_INV_N0_PRIOR_ALPHA = 84,
-    VT_POP_INV_N0_PRIOR_BETA = 86
+    VT_POP_INV_N0_PRIOR_BETA = 86,
+    VT_POP_G_PRIOR_MU = 88,
+    VT_POP_G_PRIOR_SCALE = 90,
+    VT_POP_G_MIN = 92,
+    VT_POP_G_MAX = 94
   };
   int64_t step() const {
     return GetField<int64_t>(VT_STEP, 0);
@@ -825,6 +829,18 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   double pop_inv_n0_prior_beta() const {
     return GetField<double>(VT_POP_INV_N0_PRIOR_BETA, 0.0);
   }
+  double pop_g_prior_mu() const {
+    return GetField<double>(VT_POP_G_PRIOR_MU, 0.0);
+  }
+  double pop_g_prior_scale() const {
+    return GetField<double>(VT_POP_G_PRIOR_SCALE, 0.0);
+  }
+  double pop_g_min() const {
+    return GetField<double>(VT_POP_G_MIN, 0.0);
+  }
+  double pop_g_max() const {
+    return GetField<double>(VT_POP_G_MAX, 0.0);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int64_t>(verifier, VT_STEP, 8) &&
@@ -871,6 +887,10 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyField<double>(verifier, VT_MU_PRIOR_BETA, 8) &&
            VerifyField<double>(verifier, VT_POP_INV_N0_PRIOR_ALPHA, 8) &&
            VerifyField<double>(verifier, VT_POP_INV_N0_PRIOR_BETA, 8) &&
+           VerifyField<double>(verifier, VT_POP_G_PRIOR_MU, 8) &&
+           VerifyField<double>(verifier, VT_POP_G_PRIOR_SCALE, 8) &&
+           VerifyField<double>(verifier, VT_POP_G_MIN, 8) &&
+           VerifyField<double>(verifier, VT_POP_G_MAX, 8) &&
            verifier.EndTable();
   }
 };
@@ -1013,6 +1033,18 @@ struct ParamsBuilder {
   void add_pop_inv_n0_prior_beta(double pop_inv_n0_prior_beta) {
     fbb_.AddElement<double>(Params::VT_POP_INV_N0_PRIOR_BETA, pop_inv_n0_prior_beta, 0.0);
   }
+  void add_pop_g_prior_mu(double pop_g_prior_mu) {
+    fbb_.AddElement<double>(Params::VT_POP_G_PRIOR_MU, pop_g_prior_mu, 0.0);
+  }
+  void add_pop_g_prior_scale(double pop_g_prior_scale) {
+    fbb_.AddElement<double>(Params::VT_POP_G_PRIOR_SCALE, pop_g_prior_scale, 0.0);
+  }
+  void add_pop_g_min(double pop_g_min) {
+    fbb_.AddElement<double>(Params::VT_POP_G_MIN, pop_g_min, 0.0);
+  }
+  void add_pop_g_max(double pop_g_max) {
+    fbb_.AddElement<double>(Params::VT_POP_G_MAX, pop_g_max, 0.0);
+  }
   explicit ParamsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1067,8 +1099,16 @@ inline ::flatbuffers::Offset<Params> CreateParams(
     double mu_prior_alpha = 1.0,
     double mu_prior_beta = 0.0,
     double pop_inv_n0_prior_alpha = 0.0,
-    double pop_inv_n0_prior_beta = 0.0) {
+    double pop_inv_n0_prior_beta = 0.0,
+    double pop_g_prior_mu = 0.0,
+    double pop_g_prior_scale = 0.0,
+    double pop_g_min = 0.0,
+    double pop_g_max = 0.0) {
   ParamsBuilder builder_(_fbb);
+  builder_.add_pop_g_max(pop_g_max);
+  builder_.add_pop_g_min(pop_g_min);
+  builder_.add_pop_g_prior_scale(pop_g_prior_scale);
+  builder_.add_pop_g_prior_mu(pop_g_prior_mu);
   builder_.add_pop_inv_n0_prior_beta(pop_inv_n0_prior_beta);
   builder_.add_pop_inv_n0_prior_alpha(pop_inv_n0_prior_alpha);
   builder_.add_mu_prior_beta(mu_prior_beta);
@@ -1157,7 +1197,11 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
     double mu_prior_alpha = 1.0,
     double mu_prior_beta = 0.0,
     double pop_inv_n0_prior_alpha = 0.0,
-    double pop_inv_n0_prior_beta = 0.0) {
+    double pop_inv_n0_prior_beta = 0.0,
+    double pop_g_prior_mu = 0.0,
+    double pop_g_prior_scale = 0.0,
+    double pop_g_min = 0.0,
+    double pop_g_max = 0.0) {
   auto nu__ = nu ? _fbb.CreateVector<double>(*nu) : 0;
   return delphy::api::CreateParams(
       _fbb,
@@ -1202,7 +1246,11 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
       mu_prior_alpha,
       mu_prior_beta,
       pop_inv_n0_prior_alpha,
-      pop_inv_n0_prior_beta);
+      pop_inv_n0_prior_beta,
+      pop_g_prior_mu,
+      pop_g_prior_scale,
+      pop_g_min,
+      pop_g_max);
 }
 
 inline bool VerifyPopModel(::flatbuffers::Verifier &verifier, const void *obj, PopModel type) {
