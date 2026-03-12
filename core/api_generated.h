@@ -694,7 +694,9 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
     VT_POP_G_PRIOR_MU = 88,
     VT_POP_G_PRIOR_SCALE = 90,
     VT_POP_G_MIN = 92,
-    VT_POP_G_MAX = 94
+    VT_POP_G_MAX = 94,
+    VT_SKYGRID_INV_NBAR_PRIOR_ALPHA = 96,
+    VT_SKYGRID_INV_NBAR_PRIOR_BETA = 98
   };
   int64_t step() const {
     return GetField<int64_t>(VT_STEP, 0);
@@ -841,6 +843,12 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   double pop_g_max() const {
     return GetField<double>(VT_POP_G_MAX, 0.0);
   }
+  double skygrid_inv_nbar_prior_alpha() const {
+    return GetField<double>(VT_SKYGRID_INV_NBAR_PRIOR_ALPHA, 0.0);
+  }
+  double skygrid_inv_nbar_prior_beta() const {
+    return GetField<double>(VT_SKYGRID_INV_NBAR_PRIOR_BETA, 0.0);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<int64_t>(verifier, VT_STEP, 8) &&
@@ -891,6 +899,8 @@ struct Params FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
            VerifyField<double>(verifier, VT_POP_G_PRIOR_SCALE, 8) &&
            VerifyField<double>(verifier, VT_POP_G_MIN, 8) &&
            VerifyField<double>(verifier, VT_POP_G_MAX, 8) &&
+           VerifyField<double>(verifier, VT_SKYGRID_INV_NBAR_PRIOR_ALPHA, 8) &&
+           VerifyField<double>(verifier, VT_SKYGRID_INV_NBAR_PRIOR_BETA, 8) &&
            verifier.EndTable();
   }
 };
@@ -1045,6 +1055,12 @@ struct ParamsBuilder {
   void add_pop_g_max(double pop_g_max) {
     fbb_.AddElement<double>(Params::VT_POP_G_MAX, pop_g_max, 0.0);
   }
+  void add_skygrid_inv_nbar_prior_alpha(double skygrid_inv_nbar_prior_alpha) {
+    fbb_.AddElement<double>(Params::VT_SKYGRID_INV_NBAR_PRIOR_ALPHA, skygrid_inv_nbar_prior_alpha, 0.0);
+  }
+  void add_skygrid_inv_nbar_prior_beta(double skygrid_inv_nbar_prior_beta) {
+    fbb_.AddElement<double>(Params::VT_SKYGRID_INV_NBAR_PRIOR_BETA, skygrid_inv_nbar_prior_beta, 0.0);
+  }
   explicit ParamsBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -1103,8 +1119,12 @@ inline ::flatbuffers::Offset<Params> CreateParams(
     double pop_g_prior_mu = 0.0,
     double pop_g_prior_scale = 0.0,
     double pop_g_min = 0.0,
-    double pop_g_max = 0.0) {
+    double pop_g_max = 0.0,
+    double skygrid_inv_nbar_prior_alpha = 0.0,
+    double skygrid_inv_nbar_prior_beta = 0.0) {
   ParamsBuilder builder_(_fbb);
+  builder_.add_skygrid_inv_nbar_prior_beta(skygrid_inv_nbar_prior_beta);
+  builder_.add_skygrid_inv_nbar_prior_alpha(skygrid_inv_nbar_prior_alpha);
   builder_.add_pop_g_max(pop_g_max);
   builder_.add_pop_g_min(pop_g_min);
   builder_.add_pop_g_prior_scale(pop_g_prior_scale);
@@ -1201,7 +1221,9 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
     double pop_g_prior_mu = 0.0,
     double pop_g_prior_scale = 0.0,
     double pop_g_min = 0.0,
-    double pop_g_max = 0.0) {
+    double pop_g_max = 0.0,
+    double skygrid_inv_nbar_prior_alpha = 0.0,
+    double skygrid_inv_nbar_prior_beta = 0.0) {
   auto nu__ = nu ? _fbb.CreateVector<double>(*nu) : 0;
   return delphy::api::CreateParams(
       _fbb,
@@ -1250,7 +1272,9 @@ inline ::flatbuffers::Offset<Params> CreateParamsDirect(
       pop_g_prior_mu,
       pop_g_prior_scale,
       pop_g_min,
-      pop_g_max);
+      pop_g_max,
+      skygrid_inv_nbar_prior_alpha,
+      skygrid_inv_nbar_prior_beta);
 }
 
 inline bool VerifyPopModel(::flatbuffers::Verifier &verifier, const void *obj, PopModel type) {

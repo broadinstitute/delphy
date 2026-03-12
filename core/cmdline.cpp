@@ -320,6 +320,37 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       ("v0-skygrid-low-pop-barrier-scale",
        "[pop-model == skygrid] Fraction by which N(t) must drop below minimum for the value of the low-pop barrier to reach a value of 1 nat (i.e., (log(N/N_min) / log(1-scale))^2 = 1 at N = N_min * (1-scale)).",
        cxxopts::value<double>()->default_value("0.30"))
+      ("v0-skygrid-inv-nbar-prior-alpha",
+       "[pop-model == skygrid] Alpha parameter of the Inverse-Gamma prior on N_bar, the "
+       "geometric-mean effective population size across Skygrid knots "
+       "(N_bar = exp(mean of log-population values gamma_k)).  "
+       "pi(N_bar) ~ N_bar^{-(alpha+1)} exp[-beta/N_bar].  "
+       "Default alpha=0, beta=0 gives a uniform prior on log(N_bar) (= Jeffreys 1/N_bar prior).",
+       cxxopts::value<double>()->default_value("0.0"))
+      ("v0-skygrid-inv-nbar-prior-beta",
+       "[pop-model == skygrid] Beta parameter of the Inverse-Gamma prior on N_bar, the "
+       "geometric-mean effective population size across Skygrid knots "
+       "(N_bar = exp(mean of log-population values gamma_k)).  "
+       "pi(N_bar) ~ N_bar^{-(alpha+1)} exp[-beta/N_bar].  "
+       "Default alpha=0, beta=0 gives a uniform prior on log(N_bar) (= Jeffreys 1/N_bar prior).  "
+       "Units: years.",
+       cxxopts::value<double>()->default_value("0.0"))
+      ("v0-skygrid-nbar-prior-mean",
+       "[pop-model == skygrid] Mean of the Inverse-Gamma prior on N_bar, the geometric-mean "
+       "effective population size across Skygrid knots, in years "
+       "(mean = beta / (alpha - 1)).  "
+       "Must be specified together with --v0-skygrid-nbar-prior-stddev.  "
+       "Mutually exclusive with --v0-skygrid-inv-nbar-prior-alpha / "
+       "--v0-skygrid-inv-nbar-prior-beta.",
+       cxxopts::value<double>())
+      ("v0-skygrid-nbar-prior-stddev",
+       "[pop-model == skygrid] Standard deviation of the Inverse-Gamma prior on N_bar, the "
+       "geometric-mean effective population size across Skygrid knots, in years "
+       "(var = beta^2 / ((alpha-1)^2 (alpha-2))).  "
+       "Must be specified together with --v0-skygrid-nbar-prior-mean.  "
+       "Mutually exclusive with --v0-skygrid-inv-nbar-prior-alpha / "
+       "--v0-skygrid-inv-nbar-prior-beta.",
+       cxxopts::value<double>())
       ;
 
   try {
@@ -610,7 +641,11 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         (opts.count("v0-skygrid-tau-prior-beta") > 0) ||
         (opts.count("v0-skygrid-disable-low-pop-barrier") > 0) ||
         (opts.count("v0-skygrid-low-pop-barrier-loc") > 0) ||
-        (opts.count("v0-skygrid-low-pop-barrier-scale") > 0);
+        (opts.count("v0-skygrid-low-pop-barrier-scale") > 0) ||
+        (opts.count("v0-skygrid-inv-nbar-prior-alpha") > 0) ||
+        (opts.count("v0-skygrid-inv-nbar-prior-beta") > 0) ||
+        (opts.count("v0-skygrid-nbar-prior-mean") > 0) ||
+        (opts.count("v0-skygrid-nbar-prior-stddev") > 0);
 
     if (opts["v0-pop-model"].as<std::string>() == "exponential") {
       
@@ -865,9 +900,63 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         }
       }
 
+      // Inverse-Gamma prior on N_bar = exp(gamma_bar)
+      auto has_inv_nbar_prior_alpha_beta =
+          (opts.count("v0-skygrid-inv-nbar-prior-alpha") > 0 || opts.count("v0-skygrid-inv-nbar-prior-beta") > 0);
+      auto has_nbar_prior_mean_stddev =
+          (opts.count("v0-skygrid-nbar-prior-mean") > 0 || opts.count("v0-skygrid-nbar-prior-stddev") > 0);
+
+      if (has_inv_nbar_prior_alpha_beta && has_nbar_prior_mean_stddev) {
+        std::cerr << "ERROR: --v0-skygrid-inv-nbar-prior-alpha/beta and --v0-skygrid-nbar-prior-mean/stddev "
+                  << "are mutually exclusive\n";
+        std::exit(EXIT_FAILURE);
+      }
+
+      auto inv_nbar_prior_alpha = 0.0;
+      auto inv_nbar_prior_beta_days = 0.0;
+      auto init_nbar_days = 3.0 * 365.0;  // Default: 3 years
+
+      if (has_nbar_prior_mean_stddev) {
+        if (opts.count("v0-skygrid-nbar-prior-mean") == 0 || opts.count("v0-skygrid-nbar-prior-stddev") == 0) {
+          std::cerr << "ERROR: --v0-skygrid-nbar-prior-mean and --v0-skygrid-nbar-prior-stddev "
+                    << "must be specified together\n";
+          std::exit(EXIT_FAILURE);
+        }
+        auto mean = opts["v0-skygrid-nbar-prior-mean"].as<double>();   // years
+        auto stddev = opts["v0-skygrid-nbar-prior-stddev"].as<double>(); // years
+        if (mean <= 0.0) {
+          std::cerr << "ERROR: --v0-skygrid-nbar-prior-mean must be positive, got " << mean << "\n";
+          std::exit(EXIT_FAILURE);
+        }
+        if (stddev <= 0.0) {
+          std::cerr << "ERROR: --v0-skygrid-nbar-prior-stddev must be positive, got " << stddev << "\n";
+          std::exit(EXIT_FAILURE);
+        }
+        inv_nbar_prior_alpha = 2.0 + std::pow(mean / stddev, 2);
+        auto beta_years = mean * (inv_nbar_prior_alpha - 1.0);
+        inv_nbar_prior_beta_days = beta_years * 365.0;
+        init_nbar_days = mean * 365.0;
+      } else if (has_inv_nbar_prior_alpha_beta) {
+        auto alpha = opts["v0-skygrid-inv-nbar-prior-alpha"].as<double>();
+        auto beta_cli = opts["v0-skygrid-inv-nbar-prior-beta"].as<double>();
+        if (alpha < 0.0) {
+          std::cerr << "ERROR: --v0-skygrid-inv-nbar-prior-alpha must be non-negative, got " << alpha << "\n";
+          std::exit(EXIT_FAILURE);
+        }
+        if (beta_cli < 0.0) {
+          std::cerr << "ERROR: --v0-skygrid-inv-nbar-prior-beta must be non-negative, got " << beta_cli << "\n";
+          std::exit(EXIT_FAILURE);
+        }
+        inv_nbar_prior_alpha = alpha;
+        inv_nbar_prior_beta_days = beta_cli * 365.0;
+        if (alpha > 1.0 && beta_cli > 0.0) {
+          init_nbar_days = beta_cli / (alpha - 1.0) * 365.0;  // prior mean in days
+        }
+      }
+
       // At this point, skygrid_tau is set.  Sample a random trajectory with this
-      // precision, then reset its mean to "3 years" (the `skygrid_gammas_zero_mode_gibbs_move`
-      // Gibbs sample the mean value of gamma, so we don't need to get this right at all here)
+      // precision, then reset its mean to init_nbar_days (the `skygrid_gammas_zero_mode_gibbs_move`
+      // Gibbs-samples the mean value of gamma, so we don't need to get this right at all here)
       auto gamma_k = std::vector<double>(M+1, 0.0);
       auto mean_gamma_k = 0.0;
       for (auto k = 1; k <= M; ++k) {
@@ -876,13 +965,15 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       }
       mean_gamma_k /= M+1;
       for (auto k = 0; k <= M; ++k) {
-        gamma_k[k] += (-mean_gamma_k) + std::log(3.0 * 365.0);
+        gamma_k[k] += (-mean_gamma_k) + std::log(init_nbar_days);
       }
 
       // Configure run
       run->set_pop_model(std::make_unique<Skygrid_pop_model>(std::move(x_k), std::move(gamma_k), skygrid_type));
       run->set_skygrid_tau(skygrid_tau);
       run->set_skygrid_tau_move_enabled(infer_tau);  // Prior configured above when infer_tau == true
+      run->set_skygrid_inv_nbar_prior_alpha(inv_nbar_prior_alpha);
+      run->set_skygrid_inv_nbar_prior_beta(inv_nbar_prior_beta_days);
 
       // Low-pop barrier
       if (opts["v0-skygrid-disable-low-pop-barrier"].as<bool>()) {
@@ -894,12 +985,12 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
 
         auto low_pop_barrier_scale = opts["v0-skygrid-low-pop-barrier-scale"].as<double>();
         auto low_gamma_barrier_scale = -std::log(1 - low_pop_barrier_scale);  // Convert to scale in gamma
-        
+
         run->set_skygrid_low_gamma_barrier_enabled(true);
         run->set_skygrid_low_gamma_barrier_loc(low_gamma_barrier_loc);
         run->set_skygrid_low_gamma_barrier_scale(low_gamma_barrier_scale);
       }
-      
+
     } else {
       std::cerr << "ERROR: Unknown population model '" << opts["v0-pop-model"].as<std::string>() << "'\n";
       std::exit(EXIT_FAILURE);

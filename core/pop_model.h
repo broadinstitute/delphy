@@ -189,6 +189,17 @@ class Skygrid_pop_model : public Pop_model {
   auto gamma_below_x_lo() const -> double { return gamma_.front(); }
   auto gamma_above_x_hi() const -> double { return gamma_.back(); }
 
+  // gamma_bar = mean of gamma_k's = "zero mode" of the log-population curve
+  auto gamma_bar() const -> double {
+    auto result = 0.0;
+    for (auto k = 0; k <= M(); ++k) {
+      result += gamma(k);
+    }
+    return result / (M() + 1);
+  }
+  // N_bar = geometric mean population across knots = exp(gamma_bar)
+  auto N_bar() const -> double { return std::exp(gamma_bar()); }
+
   // The key functions
   auto pop_at_time(double t) const -> double override;
   auto pop_integral(double a, double b) const -> double override;

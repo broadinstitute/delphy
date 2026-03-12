@@ -1013,6 +1013,30 @@ auto delphy_run_set_skygrid_low_gamma_barrier_scale(Delphy_context& /*ctx*/, Run
   run.set_skygrid_low_gamma_barrier_scale(skygrid_low_gamma_barrier_scale);
 }
 
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_skygrid_inv_nbar_prior_alpha(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.skygrid_inv_nbar_prior_alpha();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_skygrid_inv_nbar_prior_alpha(Delphy_context& /*ctx*/, Run& run, double skygrid_inv_nbar_prior_alpha) -> void {
+  run.set_skygrid_inv_nbar_prior_alpha(skygrid_inv_nbar_prior_alpha);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_get_skygrid_inv_nbar_prior_beta(Delphy_context& /*ctx*/, const Run& run) -> double {
+  return run.skygrid_inv_nbar_prior_beta();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_run_set_skygrid_inv_nbar_prior_beta(Delphy_context& /*ctx*/, Run& run, double skygrid_inv_nbar_prior_beta) -> void {
+  run.set_skygrid_inv_nbar_prior_beta(skygrid_inv_nbar_prior_beta);
+}
+
 // Delphy retains ownership of the returned Pop_model object
 EMSCRIPTEN_KEEPALIVE
 extern "C"

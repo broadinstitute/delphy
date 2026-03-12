@@ -76,8 +76,11 @@ static auto print_stats_line(const Run& run) -> void {
   const auto& pop_model = run.pop_model();
   if (typeid(pop_model) == typeid(Exp_pop_model)) {
     const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
-    std::cerr << absl::StreamFormat("n0 = %.1f, ", exp_pop_model.pop_at_t0())
-              << absl::StreamFormat("g = %.4f, ", exp_pop_model.growth_rate());
+    std::cerr << absl::StreamFormat("n0 = %.4g yr, ", exp_pop_model.pop_at_t0() / 365.0)
+              << absl::StreamFormat("g = %.4f e-fold/yr, ", exp_pop_model.growth_rate() * 365.0);
+  } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
+    const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(run.pop_model());
+    std::cerr << absl::StreamFormat("N_bar = %.4g yr, ", skygrid_pop_model.N_bar() / 365.0);
   }
   
   if (not run.mpox_hack_enabled()) {

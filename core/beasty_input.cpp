@@ -1565,7 +1565,13 @@ static auto export_beast_X_10_5_0_input(
   } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
     os << absl::StreamFormat("        <gammaPrior idref=\"skygrid.precision.prior\"/>\n")
        << absl::StreamFormat("        <gmrfSkyGridLikelihood idref=\"skygrid\"/>\n");
-    
+    if (run.skygrid_inv_nbar_prior_alpha() != 0.0 || run.skygrid_inv_nbar_prior_beta() != 0.0) {
+      os << absl::StreamFormat("        <!-- NOTE: Delphy uses an InvGamma(alpha=%g, beta=%g days) prior on N_bar = exp(mean(logPopSize)), -->\n",
+                               run.skygrid_inv_nbar_prior_alpha(), run.skygrid_inv_nbar_prior_beta())
+         << absl::StreamFormat("        <!-- but BEAST X does not support applying an exp() transform to a derived statistic. -->\n")
+         << absl::StreamFormat("        <!-- This prior is NOT represented in this XML file. -->\n");
+    }
+
   } else {
     // Make invalid XML tag on purpose to stop this BEAST X XML file from running (with God knows what population model...)
     std::cerr << "ERROR: Unrecognized population model type " << typeid(pop_model).name() << '\n';

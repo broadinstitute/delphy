@@ -88,6 +88,12 @@ class Run {
   auto set_skygrid_low_gamma_barrier_loc(double skygrid_low_gamma_barrier_loc) -> void { skygrid_low_gamma_barrier_loc_ = skygrid_low_gamma_barrier_loc, invalidate_derived_quantities(); }
   auto skygrid_low_gamma_barrier_scale() const -> double { return skygrid_low_gamma_barrier_scale_; }
   auto set_skygrid_low_gamma_barrier_scale(double skygrid_low_gamma_barrier_scale) -> void { skygrid_low_gamma_barrier_scale_ = skygrid_low_gamma_barrier_scale, invalidate_derived_quantities(); }
+  auto skygrid_inv_nbar_prior_alpha() const -> double { return skygrid_inv_nbar_prior_alpha_; }
+  auto set_skygrid_inv_nbar_prior_alpha(double skygrid_inv_nbar_prior_alpha) -> void {
+    skygrid_inv_nbar_prior_alpha_ = skygrid_inv_nbar_prior_alpha, invalidate_derived_quantities(); }
+  auto skygrid_inv_nbar_prior_beta() const -> double { return skygrid_inv_nbar_prior_beta_; }
+  auto set_skygrid_inv_nbar_prior_beta(double skygrid_inv_nbar_prior_beta) -> void {
+    skygrid_inv_nbar_prior_beta_ = skygrid_inv_nbar_prior_beta, invalidate_derived_quantities(); }
 
   auto evo() const -> const Global_evo_model& {
     return validate_derived_quantities(), evo_; }
@@ -256,6 +262,8 @@ class Run {
   double skygrid_tau_prior_beta_;
   double skygrid_low_gamma_barrier_loc_;
   double skygrid_low_gamma_barrier_scale_;
+  double skygrid_inv_nbar_prior_alpha_;
+  double skygrid_inv_nbar_prior_beta_;
   double alpha_;
   Site_vector<double> nu_;
   Hky_model hky_model_;

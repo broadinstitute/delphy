@@ -28,6 +28,8 @@ Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
       skygrid_tau_prior_beta_{0.001},
       skygrid_low_gamma_barrier_loc_{std::log(1.0)},  // Pop sizes below 1 day are penalized
       skygrid_low_gamma_barrier_scale_{-std::log(0.70)},  // by 1 nat for every 30% drop
+      skygrid_inv_nbar_prior_alpha_{0.0},  // Default: uniform prior on gamma_bar (= Jeffreys 1/N_bar)
+      skygrid_inv_nbar_prior_beta_{0.0},
       alpha_{10.0},
       nu_(tree_.num_sites(), 1.0),
       mu_prior_alpha_{1.0},   // Default: uniform prior on mu
@@ -548,7 +550,14 @@ auto Run::calc_cur_skygrid_gmrf_prior() const -> double {
   const auto tau = skygrid_tau_;
   const auto log_tau = std::log(tau);
   const auto M = skygrid_pop_model.M();
-    
+
+  // InvGamma(alpha, beta) prior on N_bar = exp(gamma_bar)
+  //   log pi(gamma_bar) = -alpha * gamma_bar - beta * exp(-gamma_bar) + const
+  // Default alpha=0, beta=0: no contribution (uniform on gamma_bar).
+  auto gamma_bar = skygrid_pop_model.gamma_bar();
+  log_prior += -skygrid_inv_nbar_prior_alpha_ * gamma_bar
+               - skygrid_inv_nbar_prior_beta_ * std::exp(-gamma_bar);
+
   // gamma - GMRF prior (Gill et al 2012, Eq. 13)
   //
   // Since time intervals are in principle not all the same, we really should
@@ -1359,21 +1368,25 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   //
   //   log P = const                              <-- terms independent of {gamma_k}
   //   
-  //           - \sum_{c=0}^{C-1} (1/2) Delta k_c (k_c-1) / N_c      \               |
+  //           - \sum_{c=0}^{C-1} (1/2) Delta k_c (k_c-1) / N_c       \              |
   //                                                                  +---  -U_coal  |
-  //           - \sum_{i inner node} log(N(t_i))                     /               |
+  //           - \sum_{i inner node} log(N(t_i))                      /              |
   //                                                                                 |
-  //           - (tau/2) \sum_{k=1}^M (gamma_k - gamma_{k-1})^2      \               |
-  //                                                                  +---  -U_prior |
-  //           - \sum_{k=0}^M [[ gamma_k < gamma_min ]]               |              |
-  //                 ((gamma_k - gamma_min) / Delta_gamma)^2.        /               |
+  //           - (tau/2) \sum_{k=1}^M (gamma_k - gamma_{k-1})^2       \              |
+  //                                                                  |              |
+  //           - \sum_{k=0}^M [[ gamma_k < gamma_min ]]               +---  -U_prior |
+  //                 ((gamma_k - gamma_min) / Delta_gamma)^2          |              |
+  //                                                                  |              |
+  //           - alpha * gamma_bar - beta * exp(-gamma_bar)          /               |
   //
   // Here, c ranges over the C cells of width Delta in the scalable coalescent,
   //       k_c is the average number of active lineages in cell c,
   //       N_c is the average of N(t) over cell c,
   //       gamma_min is a minimum reasonable value for gamma_k,
   //       Delta_gamma is the scale at which deviations of gamma_k below gamma_min
-  //          reduce log P by 1 in log P
+  //          reduce log P by 1 in log P,
+  //       gamma_bar = (1/(M+1)) sum_{k=0}^M gamma_k is the mean of the gamma_k's,
+  //       alpha and beta are the parameters of the InvGamma prior on N_bar = exp(gamma_bar)
   //
   // A straightforward implementation of HMC (e.g., similar to Baele et al 2020
   // doi:10.12688/wellcomeopenres.15770.1, used in BEAST X for Skygrid with HMC) regards the
@@ -1417,7 +1430,7 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   //
   //           - \sum_{k=1}^M (tau/2) (gamma_k - gamma_{k-1})^2. <-- Note k=1 lower bound
   //
-  //           (--- terms from low-gamma_k guard omitted ---)
+  //           (--- terms from low-gamma_k guard and InvGamma prior on N_bar omitted ---)
   //
   // Here,
   //
@@ -1452,7 +1465,7 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   //           - c_k gamma_k
   //           - (tau/2) (gamma_k - gamma_{k-1})^2 [[ k > 0 ]]
   //           - (tau/2) (gamma_k - gamma_{k+1})^2 [[ k < M ]].
-  //           (--- terms from low-gamma_k guard omitted ---)
+  //           (--- terms from low-gamma_k guard and InvGamma prior on N_bar omitted ---)
   //
   // In the limit of large M, we can suppose that gamma_{k-1} =~ gamma_k =~ gamma_{k+1}, but
   // their small oscillations around these equal values will matter.  In that case, ignoring
@@ -1626,7 +1639,8 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   //  U = + \sum_{c=0}^{C-1} (1/2) Delta k_c (k_c-1) / N_c
   //      + \sum_{i inner node} log(N(t_i))
   //      + (tau/2) \sum_{k=1}^M (gamma_k - gamma_{k-1})^2
-  //      + \sum_{k=0}^M [[ gamma_k < gamma_min ]] ((gamma_k - gamma_min) / Delta_gamma)^2.
+  //      + \sum_{k=0}^M [[ gamma_k < gamma_min ]] ((gamma_k - gamma_min) / Delta_gamma)^2
+  //      + alpha * gamma_bar + beta * exp(-gamma_bar).
   //
   // Hence,
   //
@@ -1634,13 +1648,15 @@ auto Run::skygrid_gammas_hmc_move() -> void {
   //           - \sum_{i inner node} [del log(N(t)) / del gamma_k]_{t = t_i}
   //           - tau (  (gamma_k - gamma_{k-1}) [[ k > 0 ]]
   //                  + (gamma_k - gamma_{k+1}) [[ k < M ]] )
-  //           - \sum_{k=0}^M [[ gamma_k < gamma_min ]] 2 (gamma_k - gamma_min)/Delta_gamma^2.
+  //           - \sum_{k=0}^M [[ gamma_k < gamma_min ]] 2 (gamma_k - gamma_min)/Delta_gamma^2
+  //           + (-alpha + beta * exp(-gamma_bar)) / (M+1).
   //
   //       = + \sum_{c=0}^{C-1} (1/2) Delta (k_c (k_c-1) / N_c) (del log(N_c) / del gamma_k)
   //           - \sum_{i inner node} [del log(N(t)) / del gamma_k]_{t = t_i}.
   //           - tau (  (gamma_k - gamma_{k-1}) [[ k > 0 ]]
   //                  + (gamma_k - gamma_{k+1}) [[ k < M ]] )
-  //           - \sum_{k=0}^M [[ gamma_k < gamma_min ]] 2 (gamma_k - gamma_min)/Delta_gamma^2.
+  //           - \sum_{k=0}^M [[ gamma_k < gamma_min ]] 2 (gamma_k - gamma_min)/Delta_gamma^2
+  //           + (-alpha + beta * exp(-gamma_bar)) / (M+1).
   //
   // In the first sum, only a few terms are non-zero for a given k: these are the cells
   // that overlap with Pop_model::support_of_d_log_N_d_gamma.  The key factors
@@ -1719,7 +1735,19 @@ auto Run::skygrid_gammas_hmc_move() -> void {
         }
       }
     }
-      
+
+    // InvGamma(alpha, beta) prior on N_bar = exp(gamma_bar)
+    //   U_invgamma = alpha * gamma_bar + beta * exp(-gamma_bar)
+    {
+      auto gamma_bar = 0.0;
+      for (auto k = 0; k <= M; ++k) {
+        gamma_bar += gamma_k[k];
+      }
+      gamma_bar /= (M + 1);
+      U_prior += skygrid_inv_nbar_prior_alpha_ * gamma_bar
+                 + skygrid_inv_nbar_prior_beta_ * std::exp(-gamma_bar);
+    }
+
     return U_prior;
   };
 
@@ -1793,6 +1821,22 @@ auto Run::skygrid_gammas_hmc_move() -> void {
           auto excess = skygrid_low_gamma_barrier_loc_ - gamma_k[k];
           f_k[k] += 2 * excess / std::pow(skygrid_low_gamma_barrier_scale_, 2);
         }
+      }
+    }
+
+    // InvGamma(alpha, beta) prior on N_bar = exp(gamma_bar): force on each gamma_k
+    //   f_k_invgamma = (-alpha + beta * exp(-gamma_bar)) / (M+1)
+    {
+      auto gamma_bar = 0.0;
+      for (auto k = 0; k <= M; ++k) {
+        gamma_bar += gamma_k[k];
+      }
+      gamma_bar /= (M + 1);
+      auto f_invgamma = (-skygrid_inv_nbar_prior_alpha_
+                         + skygrid_inv_nbar_prior_beta_ * std::exp(-gamma_bar))
+                        / (M + 1);
+      for (auto k = 0; k <= M; ++k) {
+        f_k[k] += f_invgamma;
       }
     }
   };
@@ -1981,8 +2025,11 @@ auto Run::skygrid_gammas_zero_mode_gibbs_move() -> void {
   //
   //   gamma_k = gamma_bar + gamma'_k   and   sum_{k=0}^M gamma'_k = 0.
   //
-  // Clearly, U_prior does not constrain `gamma_bar` at all.  However, U_coal's dependence on
-  // `gamma_bar` is particularly simple.  This is best seen with a change of coordinates:
+  // The GMRF and low-gamma barrier terms in U_prior do not constrain `gamma_bar` at all.
+  // (The optional InvGamma(alpha, beta) prior on N_bar = exp(gamma_bar) does constrain
+  // gamma_bar, but it is conjugate with the coalescent likelihood, so Gibbs sampling is
+  // preserved; see below.)  U_coal's dependence on `gamma_bar` is particularly simple.
+  // This is best seen with a change of coordinates:
   //
   //    {gamma_k}  ->  {I_bar, gamma'_k | k < M}  (gamma'_M excluded as it's not independent).
   //
@@ -2026,11 +2073,17 @@ auto Run::skygrid_gammas_zero_mode_gibbs_move() -> void {
   //   => dgamma_bar = - dI_bar / I_bar
   //
   // Thus, when switching from gamma_bar to I_bar, apart from a constant factor, we gain
-  // an extra factor of 1/I_bar in the posterior:
+  // an extra factor of 1/I_bar in the posterior.
   //
-  //   P(I_bar) dI_bar = (const.) * I_bar^{N_inner-1} exp[- B I_bar] dI_bar.
+  // Additionally, an InvGamma(alpha, beta) prior on N_bar = exp(gamma_bar) contributes
+  // (in I_bar coordinates) a factor I_bar^alpha * exp(-beta * I_bar), which is conjugate.
   //
-  // Hence, we can Gibbs sample I_bar from Gamma(alpha = N_inner, lambda = B).
+  // Combining coalescent likelihood, Jacobian, and InvGamma prior:
+  //
+  //   P(I_bar) dI_bar = (const.) * I_bar^{N_inner + alpha - 1} exp[-(B + beta) I_bar] dI_bar.
+  //
+  // Hence, we can Gibbs sample I_bar from Gamma(shape = N_inner + alpha, rate = B + beta).
+  // With the default alpha=0, beta=0, this reduces to Gamma(N_inner, B).
   
   const Pop_model& raw_pop_model = *pop_model_;
   CHECK(typeid(raw_pop_model) == typeid(Skygrid_pop_model));
@@ -2059,8 +2112,8 @@ auto Run::skygrid_gammas_zero_mode_gibbs_move() -> void {
 
   // WARNING: C++ calls "beta" the *scale* of the distribution, i.e., 1/rate
   auto I_bar_dist = std::gamma_distribution<double>{
-    static_cast<double>(N_inner),
-    1.0 / B};
+    static_cast<double>(N_inner) + skygrid_inv_nbar_prior_alpha_,
+    1.0 / (B + skygrid_inv_nbar_prior_beta_)};
   
   auto old_I_bar = I_bar;
   auto new_I_bar = I_bar_dist(bitgen_);
@@ -2114,7 +2167,23 @@ auto Run::skygrid_gammas_zero_mode_gibbs_move() -> void {
     coalescent_prior_.pop_model_changed(pop_model_);
     
     log_coalescent_prior_ = calc_cur_log_coalescent_prior();
-    log_other_priors_ += new_log_prior_bound - old_log_prior_bound;
+
+    // InvGamma prior on N_bar: log pi = -alpha * gamma_bar - beta * exp(-gamma_bar)
+    auto old_gamma_bar = 0.0;
+    auto new_gamma_bar = 0.0;
+    for (auto k = 0; k <= M; ++k) {
+      old_gamma_bar += old_pop_model->gamma(k);
+      new_gamma_bar += new_gamma_k[k];
+    }
+    old_gamma_bar /= (M + 1);
+    new_gamma_bar /= (M + 1);
+    auto old_inv_nbar_prior = -skygrid_inv_nbar_prior_alpha_ * old_gamma_bar
+                              - skygrid_inv_nbar_prior_beta_ * std::exp(-old_gamma_bar);
+    auto new_inv_nbar_prior = -skygrid_inv_nbar_prior_alpha_ * new_gamma_bar
+                              - skygrid_inv_nbar_prior_beta_ * std::exp(-new_gamma_bar);
+
+    log_other_priors_ += (new_inv_nbar_prior - old_inv_nbar_prior)
+                       + (new_log_prior_bound - old_log_prior_bound);
   }
 }
 

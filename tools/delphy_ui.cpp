@@ -612,17 +612,19 @@ static auto print_stats_line() -> void {
   const auto& pop_model = ui_run->pop_model();
   if (typeid(pop_model) == typeid(Exp_pop_model)) {
     const auto& exp_pop_model = static_cast<const Exp_pop_model&>(ui_run->pop_model());
-    std::cerr << absl::StreamFormat("n0 = %.4g, ", exp_pop_model.pop_at_t0())
-              << absl::StreamFormat("g = %.4g, ", exp_pop_model.growth_rate());
+    std::cerr << absl::StreamFormat("n0 = %.4g yr, ", exp_pop_model.pop_at_t0() / 365.0)
+              << absl::StreamFormat("g = %.4g e-fold/yr, ", exp_pop_model.growth_rate() * 365.0);
   } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
     const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(ui_run->pop_model());
     std::cerr << absl::StreamFormat("tau = %.4g, ", ui_run->skygrid_tau());
-    std::cerr << absl::StreamFormat("gamma_k = %s---[", to_iso_date(skygrid_pop_model.x_lo()));
+    auto log_365 = std::log(365.0);
+    std::cerr << absl::StreamFormat("gamma_k (log yr) = %s---[", to_iso_date(skygrid_pop_model.x_lo()));
     for (auto k = 0; k != skygrid_pop_model.M(); ++k) {
       if (k != 0) { std::cerr << ", "; }
-      std::cerr << absl::StreamFormat("%.4g", skygrid_pop_model.gamma(k));
+      std::cerr << absl::StreamFormat("%.4g", skygrid_pop_model.gamma(k) - log_365);
     }
     std::cerr << absl::StreamFormat("]---%s, ", to_iso_date(skygrid_pop_model.x_hi()));
+    std::cerr << absl::StreamFormat("N_bar = %.4g yr, ", skygrid_pop_model.N_bar() / 365.0);
   }
   if (not ui_run->mpox_hack_enabled()) {
     std::cerr << absl::StreamFormat("mu = %.2g * 10^-3 subst / site / year, ", ui_run->mu() * 365 * 1000)

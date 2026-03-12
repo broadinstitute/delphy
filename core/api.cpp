@@ -274,7 +274,9 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
   params_builder.add_skygrid_tau_prior_beta(run.skygrid_tau_prior_beta());
   params_builder.add_skygrid_low_gamma_barrier_loc(run.skygrid_low_gamma_barrier_loc());
   params_builder.add_skygrid_low_gamma_barrier_scale(run.skygrid_low_gamma_barrier_scale());
-  
+  params_builder.add_skygrid_inv_nbar_prior_alpha(run.skygrid_inv_nbar_prior_alpha());
+  params_builder.add_skygrid_inv_nbar_prior_beta(run.skygrid_inv_nbar_prior_beta());
+
   // Set the deprecated hard-coded exponential pop model parameters for compatibility
   if (typeid(pop_model) == typeid(Exp_pop_model)) {
     const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
@@ -393,6 +395,8 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
   run.set_skygrid_tau_prior_beta(api_params->skygrid_tau_prior_beta());
   run.set_skygrid_low_gamma_barrier_loc(api_params->skygrid_low_gamma_barrier_loc());
   run.set_skygrid_low_gamma_barrier_scale(api_params->skygrid_low_gamma_barrier_scale());
+  run.set_skygrid_inv_nbar_prior_alpha(api_params->skygrid_inv_nbar_prior_alpha());
+  run.set_skygrid_inv_nbar_prior_beta(api_params->skygrid_inv_nbar_prior_beta());
 
   run.set_only_displacing_inner_nodes(api_params->only_displacing_inner_nodes());
   run.set_topology_moves_enabled(api_params->topology_moves_enabled());
