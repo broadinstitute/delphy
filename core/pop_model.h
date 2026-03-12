@@ -93,8 +93,8 @@ class Exp_pop_model : public Pop_model {
 //    -INFINITY ...-----+---------+-------+----....---+-------+---... +INFINITY  --> t
 //                     x_0       x_1     x_2       x_{M-1}   x_M
 //
-// There time range (-INFINITY, +INFINITY) is partitioned into M+1 intervals,
-// the first and last of which are open-ended.  The boundaries bewteen consecutive intervals
+// The time range (-INFINITY, +INFINITY) is partitioned into M+1 intervals,
+// the first and last of which are open-ended.  The boundaries between consecutive intervals
 // are called "knots", and are specified at x_0 < x_1 < ... < x_M.  The interval
 // for a given time t is defined as:
 //

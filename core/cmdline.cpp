@@ -294,8 +294,20 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        "[pop-model == skygrid] Number of parameters used to parametrize N(t) (what BEAUTi calls 'Number of parameters' == one more than what Gill et al 2012 call `M`)",
        cxxopts::value<int>()->default_value("50"))
       ("v0-skygrid-cutoff",
-       "[pop-model == skygrid] Time before time of last tip for final transition, in years (what BEAUTi calls 'Time of last transition point' == what Gill et al 2012 calls `x_M`)",
+       "[pop-model == skygrid] Time before time of last tip for final transition, in years (what BEAUTi calls 'Time of last transition point' == what Gill et al 2012 calls `x_M`).  Mutually exclusive with --v0-skygrid-first-knot-date / --v0-skygrid-last-knot-date.",
        cxxopts::value<double>()->default_value("0.0"))
+      ("v0-skygrid-first-knot-date",
+       "[pop-model == skygrid] Date (YYYY-MM-DD) of the first (oldest) Skygrid knot x_0.  "
+       "Example: --v0-skygrid-first-knot-date 2013-12-01.  "
+       "Must be specified together with --v0-skygrid-last-knot-date.  "
+       "Mutually exclusive with --v0-skygrid-cutoff.",
+       cxxopts::value<std::string>())
+      ("v0-skygrid-last-knot-date",
+       "[pop-model == skygrid] Date (YYYY-MM-DD) of the last (most recent) Skygrid knot x_M.  "
+       "Example: --v0-skygrid-last-knot-date 2014-10-01.  "
+       "Must be specified together with --v0-skygrid-first-knot-date.  "
+       "Mutually exclusive with --v0-skygrid-cutoff.",
+       cxxopts::value<std::string>())
       ("v0-skygrid-infer-prior-smoothness",
        "[pop-model == skygrid] Whether to fix the log-population curve's prior smoothness (Delphy default; see --v0-skygrid-prior-double-half-time) or infer it (BEAST default; see --v0-skygrid--tau-prior-alpha and --v0-skygrid-tau-prior-beta)",
        cxxopts::value<bool>()->default_value("false"))
@@ -634,6 +646,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         (opts.count("v0-skygrid-type") > 0) ||
         (opts.count("v0-skygrid-num-parameters") > 0) ||
         (opts.count("v0-skygrid-cutoff") > 0) ||
+        (opts.count("v0-skygrid-first-knot-date") > 0) ||
+        (opts.count("v0-skygrid-last-knot-date") > 0) ||
         (opts.count("v0-skygrid-infer-prior-smoothness") > 0) ||
         (opts.count("v0-skygrid-prior-double-half-time") > 0) ||
         (opts.count("v0-skygrid-tau") > 0) ||
@@ -833,18 +847,51 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         std::exit(EXIT_FAILURE);
       }
 
-      auto skygrid_cutoff = opts["v0-skygrid-cutoff"].as<double>();
-      if (skygrid_cutoff < 0.0) {
-        std::cerr << "ERROR: Skygrid cutoff must be positive\n";
+      auto has_first_knot_date = opts.count("v0-skygrid-first-knot-date") > 0;
+      auto has_last_knot_date = opts.count("v0-skygrid-last-knot-date") > 0;
+      auto has_cutoff = opts.count("v0-skygrid-cutoff") > 0;
+
+      // Date options and cutoff are mutually exclusive
+      if ((has_first_knot_date || has_last_knot_date) && has_cutoff) {
+        std::cerr << "ERROR: --v0-skygrid-first-knot-date / --v0-skygrid-last-knot-date "
+                  << "and --v0-skygrid-cutoff are mutually exclusive\n";
         std::exit(EXIT_FAILURE);
       }
-      skygrid_cutoff *= 365.0;  // convert to days
+
+      // Date options must be specified together
+      if (has_first_knot_date != has_last_knot_date) {
+        std::cerr << "ERROR: --v0-skygrid-first-knot-date and --v0-skygrid-last-knot-date "
+                  << "must be specified together\n";
+        std::exit(EXIT_FAILURE);
+      }
+
+      // Determine x_0 and x_M
+      auto x_0 = 0.0;
+      auto x_M = 0.0;
+      if (has_first_knot_date) {
+        x_0 = parse_iso_date(opts["v0-skygrid-first-knot-date"].as<std::string>());
+        x_M = parse_iso_date(opts["v0-skygrid-last-knot-date"].as<std::string>());
+      } else {
+        auto skygrid_cutoff = opts["v0-skygrid-cutoff"].as<double>();  // years
+        if (skygrid_cutoff < 0.0) {
+          std::cerr << "ERROR: Skygrid cutoff must be positive\n";
+          std::exit(EXIT_FAILURE);
+        }
+        x_M = t0;
+        x_0 = t0 - skygrid_cutoff * 365.0;
+      }
+
+      if (x_0 >= x_M) {
+        std::cerr << "ERROR: Skygrid first knot (" << to_iso_date(x_0) << ") must be before "
+                  << "last knot (" << to_iso_date(x_M) << ")\n";
+        std::exit(EXIT_FAILURE);
+      }
 
       auto M = num_parameters - 1;
       auto x_k = std::vector<double>(M+1, 0.0);
-      auto dt = (skygrid_cutoff / M);
+      auto dt = (x_M - x_0) / M;
       for (auto k = 0; k <= M; ++k) {
-        x_k[k] = (t0 - skygrid_cutoff) + k * dt;
+        x_k[k] = x_0 + k * dt;
       }
 
       auto skygrid_tau = 0.0;
