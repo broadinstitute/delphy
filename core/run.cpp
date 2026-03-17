@@ -123,8 +123,7 @@ auto Run::repartition() -> void {
   CHECK(tree_.at_root().missations.from_states.empty());
   normalize_root();
 
-  // A good time to check for consistency, even in release builds
-  assert_phylo_tree_integrity(tree_, true);
+  assert_phylo_tree_integrity(tree_, paranoid_);
   
   // Make subruns
   subruns_.clear();
@@ -177,6 +176,7 @@ auto Run::repartition() -> void {
       }
     }
 
+    assert_phylo_tree_integrity(subtree, paranoid_);
     auto& subrun = subruns_.emplace_back(
         absl::BitGenRef{subbitgens_[subruns_.size()]}, std::move(subtree), subroot == tree_.root, evo_);
     if (estd::is_debug_enabled) {
@@ -649,7 +649,7 @@ auto Run::do_mcmc_steps(int substeps) -> void {
   normalize_root();
   
   assert_cur_tip_sequences_compatible_with_original_ones();
-  assert_phylo_tree_integrity(tree_, true);
+  assert_phylo_tree_integrity(tree_, paranoid_);
 }
 
 auto Run::set_step(int64_t step) -> void {

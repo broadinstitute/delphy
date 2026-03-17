@@ -214,6 +214,12 @@ class Run {
     skygrid_low_gamma_barrier_enabled_ = enabled;
   }
 
+  // When paranoid mode is on, force full tree integrity checks even in release builds.
+  // Profiling showed these checks consume ~23% of runtime; they have not failed for many months
+  // of intense use, so they are off by default in release builds (always on in debug builds).
+  auto paranoid() const -> bool { return paranoid_; }
+  auto set_paranoid(bool paranoid) -> void { paranoid_ = paranoid; }
+
  private:
   ctpl::thread_pool* thread_pool_;
   std::mt19937 bitgen_;
@@ -239,6 +245,7 @@ class Run {
   auto save_original_sequences() -> void;
   auto assert_cur_tip_sequences_compatible_with_original_ones() -> void;
 
+  bool paranoid_ = false;
   bool only_displacing_inner_nodes_ = false;
   bool topology_moves_enabled_ = true;
   bool repartitioning_enabled_ = true;

@@ -12,8 +12,6 @@ Subrun::Subrun(absl::BitGenRef bitgen, Phylo_tree tree, bool includes_run_root, 
       tree_{std::move(tree)},
       includes_run_root_{includes_run_root},
       evo_{std::move(evo)} {
-  
-  assert_phylo_tree_integrity(tree_, true);  // check even in release builds
 }
 
 auto Subrun::recalc_derived_quantities() const -> void {

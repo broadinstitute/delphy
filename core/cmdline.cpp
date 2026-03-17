@@ -160,6 +160,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<int>())
       ("v0-seed", "Initial random number seed (default: random)",
        cxxopts::value<uint32_t>())
+      ("v0-paranoid", "Force full tree integrity checks even in release builds (useful for debugging; large performance cost)",
+       cxxopts::value<bool>()->default_value("false"))
       ("v0-in-fasta", "input FASTA file", cxxopts::value<std::string>())
       ("v0-in-maple", "input MAPLE file", cxxopts::value<std::string>())
       ("v0-init-heuristic", "Build initial tree with rough heuristics instead of randomly (default)",
@@ -619,6 +621,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     // Create and configure initial run
     auto t0 = calc_max_tip_time(tree);
     auto run = std::make_shared<Run>(*thread_pool, prng, std::move(tree));
+    run->set_paranoid(opts["v0-paranoid"].as<bool>());
     run->set_mpox_hack_enabled(mpox_hack_enabled);
     run->set_alpha_move_enabled(alpha_move_enabled);
     run->set_mu_move_enabled(not fix_mutation_rate);

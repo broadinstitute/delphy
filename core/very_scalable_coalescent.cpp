@@ -23,13 +23,13 @@ auto cell_lbound(int cell, double t_ref, double t_step) -> double {
 
 template<typename T>
 static auto assert_space(double t, double t_ref, double t_step, const std::vector<T>& k) -> void {
-  //if (estd::is_debug_enabled) {
+  if (estd::is_debug_enabled) {
     auto cell = cell_for(t, t_ref, t_step);
     auto tot_cells = std::ssize(k);
-    
+
     CHECK_GE(cell, 0);
     CHECK_LT(cell, tot_cells);
-    //}
+  }
 }
 
 auto add_interval(
