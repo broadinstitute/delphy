@@ -157,10 +157,16 @@ auto calc_T_l_a(const Phylo_tree& tree) -> std::vector<Seq_vector<double>> {
       T_l_a[m.site][m.to] += T_below_mut;
     }
 
-    for (const auto& [mi_site, mi_from] : tree.at(node).missations.slow_elements(tree.ref_sequence)) {
-      auto T_below_miss = T_below_node[node] +
-          (node == tree.root ? 0.0 : tree.at(node).t - tree.at_parent_of(node).t);
-      T_l_a[mi_site][mi_from] -= T_below_miss;
+    auto T_below_miss = T_below_node[node] +
+        (node == tree.root ? 0.0 : tree.at(node).t - tree.at_parent_of(node).t);
+    for (const auto& [start, end] : tree.at(node).missations.intervals) {
+      for (auto l = start; l != end; ++l) {
+        T_l_a[l][tree.ref_sequence[l]] -= T_below_miss;
+      }
+    }
+    for (const auto& [l, from] : tree.at(node).missations.from_states) {
+      T_l_a[l][tree.ref_sequence[l]] += T_below_miss;  // undo ref_seq assumption
+      T_l_a[l][from] -= T_below_miss;                  // apply correct from_state
     }
   }
 
@@ -199,10 +205,16 @@ auto calc_Ttwiddle_l(const Phylo_tree& tree, const Global_evo_model& evo) -> std
       Ttwiddle_l[m.site] += evo.q_l_a(m.site, m.to) * T_below_mut;
     }
 
-    for (const auto& [mi_site, mi_from] : tree.at(node).missations.slow_elements(tree.ref_sequence)) {
-      auto T_below_miss = T_below_node[node] +
-          (node == tree.root ? 0.0 : tree.at(node).t - tree.at_parent_of(node).t);
-      Ttwiddle_l[mi_site] -= evo.q_l_a(mi_site, mi_from) * T_below_miss;
+    auto T_below_miss = T_below_node[node] +
+        (node == tree.root ? 0.0 : tree.at(node).t - tree.at_parent_of(node).t);
+    for (const auto& [start, end] : tree.at(node).missations.intervals) {
+      for (auto l = start; l != end; ++l) {
+        Ttwiddle_l[l] -= evo.q_l_a(l, tree.ref_sequence[l]) * T_below_miss;
+      }
+    }
+    for (const auto& [l, from] : tree.at(node).missations.from_states) {
+      Ttwiddle_l[l] += evo.q_l_a(l, tree.ref_sequence[l]) * T_below_miss;  // undo ref_seq assumption
+      Ttwiddle_l[l] -= evo.q_l_a(l, from) * T_below_miss;                  // apply correct from_state
     }
   }
 
@@ -221,9 +233,14 @@ auto calc_Ttwiddle_a(const Phylo_tree& tree, std::span<const double> nu_l) -> Se
       auto parent = tree.at(node).parent;
       
       // Update dTtwiddle_a_dt to reflect the state at `node`
-      // TODO: Treat gaps in one go
-      for (const auto& [mi_site, mi_from] : tree.at(node).missations.slow_elements(tree.ref_sequence)) {
-        dTtwiddle_a_dt[mi_from] -= nu_l[mi_site];
+      for (const auto& [start, end] : tree.at(node).missations.intervals) {
+        for (auto l = start; l != end; ++l) {
+          dTtwiddle_a_dt[tree.ref_sequence[l]] -= nu_l[l];
+        }
+      }
+      for (const auto& [l, from] : tree.at(node).missations.from_states) {
+        dTtwiddle_a_dt[tree.ref_sequence[l]] += nu_l[l];  // undo ref_seq assumption
+        dTtwiddle_a_dt[from] -= nu_l[l];                  // apply correct from_state
       }
       for (const auto& m : tree.at(node).mutations) {
         dTtwiddle_a_dt[m.from] -= nu_l[m.site];
@@ -253,13 +270,18 @@ auto calc_Ttwiddle_a(const Phylo_tree& tree, std::span<const double> nu_l) -> Se
         dTtwiddle_a_dt[m.from] += nu_l[m.site];
       }
 
-      // TODO: Treat gaps as one
-      for (const auto& [mi_site, mi_from] : tree.at(node).missations.slow_elements(tree.ref_sequence)) {
-        dTtwiddle_a_dt[mi_from] += nu_l[mi_site];
+      for (const auto& [start, end] : tree.at(node).missations.intervals) {
+        for (auto l = start; l != end; ++l) {
+          dTtwiddle_a_dt[tree.ref_sequence[l]] += nu_l[l];
+        }
+      }
+      for (const auto& [l, from] : tree.at(node).missations.from_states) {
+        dTtwiddle_a_dt[tree.ref_sequence[l]] -= nu_l[l];  // undo ref_seq assumption
+        dTtwiddle_a_dt[from] += nu_l[l];                  // apply correct from_state
       }
     }
   }
-  
+
   return Ttwiddle_a;
 }
 
@@ -284,10 +306,16 @@ auto calc_Ttwiddle_beta_a(
       auto parent = tree.at(node).parent;
       
       // Update ntwiddle_beta_a to reflect the state at `node`
-      // TODO: Treat gaps in one go
-      for (const auto& [mi_site, mi_from] : tree.at(node).missations.slow_elements(tree.ref_sequence)) {
-        auto beta = evo.partition_for_site[mi_site];
-        ntwiddle_beta_a[beta][mi_from] -= evo.nu_l[mi_site];
+      for (const auto& [start, end] : tree.at(node).missations.intervals) {
+        for (auto l = start; l != end; ++l) {
+          auto beta = evo.partition_for_site[l];
+          ntwiddle_beta_a[beta][tree.ref_sequence[l]] -= evo.nu_l[l];
+        }
+      }
+      for (const auto& [l, from] : tree.at(node).missations.from_states) {
+        auto beta = evo.partition_for_site[l];
+        ntwiddle_beta_a[beta][tree.ref_sequence[l]] += evo.nu_l[l];  // undo ref_seq assumption
+        ntwiddle_beta_a[beta][from] -= evo.nu_l[l];                  // apply correct from_state
       }
       for (const auto& m : tree.at(node).mutations) {
         auto beta = evo.partition_for_site[m.site];
@@ -323,14 +351,20 @@ auto calc_Ttwiddle_beta_a(
         ntwiddle_beta_a[beta][m.to] -= evo.nu_l[m.site];
         ntwiddle_beta_a[beta][m.from] += evo.nu_l[m.site];
       }
-      // TODO: Treat gaps in one go
-      for (const auto& [mi_site, mi_from] : tree.at(node).missations.slow_elements(tree.ref_sequence)) {
-        auto beta = evo.partition_for_site[mi_site];
-        ntwiddle_beta_a[beta][mi_from] += evo.nu_l[mi_site];
+      for (const auto& [start, end] : tree.at(node).missations.intervals) {
+        for (auto l = start; l != end; ++l) {
+          auto beta = evo.partition_for_site[l];
+          ntwiddle_beta_a[beta][tree.ref_sequence[l]] += evo.nu_l[l];
+        }
+      }
+      for (const auto& [l, from] : tree.at(node).missations.from_states) {
+        auto beta = evo.partition_for_site[l];
+        ntwiddle_beta_a[beta][tree.ref_sequence[l]] -= evo.nu_l[l];  // undo ref_seq assumption
+        ntwiddle_beta_a[beta][from] += evo.nu_l[l];                  // apply correct from_state
       }
     }
   }
-  
+
   return Ttwiddle_beta_a;
 }
 
@@ -442,10 +476,16 @@ auto calc_log_root_prior(
     --state_frequencies_at_root_per_partition[partition][m.from];
     ++state_frequencies_at_root_per_partition[partition][m.to];
   }
-  // TODO: Treat gaps in one go
-  for (const auto& [mi_site, mi_from] : tree.at_root().missations.slow_elements(tree.ref_sequence)) {
-    auto partition = evo.partition_for_site[mi_site];
-    --state_frequencies_at_root_per_partition[partition][mi_from];
+  for (const auto& [start, end] : tree.at_root().missations.intervals) {
+    for (auto l = start; l != end; ++l) {
+      auto partition = evo.partition_for_site[l];
+      --state_frequencies_at_root_per_partition[partition][tree.ref_sequence[l]];
+    }
+  }
+  for (const auto& [l, from] : tree.at_root().missations.from_states) {
+    auto partition = evo.partition_for_site[l];
+    ++state_frequencies_at_root_per_partition[partition][tree.ref_sequence[l]];  // undo ref_seq assumption
+    --state_frequencies_at_root_per_partition[partition][from];                  // apply correct from_state
   }
 
   auto result = 0.0;
