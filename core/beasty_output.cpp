@@ -8,6 +8,20 @@
 
 namespace delphy {
 
+// Convert a time delta from days-since-epoch to linear years.
+//
+// Bare `/ 365` division ignores leap years, introducing a systematic
+// error of ~1-2 days over multi-year spans.  This was detected by the
+// WCSS tip-date uncertainty study (study 11), where mixing `/ 365`
+// and `to_linear_year` in BEAST log output caused posterior tip
+// calendar years to be systematically ~2 days too low.
+//
+// Use this for all time deltas in BEAST log output (rootHeight, etc.)
+// instead of `(t_to - t_from) / 365.0`.
+static auto delta_linear_years(double t_from, double t_to) -> double {
+  return to_linear_year(t_to) - to_linear_year(t_from);
+}
+
 // Opaque implementer for each BEAST version
 class Beasty_log_output_version_impl {
  public:
@@ -160,8 +174,8 @@ class Beasty_log_output_2_x_x : public Beasty_log_output_version_impl {
          << run.log_G() << "\t"  // log(G) instead of log_likelihood (which we don't calculate!)
         
           // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-         << (beast_t0 - tree.at_root().t) / 365 << "\t";
-    
+         << delta_linear_years(tree.at_root().t, beast_t0) << "\t";
+
       if (run.mu_move_enabled()) {
         os << (run.mu() * 365.0) << "\t";
       }
@@ -169,7 +183,7 @@ class Beasty_log_output_2_x_x : public Beasty_log_output_version_impl {
         os << run.alpha() << "\t";
       }
       os << run.hky_kappa() << "\t";
-    
+
       // Coalescent prior has units of (1/time)^(# coalescences)
       // We measure time in days since 2020; ref BEAST run in years since time of latest tip
       os << run.log_coalescent_prior() + num_inner_nodes * std::log(365.0) << "\t";
@@ -178,22 +192,22 @@ class Beasty_log_output_2_x_x : public Beasty_log_output_version_impl {
       if (typeid(pop_model) == typeid(Exp_pop_model)) {
         const auto& exp_pop_model = static_cast<const Exp_pop_model&>(run.pop_model());
         auto pop_growth_rate = exp_pop_model.growth_rate();
-      
+
         if (run.final_pop_size_move_enabled()) {
           // We measure time in days since 2020; ref BEAST run in years since time of latest tip
           os << run.pop_model().pop_at_time(beast_t0)/365 << "\t";
         }
-      
+
         if (run.pop_growth_rate_move_enabled()) {
           // We measure time in days since 2020; ref BEAST run in years since time of latest tip
           os << pop_growth_rate*365 << "\t";
         }
-      
+
       } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
         const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(run.pop_model());
         output_skygrid_results(os, run, skygrid_pop_model);
       }
-    
+
       os << run.hky_pi()[Real_seq_letter::A] << "\t"
          << run.hky_pi()[Real_seq_letter::C] << "\t"
          << run.hky_pi()[Real_seq_letter::G] << "\t"
@@ -215,15 +229,13 @@ class Beasty_log_output_2_x_x : public Beasty_log_output_version_impl {
   
     } else {  // mpox_hack_enabled == true
 
-      auto to_beast_date = [](double delphy_t) { return 2020.0 + delphy_t / 365.0; };
-    
       os << run.step() << "\t"
          << run.num_muts() << "\t"
          << run.log_posterior() << "\t"
          << log_prior << "\t"
          << run.log_G() << "\t"  // log(G) instead of log_likelihood (which we don't calculate!)
-         << (beast_t0 - tree.at_root().t) / 365 << "\t"
-         << to_beast_date(tree.at_root().t) << "\t"
+         << delta_linear_years(tree.at_root().t, beast_t0) << "\t"
+         << to_linear_year(tree.at_root().t) << "\t"
          << calc_T(tree) / 365.0 << "\t";
     
       const auto& pop_model = run.pop_model();
@@ -359,7 +371,7 @@ class Beasty_log_output_X_10_5_0 : public Beasty_log_output_version_impl {
        << run.log_G() << "\t"  // log(G) instead of log_likelihood (which we don't calculate!)
         
         // We measure time in days since 2020; ref BEAST run in years since time of latest tip
-       << (beast_t0 - tree.at_root().t) / 365 << "\t"
+       << delta_linear_years(tree.at_root().t, beast_t0) << "\t"
        << to_linear_year(tree.at_root().t) << "\t"
        << calc_T(tree) / 365.0 << "\t";  // years
     
@@ -406,7 +418,7 @@ class Beasty_log_output_X_10_5_0 : public Beasty_log_output_version_impl {
     
     for (const auto& node : index_order_traversal(tree)) {
       if (tree.at(node).is_tip() && tree.at(node).t_min != tree.at(node).t_max) {
-        os << absl::StreamFormat("%g\t", (beast_t0 - tree.at(node).t) / 365.0);
+        os << absl::StreamFormat("%g\t", delta_linear_years(tree.at(node).t, beast_t0));
       }
     }
 
