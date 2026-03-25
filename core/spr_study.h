@@ -176,14 +176,16 @@ struct Spr_study {
       Spr_study_builder&& builder,  // candidate regions moved to study, hence require explicit move context
       double lambda_X,
       double annealing_factor,
-      double t_X);
-  
+      double t_X,
+      double t_max_tip);  // time of latest tip (including tip-date uncertainty)
+
   // Inputs
   const Phylo_tree* tree;
   double lambda_X;
   double mu;
   double annealing_factor;  // Should be <= 1
   double t_X;
+  double t_max_tip;
   Scratch_vector<Candidate_region> candidate_regions;
 
   // Outputs

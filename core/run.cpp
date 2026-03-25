@@ -264,6 +264,7 @@ auto Run::normalize_root() -> void {
 
 auto Run::push_global_params_to_subruns() -> void {
   for (auto& subrun : subruns_) {
+    subrun.set_t_max_tip(t_max_tip_);
     subrun.set_evo(evo_);
     subrun.set_only_displacing_inner_nodes(only_displacing_inner_nodes_);
     subrun.set_topology_moves_enabled(topology_moves_enabled_);
@@ -306,6 +307,7 @@ auto Run::recalc_derived_quantities() const -> void {
   log_coalescent_prior_ = calc_cur_log_coalescent_prior();
   log_other_priors_ = calc_cur_log_other_priors();
   state_frequencies_of_ref_sequence_ = calc_cur_state_frequencies_of_ref_sequence();
+  t_max_tip_ = calc_max_tip_time(tree_);
   last_revalidation_step_ = step_;
 }
 
@@ -729,7 +731,7 @@ auto Run::run_global_moves() -> void {
 
   // 4-pre. Adjust resolution of staircases used in coalescent prior if they're really out of whack
   auto min_t = tree_.at_root().t;
-  auto max_t = calc_max_tip_time(tree_);
+  auto max_t = t_max_tip();
   auto cur_t_step = coalescent_prior_.t_step();
   auto target_t_step = (max_t - min_t) / target_coal_prior_cells_;
   auto min_t_step = (1.0) / target_coal_prior_cells_;  // Avoid degenerate cases when tree collapses

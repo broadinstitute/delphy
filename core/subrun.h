@@ -21,6 +21,8 @@ class Subrun {
 
   auto tree() const -> const Phylo_tree& { return tree_; }
   auto includes_run_root() const -> bool { return includes_run_root_; }
+  auto t_max_tip() const -> double { return t_max_tip_; }
+  auto set_t_max_tip(double t_max_tip) -> void { t_max_tip_ = t_max_tip; }
 
   // Parameters
   auto evo() const -> const Global_evo_model& { return evo_; }
@@ -85,6 +87,7 @@ class Subrun {
   absl::BitGenRef bitgen_;
   Phylo_tree tree_;
   bool includes_run_root_;
+  double t_max_tip_ = std::numeric_limits<double>::quiet_NaN();
 
   // Parameters
   Global_evo_model evo_;

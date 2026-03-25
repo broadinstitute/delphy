@@ -227,11 +227,13 @@ Spr_study::Spr_study(
     Spr_study_builder&& builder,  // candidate regions moved to study, hence require explicit move context
     double lambda_X,
     double annealing_factor,
-    double t_X)
+    double t_X,
+    double t_max_tip)
     : tree{builder.tree},
       lambda_X{lambda_X},
       annealing_factor{annealing_factor},
       t_X{t_X},
+      t_max_tip{t_max_tip},
       candidate_regions{std::move(builder.result)} {
 
   mu = lambda_X / (tree->num_sites() - builder.missing_at_X->num_sites());
@@ -275,8 +277,16 @@ Spr_study::Spr_study(
   //   p_root(s) = 0.5 * f*lambda_X * {exp[-lambda_X s] * [mu s/3]^m}^f
   //             = 0.5 * f*lambda_X * (mu s/3)^{fm} exp[-lambda_X f s].
   //
-  // This is simply a truncated Gamma distribution with alpha = fm+1 and beta = lambda_X f.  We can express the
-  // integrated weight for points above the root in terms of the normalized upper incomplete gamma function Q(a,z),
+  // This is a truncated Gamma distribution with alpha = fm+1 and beta = lambda_X f.  For numerical stability,
+  // we add an upper bound s_max that caps the proposed root at 10x the tree span below min(t_X, t_S):
+  //
+  //   s_max = s_min + 20 * (t_max_tip - min(t_X, t_S))
+  //
+  // (factor of 20 because s is the sum of two branch lengths, so (s - s_min)/2 is the root distance).
+  // This avoids proposing new root times so far in the past that they are very unlikely to be accepted
+  // and cause numerical issues elsewhere.
+  //
+  // We can express the integrated weight in terms of the normalized upper incomplete gamma function Q(a,z),
   // which thankfully is built into Boost (the function and its inverse):
   //
   //   Q(a,z) := (1/Gamma(a)) int_z^infty x^{a-1} exp(-x) dx.
@@ -285,18 +295,25 @@ Spr_study::Spr_study(
   // - https://www.boost.org/doc/libs/1_85_0/libs/math/doc/html/math_toolkit/sf_gamma/igamma.html
   // - https://www.boost.org/doc/libs/1_85_0/libs/math/doc/html/math_toolkit/sf_gamma/igamma_inv.html
   //
-  // With that, we can change variables to x = lambda_X f s, and define x_min := lambda_X f s_min, to obtain:
+  // Changing variables to x = lambda_X f s, with x_min := lambda_X f s_min, x_max := lambda_X f s_max:
   //
-  //   W_R = int_{s_min}^infty p_root(s) ds
-  //       = int_{x_min}^infty 0.5 * (mu/(3 lambda_X f))^{fm} x^{fm} exp[-x] dx
-  //       = 0.5 * (mu/(3 lambda_X f))^fm Gamma(fm+1) Q(fm+1, x_min)
+  //   W_R = int_{s_min}^{s_max} p_root(s) ds
+  //       = 0.5 * (mu/(3 lambda_X f))^fm Gamma(fm+1) [Q(fm+1, x_min) - Q(fm+1, x_max)]
   //
-  //  => log(W_R) = -log(2) + fm log(mu (lambda_X^{-1} / f) / 3) + log Gamma(fm+1) + log Q(fm+1, x_min).
+  //  => log(W_R) = -log(2) + fm log(mu / (3 lambda_X f)) + log Gamma(fm+1)
+  //                + log [Q(fm+1, x_min) - Q(fm+1, x_max)].
   //
   // Unless we are in exceptional scenarios (e.g., a root branch that is very stretched out with respect
-  // to the number of mutations), Q(fm+1, x_min) =~ 1, and this weight is again dominated by the term
-  // fm log(mu (lambda_X^{-1} / f) / 3), which plays the same role as fm log(mu (t_X - t') / 3) above,
-  // but with (lambda_X^{-1} / f) setting the timescale.
+  // to the number of mutations), [Q(fm+1, x_min) - Q(fm+1, x_max)] =~ 1, and this weight is again
+  // dominated by the term fm log(mu / (3 lambda_X f)), which plays the same role as
+  // fm log(mu (t_X - t') / 3) above, but with (lambda_X f)^{-1} setting the timescale.
+  //
+  // To *sample* from this distribution, we use inverse-CDF via gamma_q_inv: draw a uniform Q in
+  // [Q(x_max), Q(x_min)], then invert to get x, then s = x / (lambda_X f).  When lambda_X is tiny,
+  // the division by lambda_X*f produces overflow.  Additionally, when lambda_X f s_max < 0.01, Q(x_min)
+  // and Q(x_max) are both close to 1, and their difference suffers catastrophic cancellation.  In this
+  // regime, exp(-lambda_X f s) ~= 1 across [s_min, s_max], so we switch to a power-law fallback that
+  // samples from s^{fm} directly via inverse CDF, avoiding gamma_q_inv and the division entirely.
 
   auto f = annealing_factor;
   
@@ -317,12 +334,40 @@ Spr_study::Spr_study(
     } else {
       auto t_S = tree->at(region.branch).t;
       auto s_min = std::abs(t_X - t_S);
+
+      // Cap: limit proposed root to at most 10x the tree span earlier than min(t_X, t_S).
+      // The factor of 20 in s-space corresponds to 10x in root-time-space because
+      // s = (t_X - t) + (t_S - t), so (s - s_min)/2 is the distance from the closer child to the new root.
+      auto t_early = std::min(t_X, t_S);
+      auto tree_span = t_max_tip - t_early;
+      CHECK_GE(tree_span, 0.0);
+      auto s_max = s_min + 20.0 * tree_span;
+
       auto x_min = lambda_X * f * s_min;
-      region.log_W_over_Wmax =
-          -std::numbers::ln2
-          + f*m*std::log(mu / (3 * lambda_X * f))
-          + std::lgamma(f*m + 1)
-          + std::log(boost::math::gamma_q(f*m + 1, x_min));
+      auto x_max = lambda_X * f * s_max;
+
+      if (x_max < 0.01) {
+        // Power-law regime: exp(-lambda_X f s) ~= 1, so
+        //   p_root(s) ~= 0.5 f lambda_X (mu s/3)^{fm}
+        //   W_R = 0.5 f lambda_X (mu/3)^{fm} (s_max^a - s_min^a) / a,  where a = fm+1
+        auto alpha = f * m + 1;
+        region.log_W_over_Wmax =
+            -std::numbers::ln2
+            + std::log(f * lambda_X)
+            + f*m*std::log(mu / 3)
+            + alpha*std::log(s_max) + std::log1p(-std::pow(s_min / s_max, alpha))
+            - std::log(alpha);
+      } else {
+        // Standard doubly-truncated Gamma.  When x_max is large (normal case),
+        // Q(fm+1, x_max) ~= 0, and the result is nearly identical to the one-sided
+        // truncation used in Delphy 1.3.1 and earlier.
+        region.log_W_over_Wmax =
+            -std::numbers::ln2
+            + f*m*std::log(mu / (3 * lambda_X * f))
+            + std::lgamma(f*m + 1)
+            + std::log(boost::math::gamma_q(f*m + 1, x_min)
+                     - boost::math::gamma_q(f*m + 1, x_max));
+      }
     }
   }
 
@@ -389,21 +434,52 @@ auto Spr_study::pick_time_in_region(int region_idx, absl::BitGenRef bitgen) cons
   } else {
     // s := t_X - t + t_S - t
     //
-    // First sample from the following truncated Gamma with inverse transform sampling:
-    //
-    //    p_root(s) ~ s^{fm} exp[-lambda_X f s}, with s >= |t_X - t_S|.
-    //
-    // Then derive t = (t_X + t_S - s) / 2
+    // Sample from p_root(s) ~ s^{fm} exp[-lambda_X f s] on [s_min, s_max],
+    // then derive t = (t_X + t_S - s) / 2.
     //
     auto m = region.min_muts;
     auto f = annealing_factor;
     auto t_S = tree->at(region.branch).t;
     auto s_min = std::abs(t_X - t_S);
-    auto Q_min = 0.0;
-    auto Q_max = boost::math::gamma_q(f*m + 1, lambda_X*f*s_min);
-    auto rand_Q = absl::Uniform(absl::IntervalOpenOpen, bitgen, Q_min, Q_max);
-    //std::cerr << absl::StreamFormat("%.6g < Q = %.6g < %.6g, m = %d, f = %.3g\n", Q_min, rand_Q, Q_max, m, f);
-    auto rand_s = boost::math::gamma_q_inv(f*m + 1, rand_Q)/(lambda_X*f);
+    auto t_early = std::min(t_X, t_S);
+    auto tree_span = t_max_tip - t_early;
+    CHECK_GE(tree_span, 0.0);
+    auto s_max = s_min + 20.0 * tree_span;
+    auto x_min = lambda_X * f * s_min;
+    auto x_max = lambda_X * f * s_max;
+
+    double rand_s;
+    if (x_max < 0.01) {
+      // Power-law fallback: sample s from s^{fm} on [s_min, s_max]
+      // via inverse CDF: s = (s_min^a + U (s_max^a - s_min^a))^{1/a}
+      auto alpha = f * m + 1;
+      auto U = absl::Uniform(absl::IntervalOpenOpen, bitgen, 0.0, 1.0);
+      auto s_min_a = std::pow(s_min, alpha);
+      auto s_max_a = std::pow(s_max, alpha);
+      rand_s = std::pow(s_min_a + U * (s_max_a - s_min_a), 1.0 / alpha);
+    } else {
+      // Doubly-truncated Gamma via inverse CDF.  When x_max is large (normal case),
+      // Q_min ~= 0 and this is nearly identical to the one-sided truncation used in
+      // Delphy 1.3.1 and earlier.
+      auto Q_min = boost::math::gamma_q(f*m + 1, x_max);
+      auto Q_max = boost::math::gamma_q(f*m + 1, x_min);
+      auto rand_Q = absl::Uniform(absl::IntervalOpenOpen, bitgen, Q_min, Q_max);
+      try {
+        rand_s = boost::math::gamma_q_inv(f*m + 1, rand_Q) / (lambda_X*f);
+      } catch (const std::exception& e) {
+        // We've seen gamma_q_inv throw in the wild but have been unable to
+        // reproduce it.  Log all inputs to help diagnose if it recurs.
+        std::cerr << absl::StreamFormat(
+            "gamma_q_inv threw: %s\n"
+            "  f*m+1=%.17g, rand_Q=%.17g, lambda_X=%.17g, f=%.6g\n"
+            "  Q_min=%.17g, Q_max=%.17g, x_min=%.17g, x_max=%.17g\n"
+            "  s_min=%.17g, s_max=%.17g, m=%d, t_X=%.17g, t_S=%.17g\n",
+            e.what(), f*m+1, rand_Q, lambda_X, f,
+            Q_min, Q_max, x_min, x_max,
+            s_min, s_max, m, t_X, t_S);
+        throw;
+      }
+    }
     auto rand_t = 0.5 * (t_X + t_S - rand_s);
     CHECK_GE(rand_t, region.t_min - 1e-6);
     CHECK_LE(rand_t, region.t_max + 1e-6);
@@ -437,24 +513,55 @@ auto Spr_study::log_alpha_in_region(int region_idx, double t) const -> double {
     // p(t | R) = 1/(t_max - t_min)
     return log_p_region - std::log(region.t_max - region.t_min);
   } else {
-    // p(s) ~ {exp[- lambda_X s] * s^m}^f = s^{fm} exp[-lambda_X f s]
-    // p(s | R) = s^{fm} exp[-lambda_X f s] / {(lambda_X f)^{-(fm + 1)} Gamma(fm+1) Q(fm+1, lambda_X f s_min)}
-    //          = (lambda_X f) (lambda_X f s)^{fm} exp[-lambda_X f s] / {Gamma(fm+1) Q(fm+1, lambda_X f s_min)}
-    // p(t | R) = 2 p(s | R)
-    //          = 2 (lambda_X f) (lambda_X f s)^{fm} exp[-lambda_X f s] / {Gamma(fm+1) Q(fm+1, lambda_X f s_min)}
+    // Doubly-truncated density on [s_min, s_max], with power-law fallback.
+    // p(t | R) = 2 p(s | R), where p(s | R) is the normalized density.
     auto f = annealing_factor;
     auto m = region.min_muts;
     auto t_S = tree->at(region.branch).t;
     auto s_min = std::abs(t_X - t_S);
+    auto t_early = std::min(t_X, t_S);
+    auto tree_span = t_max_tip - t_early;
+    CHECK_GE(tree_span, 0.0);
+    auto s_max = s_min + 20.0 * tree_span;
+    auto x_min = lambda_X * f * s_min;
+    auto x_max = lambda_X * f * s_max;
     auto s = t_X - t + t_S - t;
     CHECK_GE(s, s_min - 1e-6);
-    return log_p_region +
-        std::numbers::ln2 +
-        std::log(lambda_X*f) +
-        f*m * std::log(lambda_X*f*s) +
-        -lambda_X*f*s +
-        -std::lgamma(f*m+1)
-        -std::log(boost::math::gamma_q(f*m+1, lambda_X*f*s_min));
+    if (s > s_max + 1e-6) {
+      // The query point t is beyond the cap.  This can happen when the
+      // reverse study evaluates the old root position: the old root may
+      // be deeper than s_max allows (e.g., when min(t_X, t_S) is close
+      // to t_max_tip, making tree_span small).  The density is 0 here
+      // (outside the proposal's support), so log_alpha = -inf and the
+      // MH ratio rejects the move.  This is correct — detailed balance
+      // is preserved; the proposal is simply wasted.
+      return -std::numeric_limits<double>::infinity();
+    }
+
+    if (x_max < 0.01) {
+      // Power-law density:
+      //   p(s | R) = a s^{a-1} / (s_max^a - s_min^a),  where a = fm+1
+      //   p(t | R) = 2 p(s | R)
+      auto alpha = f * m + 1;
+      return log_p_region +
+          std::numbers::ln2 +
+          std::log(alpha) +
+          (alpha - 1) * std::log(s) +
+          -alpha*std::log(s_max) +
+          -std::log1p(-std::pow(s_min / s_max, alpha));
+    } else {
+      // Doubly-truncated Gamma density.  When x_max is large (normal case),
+      // Q(fm+1, x_max) ~= 0, and the result is nearly identical to the one-sided
+      // truncation used in Delphy 1.3.1 and earlier.
+      return log_p_region +
+          std::numbers::ln2 +
+          std::log(lambda_X*f) +
+          f*m * std::log(lambda_X*f*s) +
+          -lambda_X*f*s +
+          -std::lgamma(f*m+1)
+          -std::log(boost::math::gamma_q(f*m+1, x_min)
+                  - boost::math::gamma_q(f*m+1, x_max));
+    }
   }
 }
 

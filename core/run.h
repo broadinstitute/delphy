@@ -95,6 +95,8 @@ class Run {
   auto set_skygrid_inv_nbar_prior_beta(double skygrid_inv_nbar_prior_beta) -> void {
     skygrid_inv_nbar_prior_beta_ = skygrid_inv_nbar_prior_beta, invalidate_derived_quantities(); }
 
+  auto t_max_tip() const -> double {
+    return validate_derived_quantities(), t_max_tip_; }
   auto evo() const -> const Global_evo_model& {
     return validate_derived_quantities(), evo_; }
   auto pi_a() const -> const Seq_vector<double>& {
@@ -284,6 +286,7 @@ class Run {
   // Derived quantities
   mutable bool derived_quantities_valid_ = false;
   mutable int64_t last_revalidation_step_ = 0;
+  mutable double t_max_tip_ = std::numeric_limits<double>::quiet_NaN();
   mutable Global_evo_model evo_;
   mutable double log_G_ = std::numeric_limits<double>::quiet_NaN();
   mutable Partition_vector<Seq_vector<double>> Ttwiddle_beta_a_ = {};

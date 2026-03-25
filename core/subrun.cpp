@@ -493,6 +493,7 @@ auto Subrun::spr1_move() -> void {
   do {
     X = pick_random_node();
   } while (tree_.root == X);
+  if (lambda_i_.at(X) == 0.0) return;  // All sites missing at X => SPR study undefined
   auto t_X = tree_.at(X).t;
   auto P = tree_.at(X).parent;
   auto old_t_P = tree_.at(P).t;
@@ -528,7 +529,7 @@ auto Subrun::spr1_move() -> void {
   pre_builder.max_muts_from_start = limit; // Stop when crossing over more than 1 mutation (makes move local)
   pre_builder.seed_fill_from(old_S, 0, std::move(old_deltas_P_to_X), includes_run_root_);
 
-  auto pre_study = Spr_study{std::move(pre_builder), lambda_i_.at(X), annealing_factor, t_X};
+  auto pre_study = Spr_study{std::move(pre_builder), lambda_i_.at(X), annealing_factor, t_X, t_max_tip_};
 
   
   // 2. Use SPR study to pick new nexus
@@ -573,7 +574,7 @@ auto Subrun::spr1_move() -> void {
   post_builder.max_muts_from_start = limit; // Stop when crossing over more than 1 mutation (makes move local)
   post_builder.seed_fill_from(new_S, 0, std::move(new_deltas_P_to_X), includes_run_root_);
   
-  auto post_study = Spr_study{std::move(post_builder), lambda_i_.at(X), annealing_factor, t_X};
+  auto post_study = Spr_study{std::move(post_builder), lambda_i_.at(X), annealing_factor, t_X, t_max_tip_};
 
   auto old_nexus_region = post_study.find_region(old_S, old_t_P);
   CHECK_NE(old_nexus_region, -1);
