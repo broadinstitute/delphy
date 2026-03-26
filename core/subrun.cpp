@@ -362,10 +362,22 @@ auto Subrun::subtree_slide_move() -> void {
   auto S = tree_.at(P).sibling_of(X);  // "CiP"
 
   // 2. choose a delta to move
-  auto delta_scale = (1 / lambda_i_.at(X)) / 2;  // 95% of the time, won't hop past more than 1 mutation
+  // Cap the proposal scale to the tree span so that we don't propose
+  // absurdly distant parent times when mu is tiny (making lambda_i
+  // negligible and delta_scale enormous).  Such proposals would be
+  // rejected by the coalescent prior anyway, but evaluating the prior
+  // can consume GiB of memory.
+  // See plans/2026-03-26-02-cap-subtree-slide-proposal.md for details.
+  auto t_early = (P == tree_.root)
+      ? std::min(tree_.at(X).t, tree_.at(S).t)
+      : tree_.at(tree_.root).t;
+  auto tree_span = t_max_tip_ - t_early;
+  CHECK_GE(tree_span, 0.0);
+  auto delta_scale = std::min((1 / lambda_i_.at(X)) / 2,  // 95% of the time, won't hop past more than 1 mutation
+                              tree_span);
   auto delta_t = absl::Gaussian(bitgen_, 0.0, delta_scale);
   auto old_P_t = tree_.at(P).t;
-  auto new_P_t = tree_.at(P).t + delta_t;
+  auto new_P_t = old_P_t + delta_t;
 
   // 3. if the move is up
   if (delta_t < 0.0) {

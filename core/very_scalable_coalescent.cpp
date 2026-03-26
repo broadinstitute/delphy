@@ -2,6 +2,8 @@
 
 #include <iostream>
 
+#include "absl/strings/str_format.h"
+
 namespace delphy {
 
 static auto square(double x) -> double {
@@ -263,6 +265,14 @@ auto Very_scalable_coalescent_prior_part::ensure_space(double t) -> void {
     CHECK_EQ(std::ssize(popsize_bar_), std::ssize(num_active_parts_));
     CHECK_EQ(std::ssize(popsize_bar_), std::ssize(k_twiddle_bar_));
     CHECK_EQ(std::ssize(popsize_bar_), std::ssize(k_twiddle_bar_p_));
+
+    auto num_new_cells = max_cell - static_cast<int>(std::ssize(popsize_bar_)) + 1;
+    if (num_new_cells > 10'000) {
+      std::cerr << absl::StreamFormat(
+          "WARNING: ensure_space: allocating %d new cells for t=%.6g"
+          " (t_ref=%.6g, t_step=%.6g)\n",
+          num_new_cells, t, t_ref_, t_step_);
+    }
 
     for (auto i = std::ssize(popsize_bar_); i <= max_cell; ++i) {
       auto t_min_i = cell_lbound(i, t_ref_, t_step_);
