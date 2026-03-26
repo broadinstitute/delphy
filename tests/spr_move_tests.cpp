@@ -1960,4 +1960,43 @@ TEST_F(Spr_move_simple_test, sample_mutational_history) {
   EXPECT_THAT(p_super_unusual, testing::DoubleNear(expected_p_super_unusual, 3*err_p_super_unusual));
 }
 
+TEST_F(Spr_move_simple_test, sample_mutational_history_tiny_muT) {
+  // Regression test for infinite loop when mu*T is tiny (~5e-17), fixed by Taylor expansion
+  // for log_one_minus_p_tricky and a skip guard.  Without the fix, this test exhausts memory
+  // and throws std::bad_alloc after ~4 minutes.
+  // Observed in WCSS 04_free_exp_pop/sims/sim_048 of delphy-2026-paper-data.
+  // See plans/2026-03-25-01-fix-sample-mutational-history-infinite-loop.md for details.
+  auto L = 30'000;  // Typical genome size
+  auto T = 0.000175;  // ~1.5 hours, perfectly normal branch length
+  auto mu = 3e-13;  // Absurdly small mu, as observed in sim_048
+  // mu*T ≈ 5.3e-17
+
+  auto deltas = Site_deltas{};  // No deltas, as in the observed crash
+
+  auto bitgen = std::mt19937_64(12345);
+  auto result = sample_mutational_history(L, T, mu, deltas, bitgen);
+
+  // With mu*T ≈ 5e-17 and L = 30,000, the expected number of sites with
+  // 2+-mutation trajectories is L*(mu*T)^2/2 ≈ 4e-29.  So we expect
+  // zero mutations in the result.
+  EXPECT_THAT(std::ssize(result), testing::Eq(0));
+}
+
+TEST_F(Spr_move_simple_test, sample_unconstrained_mutational_history_tiny_muT) {
+  // Confirm that sample_unconstrained_mutational_history handles tiny mu*T
+  // without hanging.  It uses the Gillespie algorithm (Exp(mu*L) inter-event
+  // times), so when mu is tiny the first draw overshoots T and the loop exits
+  // immediately.
+  // Same parameters as the sim_048 scenario above.
+  // See plans/2026-03-25-01-fix-sample-mutational-history-infinite-loop.md for details.
+  auto L = 30'000;
+  auto T = 0.000175;
+  auto mu = 3e-13;
+
+  auto bitgen = std::mt19937_64(12345);
+  auto result = sample_unconstrained_mutational_history(L, T, mu, bitgen);
+
+  EXPECT_THAT(std::ssize(result), testing::Eq(0));
+}
+
 }  // namespace delphy

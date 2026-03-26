@@ -1170,7 +1170,7 @@ auto sample_mutational_history(
     -> Scratch_vector<Mutation> {
 
   auto result = Scratch_vector<Mutation>{};
-  
+
   // For sites with deltas, sample CTMC trajectories starting with `from` state with at least one mutation
   // until we get a trajectory with state `to` at the end.  This is equivalent to doing straight rejection
   // sampling over unconstrained trajectories, but skipping quickly over all proposed trajectories with 0 mutations.
@@ -1218,8 +1218,10 @@ auto sample_mutational_history(
       auto next_s = to_states[i];
       auto t = mut_times[i];
 
+      CHECK_LE(0, l);
+      CHECK_LT(l, L);
       result.push_back(Mutation{prev_s, l, next_s, t});
-      
+
       prev_s = next_s;
     }
   }
@@ -1264,16 +1266,33 @@ auto sample_mutational_history(
   // Conceptually, we generate A->A trajectories for all L sites, and then filter out and mutations on sites which
   // have explicit deltas, which we treated above.  Equivalently, if we ever stop at a site that has an explicit delta,
   // we immediately skip it.
+  //
+  // NOTE: The geometric skip uses log_one_minus_p_tricky = log(p_0 / (1 - p_1)) = -muT - log1p(-p_1).
+  // For tiny mu*T (say < 1e-8), both terms evaluate to approximately -muT and cancel catastrophically,
+  // giving log_one_minus_p_tricky = 0 instead of the correct -(mu*T)^2/2.  This led to an infinite loop
+  // (see plans/2026-03-25-01-fix-sample-mutational-history-infinite-loop.md).  Two defenses are in place:
+  // 1. A Taylor expansion (-0.5 * muT * muT) is used when muT < 1e-4 to avoid the cancellation.
+  // 2. When L * muT^2 < 2e-6, the expected number of 2+-mutation sites is negligible and the entire
+  //    no-delta loop is skipped by setting l = L.
 
-  auto p_0 = std::exp(-mu*T);
-  auto p_1 = mu * T * p_0;
+  auto muT = mu * T;
+  auto p_0 = std::exp(-muT);
+  auto p_1 = muT * p_0;
   //auto p_tricky               = (1 - p_0 - p_1) /          (1-p_1);
   //auto one_minus_p_tricky     =      p_0        /          (1-p_1);
   //auto log_one_minus_p_tricky = std::log(p_0)   - std::log1p(-p_1);
-  auto log_one_minus_p_tricky   =     -mu*T       - std::log1p(-p_1);
-  
+  auto log_one_minus_p_tricky = (muT < 1e-4)
+      ? -0.5 * muT * muT
+      : -muT - std::log1p(-p_1);
+
   auto l = 0;
-  while (true) {
+  if (L * muT * muT < 2e-6) {
+    // The expected number of no-delta sites with 2+-mutation trajectories
+    // is L*(mu*T)^2/2.  When this is negligible, set l to L so the
+    // while (l < L) loop below is skipped entirely.
+    l = L;
+  }
+  while (l < L) {
     // We really want to do `delta = std::geometric_distribution{p_tricky}(bitgen); l += delta`, but since
     // p_tricky is very small, the sample drawn might be large enough to overflow integers.
     //
@@ -1282,11 +1301,15 @@ auto sample_mutational_history(
     //
     // Concretely, if u ~ Expo(-ln(1-p)), then floor(u) ~ Geo(p).  So if u >= L, then we can do an early exit
     auto u = std::exponential_distribution{-log_one_minus_p_tricky}(bitgen);
-    if (u >= L) {
-      break;  // when we turn u into a Geo(p_tricky) sample and add it to l, we'd have l >= L
+    if (!(u >= 0 && u < L)) {
+      // Normally, u >= L means we skip past all remaining sites.
+      // But u can also be negative, infinite, or NaN if log_one_minus_p_tricky
+      // is corrupted by floating-point cancellation (e.g., cancellation to 0
+      // gives exponential_distribution{-0.0}, which returns -inf).
+      // In all such cases, we should exit the loop.
+      break;
     }
-    auto delta = std::floor(u);
-    l += delta;
+    l += static_cast<int>(std::floor(u));  // safe: u is in [0, L), so floor(u) is in [0, L-1]
     if (l >= L) {
       break;
     }
@@ -1325,11 +1348,13 @@ auto sample_mutational_history(
         auto next_s = to_states[i];
         auto t = mut_times[i];
         
+        CHECK_LE(0, l);
+        CHECK_LT(l, L);
         result.push_back(Mutation{prev_s, l, next_s, t});
-        
+
         prev_s = next_s;
       }
-      
+
       // We're done with this site; restart rejection sampling at the next site
       ++l;
     } else {
