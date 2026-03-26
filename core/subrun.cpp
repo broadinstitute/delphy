@@ -186,7 +186,17 @@ auto Subrun::inner_node_displace_move() -> void {
   auto log_alpha_old_to_new_over_new_to_old = 0.0;
   auto new_node_t = old_node_t;
   if (node == tree_.root) {
-    auto delta_scale = (1 / lambda_i_.at(node)) / 2;  // 95% of the time, won't hop past more than 1 mutation
+    // Cap the proposal scale to the tree span so that we don't propose
+    // absurdly distant root times when mu is tiny (making lambda_i
+    // negligible and delta_scale enormous).  Such proposals would be
+    // rejected by the coalescent prior anyway, but evaluating the prior
+    // requires allocating a grid covering the proposed time range, which
+    // can consume GiB of memory.
+    // See plans/2026-03-26-01-cap-root-displace-proposal.md for details.
+    auto tree_span = t_max_tip_ - t_max;
+    CHECK_GE(tree_span, 0.0);
+    auto delta_scale = std::min((1 / lambda_i_.at(node)) / 2,  // 95% of the time, won't hop past more than 1 mutation
+                                tree_span);
     new_node_t = old_node_t + absl::Gaussian(bitgen_, 0.0, delta_scale);
     if (new_node_t < t_min || new_node_t > t_max) { return; }
     log_alpha_old_to_new_over_new_to_old = 0.0;
