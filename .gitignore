@@ -8,6 +8,9 @@ scratch
 *~
 /.vscode
 
+# Half-baked internal design notes, not for public consumption
+.ideas/
+
 # AI coding agent artifacts
 .aider*
 .continue/
