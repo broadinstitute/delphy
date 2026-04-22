@@ -2,9 +2,25 @@
 
 #include <numbers>
 
+#include <boost/math/policies/policy.hpp>
 #include <boost/math/special_functions/gamma.hpp>
 
 namespace delphy {
+
+// On Emscripten/WASM, `long double` is declared as IEEE binary128 (128-bit, max
+// exponent ~11356), but the underlying math functions (`expl`, `logl`, `powl`,
+// etc.) are thin wrappers around the `double` versions, which overflow/underflow
+// at ~710.  Boost's `gamma_q`/`gamma_q_inv` promote `double` arguments to
+// `long double` by default, then rely on those math functions to handle the full
+// range of the promoted type.  This causes intermediate calculations to overflow
+// to `inf` or underflow to 0, resulting in `nan` (e.g., `inf * 0`).
+//
+// The `promote_double<false>` policy keeps the entire computation in `double`
+// precision.  Boost's `double` code path uses `lanczos13m53` (53-bit precision) with
+// overflow guards that handle all parameter ranges correctly, matching the actual
+// capabilities of the math library on all platforms (x86-64, ARM64, WASM).
+using gamma_policy = boost::math::policies::policy<
+    boost::math::policies::promote_double<false>>;
 
 auto Spr_study_builder::seed_fill_from(
     Branch_index init_branch,
@@ -361,12 +377,16 @@ Spr_study::Spr_study(
         // Standard doubly-truncated Gamma.  When x_max is large (normal case),
         // Q(fm+1, x_max) ~= 0, and the result is nearly identical to the one-sided
         // truncation used in Delphy 1.3.1 and earlier.
+        auto Q_xmin = boost::math::gamma_q(f*m + 1, x_min, gamma_policy{});
+        auto Q_xmax = boost::math::gamma_q(f*m + 1, x_max, gamma_policy{});
+        CHECK(not std::isnan(Q_xmin)) << "gamma_q(" << f*m + 1 << ", " << x_min << ") is nan";
+        CHECK(not std::isnan(Q_xmax)) << "gamma_q(" << f*m + 1 << ", " << x_max << ") is nan";
+        CHECK_GE(Q_xmin, Q_xmax) << "Q_xmin " << Q_xmin << " < Q_xmax " << Q_xmax;
         region.log_W_over_Wmax =
             -std::numbers::ln2
             + f*m*std::log(mu / (3 * lambda_X * f))
             + std::lgamma(f*m + 1)
-            + std::log(boost::math::gamma_q(f*m + 1, x_min)
-                     - boost::math::gamma_q(f*m + 1, x_max));
+            + std::log(Q_xmin - Q_xmax);
       }
     }
   }
@@ -461,11 +481,14 @@ auto Spr_study::pick_time_in_region(int region_idx, absl::BitGenRef bitgen) cons
       // Doubly-truncated Gamma via inverse CDF.  When x_max is large (normal case),
       // Q_min ~= 0 and this is nearly identical to the one-sided truncation used in
       // Delphy 1.3.1 and earlier.
-      auto Q_min = boost::math::gamma_q(f*m + 1, x_max);
-      auto Q_max = boost::math::gamma_q(f*m + 1, x_min);
+      auto Q_min = boost::math::gamma_q(f*m + 1, x_max, gamma_policy{});
+      auto Q_max = boost::math::gamma_q(f*m + 1, x_min, gamma_policy{});
+      CHECK(not std::isnan(Q_min)) << "gamma_q(" << f*m + 1 << ", " << x_max << ") is nan";
+      CHECK(not std::isnan(Q_max)) << "gamma_q(" << f*m + 1 << ", " << x_min << ") is nan";
+      CHECK_LT(Q_min, Q_max) << "Q_min " << Q_min << " >= Q_max " << Q_max;
       auto rand_Q = absl::Uniform(absl::IntervalOpenOpen, bitgen, Q_min, Q_max);
       try {
-        rand_s = boost::math::gamma_q_inv(f*m + 1, rand_Q) / (lambda_X*f);
+        rand_s = boost::math::gamma_q_inv(f*m + 1, rand_Q, gamma_policy{}) / (lambda_X*f);
       } catch (const std::exception& e) {
         // We've seen gamma_q_inv throw in the wild but have been unable to
         // reproduce it.  Log all inputs to help diagnose if it recurs.
@@ -479,6 +502,8 @@ auto Spr_study::pick_time_in_region(int region_idx, absl::BitGenRef bitgen) cons
             s_min, s_max, m, t_X, t_S);
         throw;
       }
+      CHECK(not std::isnan(rand_s)) << "gamma_q_inv returned nan";
+      CHECK(not std::isinf(rand_s)) << "gamma_q_inv returned inf";
     }
     auto rand_t = 0.5 * (t_X + t_S - rand_s);
     CHECK_GE(rand_t, region.t_min - 1e-6);
@@ -553,14 +578,20 @@ auto Spr_study::log_alpha_in_region(int region_idx, double t) const -> double {
       // Doubly-truncated Gamma density.  When x_max is large (normal case),
       // Q(fm+1, x_max) ~= 0, and the result is nearly identical to the one-sided
       // truncation used in Delphy 1.3.1 and earlier.
-      return log_p_region +
+      auto Q_xmin = boost::math::gamma_q(f*m+1, x_min, gamma_policy{});
+      auto Q_xmax = boost::math::gamma_q(f*m+1, x_max, gamma_policy{});
+      CHECK(not std::isnan(Q_xmin)) << "gamma_q(" << f*m+1 << ", " << x_min << ") is nan";
+      CHECK(not std::isnan(Q_xmax)) << "gamma_q(" << f*m+1 << ", " << x_max << ") is nan";
+      CHECK_GE(Q_xmin, Q_xmax) << "Q_xmin " << Q_xmin << " < Q_xmax " << Q_xmax;
+      auto result = log_p_region +
           std::numbers::ln2 +
           std::log(lambda_X*f) +
           f*m * std::log(lambda_X*f*s) +
           -lambda_X*f*s +
           -std::lgamma(f*m+1)
-          -std::log(boost::math::gamma_q(f*m+1, x_min)
-                  - boost::math::gamma_q(f*m+1, x_max));
+          -std::log(Q_xmin - Q_xmax);
+      CHECK(not std::isnan(result)) << "log_alpha_in_region result is nan";
+      return result;
     }
   }
 }
