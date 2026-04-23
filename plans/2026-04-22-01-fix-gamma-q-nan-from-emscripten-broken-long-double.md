@@ -226,17 +226,17 @@ The wrapper functions:
 **`safe_gamma_q(a, x)`:** calls `boost::math::gamma_q(a, x, gamma_policy{})`
 with a post-call `CHECK` for nan and inf.
 
-**`safe_gamma_q_inv(a, Q)`:** calls
-`boost::math::gamma_q_inv(a, Q, gamma_policy{})` with a post-call `CHECK`
-for nan and inf.
+**`safe_gamma_q_inv(a, Q)`:** validates `Q` is in `[0, 1]`, calls
+`boost::math::gamma_q_inv(a, Q, gamma_policy{})` inside a try/catch that
+logs `a` and `Q` if Boost throws, and post-call `CHECK`s for nan and inf.
 
 **`safe_log_gamma_integral(a, x_min, x_max)`:** computes
 `log(gamma_q(a, x_min) - gamma_q(a, x_max))` via `safe_gamma_q`, with a
 `CHECK` that `Q_hi >= Q_lo`.
 
 **`safe_sample_truncated_gamma(alpha, beta, lo, hi, bitgen)`:**
-samples from `Gamma(alpha, beta)` truncated to `[lo, hi]` using
-inverse-CDF.  Transforms to unit-rate `Gamma(alpha, 1)` internally
+samples from `Gamma(alpha, beta)` truncated to `[lo, hi]` (where `hi`
+may be infinity) using inverse-CDF.  Transforms to unit-rate `Gamma(alpha, 1)` internally
 (`y = beta * x`), calls `safe_gamma_q` at both endpoints, samples `Q`
 uniformly in the resulting interval via `Uniform(OpenClosed, Q_lo, Q_hi)`,
 inverts via `safe_gamma_q_inv`, and transforms back.  The `OpenClosed`

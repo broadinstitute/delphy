@@ -5,26 +5,11 @@
 #include "phylo_tree_calc.h"
 #include "dates.h"
 
+#include "safe_gamma_math.h"
+
 #include <numbers>
-#include <boost/math/policies/policy.hpp>
-#include <boost/math/special_functions/gamma.hpp>
 
 namespace delphy {
-
-// On Emscripten/WASM, `long double` is declared as IEEE binary128 (128-bit, max
-// exponent ~11356), but the underlying math functions (`expl`, `logl`, `powl`,
-// etc.) are thin wrappers around the `double` versions, which overflow/underflow
-// at ~710.  Boost's `gamma_q`/`gamma_q_inv` promote `double` arguments to
-// `long double` by default, then rely on those math functions to handle the full
-// range of the promoted type.  This causes intermediate calculations to overflow
-// to `inf` or underflow to 0, resulting in `nan` (e.g., `inf * 0`).
-//
-// The `promote_double<false>` policy keeps the entire computation in `double`
-// precision.  Boost's `double` code path uses `lanczos13m53` (53-bit precision) with
-// overflow guards that handle all parameter ranges correctly, matching the actual
-// capabilities of the math library on all platforms (x86-64, ARM64, WASM).
-using gamma_policy = boost::math::policies::policy<
-    boost::math::policies::promote_double<false>>;
 
 Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
     : thread_pool_{&thread_pool},
@@ -945,16 +930,10 @@ auto Run::mpox_hack_moves() -> void {
       // Use inverse transform sampling on k := 1 + 6 rho:
       //
       // p(k) ~ e^{-(mu Ttwiddle*/3) k} * k^M*, k >= 1
-      auto min_Q = 0.0;
-      auto a = M_star + 1.0;
-      auto z = mpox_mu_*Ttwiddle_star/3;
-      auto max_Q = boost::math::gamma_q(a, z, gamma_policy{});
-      CHECK(not std::isnan(max_Q)) << "gamma_q(" << a << ", " << z << ") is nan";
-      auto rand_Q = absl::Uniform(absl::IntervalOpenOpen, bitgen_, min_Q, max_Q);
-      auto k = boost::math::gamma_q_inv(M_star + 1, rand_Q, gamma_policy{}) / (mpox_mu_*Ttwiddle_star/3);
-      CHECK(not std::isnan(k)) << "gamma_q_inv returned nan";
-      CHECK(not std::isinf(k)) << "gamma_q_inv returned inf";
-      k = std::max(1.0, k);  // Avoid edge cases with round-off errors
+      // This is Gamma(M_star+1, mpox_mu_*Ttwiddle_star/3) truncated to [1, inf).
+      auto k = safe_sample_truncated_gamma(
+          M_star + 1, mpox_mu_*Ttwiddle_star/3, 1.0, std::numeric_limits<double>::infinity(),
+          bitgen_);
       
       auto old_rho = rho;
       auto new_rho = (k - 1) / 6.0;

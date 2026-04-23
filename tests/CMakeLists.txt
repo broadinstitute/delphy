@@ -14,6 +14,7 @@ add_executable(tests
   phylo_tree_calc_tests.cpp
   phylo_tree_tests.cpp
   pop_model_tests.cpp
+  safe_gamma_math_tests.cpp
   scalable_coalescent_tests.cpp
   scratch_space_tests.cpp
   sequence_overlay_tests.cpp
