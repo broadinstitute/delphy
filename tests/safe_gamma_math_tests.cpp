@@ -1,6 +1,7 @@
 // safe_gamma_math_tests.cpp
 
 #include <gtest/gtest.h>
+#include <gmock/gmock.h>
 
 #include <cmath>
 #include <limits>
@@ -9,6 +10,27 @@
 #include "safe_gamma_math.h"
 
 namespace delphy {
+
+// Like testing::DoubleNear, but if `expected` is NaN (which happens on Emscripten for
+// bare Boost gamma functions due to broken long double), the match succeeds trivially —
+// we can't validate against a broken reference value.  On non-Emscripten platforms,
+// a NaN expected value is treated as a test failure.
+MATCHER_P2(NearOrNaN, expected, tolerance, "") {
+  if (std::isnan(expected)) {
+#ifdef __EMSCRIPTEN__
+    return true;
+#else
+    *result_listener << "expected is NaN on non-Emscripten platform";
+    return false;
+#endif
+  }
+  auto diff = std::abs(arg - expected);
+  if (diff > tolerance) {
+    *result_listener << "which is " << diff << " from " << expected;
+    return false;
+  }
+  return true;
+}
 
 TEST(SafeGammaMathTest, SafeGammaQBasic) {
   // Small a, normal x
@@ -25,12 +47,12 @@ TEST(SafeGammaMathTest, SafeGammaQLargeX) {
 
 TEST(SafeGammaMathTest, SafeGammaQNearMode) {
   // Near mode x ≈ a
-  EXPECT_NEAR(safe_gamma_q(271.4, 280.0), boost::math::gamma_q(271.4, 280.0), 1e-12);
+  EXPECT_THAT(safe_gamma_q(271.4, 280.0), NearOrNaN(boost::math::gamma_q(271.4, 280.0), 1e-12));
 }
 
 TEST(SafeGammaMathTest, SafeGammaQLargeALargeX) {
   // Large a, moderate x
-  EXPECT_NEAR(safe_gamma_q(500.0, 1000.0), boost::math::gamma_q(500.0, 1000.0), 1e-12);
+  EXPECT_THAT(safe_gamma_q(500.0, 1000.0), NearOrNaN(boost::math::gamma_q(500.0, 1000.0), 1e-12));
 }
 
 TEST(SafeGammaMathTest, SafeGammaQAtZero) {
@@ -85,18 +107,16 @@ TEST(SafeGammaMathTest, SafeGammaQInvExtremeQ) {
 
 TEST(SafeGammaMathTest, SafeLogGammaIntegralBasic) {
   // Basic case
-  EXPECT_NEAR(
+  EXPECT_THAT(
       safe_log_gamma_integral(5.0, 1.0, 10.0),
-      std::log(boost::math::gamma_q(5.0, 1.0) - boost::math::gamma_q(5.0, 10.0)),
-      1e-12);
+      NearOrNaN(std::log(boost::math::gamma_q(5.0, 1.0) - boost::math::gamma_q(5.0, 10.0)), 1e-12));
 }
 
 TEST(SafeGammaMathTest, SafeLogGammaIntegralAtBounds) {
   // When x_min < x_max are far apart
-  EXPECT_NEAR(
+  EXPECT_THAT(
       safe_log_gamma_integral(271.4, 148.0, 6601.0),
-      std::log(boost::math::gamma_q(271.4, 148.0) - boost::math::gamma_q(271.4, 6601.0)),
-      1e-12);
+      NearOrNaN(std::log(boost::math::gamma_q(271.4, 148.0) - boost::math::gamma_q(271.4, 6601.0)), 1e-12));
   // When both x values are large, the difference is ~0, so log(0) = -inf
   auto result = safe_log_gamma_integral(5.0, 1000.0, 2000.0);
   EXPECT_TRUE(std::isinf(result) && result < 0);
@@ -226,6 +246,21 @@ TEST(SafeGammaMathTest, ComprehensiveSweepGammaQInv) {
       EXPECT_GT(result, 0.0) << "a=" << a << " Q=" << Q;
     }
   }
+}
+
+TEST(SafeGammaMathTest, PromoteDoubleRegression) {
+  // Bare boost::math::gamma_q with default promote_double<true> policy.
+  // On Emscripten, long double math functions overflow at the double threshold,
+  // causing NaN.  If this starts passing, Emscripten may have fixed the bug —
+  // consider removing the promote_double<false> workaround.
+  auto bare_result = boost::math::gamma_q(271.4, 6601.0);
+#ifdef __EMSCRIPTEN__
+  EXPECT_TRUE(std::isnan(bare_result)) << "got " << bare_result;
+#else
+  EXPECT_NEAR(bare_result, 0.0, 1e-12);
+#endif
+  // safe_gamma_q uses promote_double<false> and works on all platforms
+  EXPECT_NEAR(safe_gamma_q(271.4, 6601.0), 0.0, 1e-12);
 }
 
 }  // namespace delphy

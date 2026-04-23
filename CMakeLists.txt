@@ -85,8 +85,24 @@ find_package(SDL2_ttf QUIET)
 # Core library
 add_subdirectory(core)
 
-# Tests (only useful in non-WASM builds, but we build them for WASM anyway to
-# ensure that no test code trips up Clang [the default compiler on Mac])
+# Define WASM linker flags early so tests/CMakeLists.txt can use them
+if(EMSCRIPTEN)
+  set(WASM_LINKER_FLAGS
+    -fwasm-exceptions
+    -pthread
+    # Don't mess up 64-bit integers; see https://v8.dev/features/wasm-bigint
+    -sWASM_BIGINT
+    -sINITIAL_MEMORY=16mb
+    -sALLOW_MEMORY_GROWTH=1
+    # Avoid grief with decoding UTF-8 strings in SharedArrayBuffers (which is what
+    # the WASM linear memory looks like from the JS side).  See here for details:
+    # https://github.com/emscripten-core/emscripten/issues/18034
+    -sTEXTDECODER=0
+  )
+endif()
+
+# Tests are built for WASM to both catch Clang compilation issues and to verify
+# WASM-specific functionality (e.g., gamma_q with promote_double<false> policy)
 cmake_policy(SET CMP0135 NEW)
 include(FetchContent)
 # To update to latest GoogleTest release:
@@ -131,24 +147,16 @@ endif()
 
 # Build the WASM shim only if compiling with Emscripten
 if(EMSCRIPTEN)
+  # delphy WASM target
   add_executable(delphy tools/delphy_wasm.cpp)
   target_link_libraries(delphy delphy_core)
   target_link_options(delphy PRIVATE
-    --no-entry -fwasm-exceptions
+    ${WASM_LINKER_FLAGS}
+    --no-entry
     $<$<CONFIG:DEBUG>:-gsource-map --source-map-base ./>
-    -pthread -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
+    -sPTHREAD_POOL_SIZE=navigator.hardwareConcurrency
     -sEXPORTED_FUNCTIONS=_malloc,_free
     -sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8OnStack
-
-    # Don't mess up 64-bit integers; see https://v8.dev/features/wasm-bigint
-    -sWASM_BIGINT
-    -sINITIAL_MEMORY=16mb
-    -sALLOW_MEMORY_GROWTH=1
-
-    # Avoid grief with decoding UTF-8 strings in SharedArrayBuffers (which is what
-    # the WASM linear memory looks like from the JS side).  See here for details:
-    # https://github.com/emscripten-core/emscripten/issues/18034
-    -sTEXTDECODER=0
   )
 
   if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
