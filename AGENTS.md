@@ -206,6 +206,8 @@ for (const auto& node : index_order_traversal(tree)) { ... }
 
 10. **Debug assertions** - Use `assert_tree_integrity()`, `assert_mutation_consistency()` for validation.
 
+11. **Git staging** - Always use explicit file paths with `git add` (e.g., `git add file.cpp`).  Never use `git add -A` or `git add .` which may stage unintended files.
+
 ---
 
 ## Git Conventions
