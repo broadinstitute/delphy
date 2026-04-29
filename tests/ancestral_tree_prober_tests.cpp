@@ -40,7 +40,7 @@ class Ancestral_tree_prober_test : public testing::Test {
 
   double exp_pop_n0{1.0};
   double exp_pop_g{0.1};
-  Exp_pop_model exp_pop_model{0.0, exp_pop_n0, exp_pop_g};
+  Exp_pop_model exp_pop_model{0.0, exp_pop_n0, exp_pop_g, 0.0};
 
   std::map<std::string, std::reference_wrapper<Pop_model>> pop_models{
     {"Constant", const_pop_model},

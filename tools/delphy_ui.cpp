@@ -613,7 +613,8 @@ static auto print_stats_line() -> void {
   if (typeid(pop_model) == typeid(Exp_pop_model)) {
     const auto& exp_pop_model = static_cast<const Exp_pop_model&>(ui_run->pop_model());
     std::cerr << absl::StreamFormat("n0 = %.4g yr, ", exp_pop_model.pop_at_t0() / 365.0)
-              << absl::StreamFormat("g = %.4g e-fold/yr, ", exp_pop_model.growth_rate() * 365.0);
+              << absl::StreamFormat("g = %.4g e-fold/yr, ", exp_pop_model.growth_rate() * 365.0)
+              << absl::StreamFormat("min_pop = %.4g yr, ", exp_pop_model.min_pop() / 365.0);
   } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
     const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(ui_run->pop_model());
     std::cerr << absl::StreamFormat("tau = %.4g, ", ui_run->skygrid_tau());
@@ -923,7 +924,7 @@ auto keyboard_func(char key) -> void {
       const auto& pop_model = ui_run->pop_model();
       if (typeid(pop_model) == typeid(Exp_pop_model)) {
         const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
-        ui_run->set_pop_model(std::make_shared<Exp_pop_model>(exp_pop_model.t0(), 3.0 * 365.0, exp_pop_model.growth_rate()));
+        ui_run->set_pop_model(std::make_shared<Exp_pop_model>(exp_pop_model.t0(), 3.0 * 365.0, exp_pop_model.growth_rate(), exp_pop_model.min_pop()));
         std::cerr << "*** FINAL POPULATION SIZE RESET TO 3.0 years ***" << std::endl;
       } else {
         std::cerr << "*** POP MODEL IS OF TYPE " << typeid(pop_model).name() << ", IGNORING COMMAND TO RESET FINAL POPULATION SIZE ***" << std::endl;
@@ -944,7 +945,7 @@ auto keyboard_func(char key) -> void {
       const auto& pop_model = ui_run->pop_model();
       if (typeid(pop_model) == typeid(Exp_pop_model)) {
         const auto& exp_pop_model = static_cast<const Exp_pop_model&>(pop_model);
-        ui_run->set_pop_model(std::make_shared<Exp_pop_model>(exp_pop_model.t0(), exp_pop_model.pop_at_t0(), 0.0));
+        ui_run->set_pop_model(std::make_shared<Exp_pop_model>(exp_pop_model.t0(), exp_pop_model.pop_at_t0(), 0.0, exp_pop_model.min_pop()));
         std::cerr << "*** POPULATION GROWTH RATE RESET TO 0.0 e-foldings / year ***" << std::endl;
       } else {
         std::cerr << "*** POP MODEL IS OF TYPE " << typeid(pop_model).name() << ", IGNORING COMMAND TO RESET POPULATION GROWTH RATE ***" << std::endl;

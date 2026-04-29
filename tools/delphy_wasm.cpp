@@ -1465,12 +1465,13 @@ auto delphy_pop_model_delete(Delphy_context& /*ctx*/, Pop_model* pop_model) -> v
 EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_exp_pop_model_new(
-    Delphy_context& /*ctx*/, 
+    Delphy_context& /*ctx*/,
     double t0,
     double n0,
-    double g)
+    double g,
+    double min_pop)
     -> Pop_model* {
-  return new Exp_pop_model{t0, n0, g};
+  return new Exp_pop_model{t0, n0, g, min_pop};
 }
 
 // Assumes that exp_pop_model really is an `Exp_pop_model` !
@@ -1492,6 +1493,12 @@ EMSCRIPTEN_KEEPALIVE
 extern "C"
 auto delphy_exp_pop_model_get_g(Delphy_context& /*ctx*/, const Exp_pop_model& exp_pop_model) -> double {
   return exp_pop_model.growth_rate();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_exp_pop_model_get_min_pop(Delphy_context& /*ctx*/, const Exp_pop_model& exp_pop_model) -> double {
+  return exp_pop_model.min_pop();
 }
 
 EMSCRIPTEN_KEEPALIVE

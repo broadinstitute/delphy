@@ -148,7 +148,7 @@ TEST(Site_states_tree_prober_test, typical_const_pop_model) {
 }
 
 TEST(Site_states_tree_prober_test, typical_exp_pop_model) {
-  site_states_tree_prober_test_body(Exp_pop_model{0.0, 1.0, 0.1});
+  site_states_tree_prober_test_body(Exp_pop_model{0.0, 1.0, 0.1, 0.0});
 }
 
 }  // namespace delphy

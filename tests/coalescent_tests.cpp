@@ -80,7 +80,7 @@ TEST(Coalescent_test, delta_log_prior) {
   auto n0 = 20.0;   // N_e * rho, in days
   auto g = 0.1;     // growing by a factor of `e` every 10 days
 
-  auto pop_model = Exp_pop_model{0.0, n0, g};
+  auto pop_model = Exp_pop_model{0.0, n0, g, 0.0};
 
   auto num_tips = 10;
   auto prior = Coalescent_prior{&pop_model, num_tips};

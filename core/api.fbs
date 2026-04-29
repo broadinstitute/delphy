@@ -65,9 +65,10 @@ table TreeInfo {
 // -----------------
 
 table ExpPopModel {
-  t0: float64    (id: 0); // Reference time t0 for population model [units: days since 2020-01-01]
-  n0: float64    (id: 1); // Population model effective pop size at t = t0 [units of 1/day (it's obscure...), > 0]
-  g: float64     (id: 2); // Population model growth rate [units of 1 / day, > 0]
+  t0: float64      (id: 0); // Reference time t0 for population model [units: days since 2020-01-01]
+  n0: float64      (id: 1); // Effective population size at t = t0 [units: days (= N_e * generation_time), > 0]
+  g: float64       (id: 2); // Growth rate [units of 1 / day]
+  min_pop: float64 (id: 3); // Minimum effective population size [units: days, >= 0, default 0.0 = disabled]
 }
 
 enum SkygridType : byte {
@@ -130,7 +131,7 @@ table Params {
   // Deprecated hard-coded ExpPopModel parameters.  If pop_model is missing, assume exponential model with these
   // parameters; otherwise, ignore these
   pop_t0: float64    (id: 26); // Reference time t0 for population model [units: days since 2020-01-01]
-  pop_n0: float64    (id: 11); // Population model effective pop size at t = t0 [units of 1/day (it's obscure...), > 0]
+  pop_n0: float64    (id: 11); // Population model effective pop size at t = t0 [units: days (= N_e * generation_time), > 0]
   pop_g: float64     (id: 12); // Population model growth rate [units of 1 / day, > 0]
 
   // Knobs

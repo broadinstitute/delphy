@@ -38,15 +38,15 @@ TEST(Pop_model_test, const_pop_model_print) {
 
 TEST(Pop_model_test, exp_pop_model_invalid) {
   // Don't support nonpositive populations
-  EXPECT_THROW((Exp_pop_model{0.0, 0.0, 1.0}), std::invalid_argument);
-  EXPECT_THROW((Exp_pop_model{0.0, -1.0, 1.0}), std::invalid_argument);
+  EXPECT_THROW((Exp_pop_model{0.0, 0.0, 1.0, 0.0}), std::invalid_argument);
+  EXPECT_THROW((Exp_pop_model{0.0, -1.0, 1.0, 0.0}), std::invalid_argument);
 }
 
 TEST(Pop_model_test, exp_pop_model_normal) {
   auto n0 = 10.0;                // N_e(t=0) * rho, in days
   auto g = std::numbers::ln2;    // e^(ln(2)*t) = 2^t, i.e., doubles every day
 
-  auto pop_model = Exp_pop_model{0.0, n0, g};
+  auto pop_model = Exp_pop_model{0.0, n0, g, 0.0};
 
   EXPECT_EQ(pop_model.pop_at_t0(), n0);
   EXPECT_EQ(pop_model.growth_rate(), g);
@@ -72,13 +72,165 @@ TEST(Pop_model_test, exp_pop_model_print) {
   auto n0 = 10.0;
   auto g = 2.0;
 
-  auto pop_model = Exp_pop_model{t0, n0, g};
+  auto pop_model = Exp_pop_model{t0, n0, g, 0.0};
 
   auto ss = std::stringstream{};
   ss << pop_model;
 
   EXPECT_THAT(ss.str(), testing::StrEq(absl::StrFormat(
-      "Exp_pop_model{t0=%g, n0=%g, g=%g}", t0, n0, g)));
+      "Exp_pop_model{t0=%g, n0=%g, g=%g, min_pop=%g}", t0, n0, g, 0.0)));
+}
+
+TEST(Pop_model_test, exp_pop_model_min_pop_invalid) {
+  EXPECT_THROW((Exp_pop_model{0.0, 10.0, 1.0, -1.0}), std::invalid_argument);
+}
+
+TEST(Pop_model_test, exp_pop_model_min_pop_pop_at_time) {
+  auto n0 = 10.0;
+  auto g = std::numbers::ln2;
+  auto min_pop = 2.0;
+
+  auto pop_model = Exp_pop_model{0.0, n0, g, min_pop};
+
+  EXPECT_THAT(pop_model.pop_at_time(0.0), testing::DoubleNear(10.0, 1e-6));
+  EXPECT_THAT(pop_model.pop_at_time(1.0), testing::DoubleNear(20.0, 1e-6));
+  EXPECT_THAT(pop_model.pop_at_time(-2.0), testing::DoubleNear(2.5, 1e-6));
+  EXPECT_THAT(pop_model.pop_at_time(-3.0), testing::DoubleNear(min_pop, 1e-6));
+  EXPECT_THAT(pop_model.pop_at_time(-100.0), testing::DoubleNear(min_pop, 1e-6));
+  EXPECT_THAT(pop_model.pop_at_time(-1000.0), testing::DoubleNear(min_pop, 1e-6));
+}
+
+TEST(Pop_model_test, exp_pop_model_min_pop_g_positive) {
+  // g > 0: population increases with t, clamped at min_pop for t < t_c
+  auto t0 = 0.0;
+  auto n0 = 10.0;
+  auto g = std::numbers::ln2;
+  auto min_pop = 2.0;
+  auto t_c = t0 + std::log(min_pop / n0) / g;  // ~ -2.322
+
+  auto pop_model = Exp_pop_model{t0, n0, g, min_pop};
+
+  // pop_integral: entirely below t_c (clamped)
+  EXPECT_THAT(pop_model.pop_integral(-10.0, -5.0), testing::DoubleNear(5.0 * min_pop, 1e-6));
+
+  // pop_integral: entirely above t_c (unclamped)
+  EXPECT_THAT(pop_model.pop_integral(0.0, 1.0),
+              testing::DoubleNear(n0 / g * std::exp(g * (0.0 - t0)) * std::expm1(g * (1.0 - 0.0)), 1e-6));
+
+  // pop_integral: straddling t_c
+  auto expected_pop_straddle =
+      (t_c - (-5.0)) * min_pop
+      + n0 / g * std::exp(g * (t_c - t0)) * std::expm1(g * (1.0 - t_c));
+  EXPECT_THAT(pop_model.pop_integral(-5.0, 1.0), testing::DoubleNear(expected_pop_straddle, 1e-6));
+
+  // intensity_integral: entirely below t_c (clamped at 1/min_pop)
+  EXPECT_THAT(pop_model.intensity_integral(-10.0, -5.0),
+              testing::DoubleNear(5.0 / min_pop, 1e-6));
+
+  // intensity_integral: entirely above t_c (unclamped)
+  EXPECT_THAT(pop_model.intensity_integral(0.0, 1.0),
+              testing::DoubleNear((1.0/n0) * (1.0/g) * (1.0 - 0.5), 1e-6));
+
+  // intensity_integral: straddling t_c
+  auto expected_int_straddle =
+      (t_c - (-5.0)) / min_pop
+      - 1.0 / (n0 * g) * std::exp(-g * (t_c - t0)) * std::expm1(-g * (1.0 - t_c));
+  EXPECT_THAT(pop_model.intensity_integral(-5.0, 1.0),
+              testing::DoubleNear(expected_int_straddle, 1e-6));
+}
+
+TEST(Pop_model_test, exp_pop_model_min_pop_g_negative) {
+  // g < 0: population decreases with t, clamped at min_pop for t > t_c
+  auto t0 = 0.0;
+  auto n0 = 10.0;
+  auto g = -std::numbers::ln2;
+  auto min_pop = 2.0;
+  auto t_c = t0 + std::log(min_pop / n0) / g;  // ~ +2.322
+
+  auto pop_model = Exp_pop_model{t0, n0, g, min_pop};
+
+  // pop_integral: entirely above t_c (clamped)
+  EXPECT_THAT(pop_model.pop_integral(5.0, 10.0), testing::DoubleNear(5.0 * min_pop, 1e-6));
+
+  // pop_integral: entirely below t_c (unclamped)
+  EXPECT_THAT(pop_model.pop_integral(-1.0, 0.0),
+              testing::DoubleNear(n0 / g * std::exp(g * (-1.0 - t0)) * std::expm1(g * 1.0), 1e-6));
+
+  // pop_integral: straddling t_c
+  auto expected_pop_straddle =
+      n0 / g * std::exp(g * (-1.0 - t0)) * std::expm1(g * (t_c - (-1.0)))
+      + (5.0 - t_c) * min_pop;
+  EXPECT_THAT(pop_model.pop_integral(-1.0, 5.0), testing::DoubleNear(expected_pop_straddle, 1e-6));
+
+  // intensity_integral: entirely above t_c (clamped at 1/min_pop)
+  EXPECT_THAT(pop_model.intensity_integral(5.0, 10.0),
+              testing::DoubleNear(5.0 / min_pop, 1e-6));
+
+  // intensity_integral: entirely below t_c (unclamped)
+  EXPECT_THAT(pop_model.intensity_integral(-1.0, 0.0),
+              testing::DoubleNear(-1.0 / (n0 * g) * std::exp(-g * (-1.0 - t0)) * std::expm1(-g * 1.0), 1e-6));
+
+  // intensity_integral: straddling t_c
+  auto expected_int_straddle =
+      -1.0 / (n0 * g) * std::exp(-g * (-1.0 - t0)) * std::expm1(-g * (t_c - (-1.0)))
+      + (5.0 - t_c) / min_pop;
+  EXPECT_THAT(pop_model.intensity_integral(-1.0, 5.0),
+              testing::DoubleNear(expected_int_straddle, 1e-6));
+}
+
+TEST(Pop_model_test, exp_pop_model_min_pop_g_zero) {
+  // g = 0: constant population, clamped to max(min_pop, n0)
+  auto n0 = 10.0;
+  auto min_pop = 20.0;
+
+  auto pop_model_above = Exp_pop_model{0.0, n0, 0.0, min_pop};
+  EXPECT_THAT(pop_model_above.pop_at_time(5.0), testing::DoubleNear(min_pop, 1e-6));
+  EXPECT_THAT(pop_model_above.pop_integral(0.0, 3.0), testing::DoubleNear(3.0 * min_pop, 1e-6));
+  EXPECT_THAT(pop_model_above.intensity_integral(0.0, 3.0), testing::DoubleNear(3.0 / min_pop, 1e-6));
+
+  auto pop_model_below = Exp_pop_model{0.0, 100.0, 0.0, min_pop};
+  EXPECT_THAT(pop_model_below.pop_at_time(5.0), testing::DoubleNear(100.0, 1e-6));
+  EXPECT_THAT(pop_model_below.pop_integral(0.0, 3.0), testing::DoubleNear(3.0 * 100.0, 1e-6));
+  EXPECT_THAT(pop_model_below.intensity_integral(0.0, 3.0), testing::DoubleNear(3.0 / 100.0, 1e-6));
+}
+
+TEST(Pop_model_test, exp_pop_model_min_pop_equals_n0) {
+  auto n0 = 5.0;
+  auto g = 1.0;
+  auto min_pop = n0;
+
+  auto pop_model = Exp_pop_model{0.0, n0, g, min_pop};
+
+  EXPECT_THAT(pop_model.pop_at_time(0.0), testing::DoubleNear(n0, 1e-6));
+  EXPECT_THAT(pop_model.pop_at_time(-1.0), testing::DoubleNear(min_pop, 1e-6));
+  EXPECT_THAT(pop_model.pop_at_time(1.0), testing::DoubleNear(n0 * std::exp(g * 1.0), 1e-6));
+}
+
+TEST(Pop_model_test, exp_pop_model_min_pop_disabled) {
+  auto n0 = 10.0;
+  auto g = 1.0;
+
+  auto pop_model = Exp_pop_model{0.0, n0, g, 0.0};
+
+  EXPECT_THAT(pop_model.pop_at_time(-100.0), testing::DoubleNear(n0 * std::exp(-100.0 * g), 1e-30));
+  EXPECT_THAT(pop_model.pop_integral(-1.0, 0.0),
+              testing::DoubleNear(n0 / g * std::exp(-g) * std::expm1(g), 1e-6));
+  EXPECT_THAT(pop_model.intensity_integral(-1.0, 0.0),
+              testing::DoubleNear(-1.0 / (n0 * g) * std::exp(g) * std::expm1(-g), 1e-6));
+}
+
+TEST(Pop_model_test, exp_pop_model_min_pop_much_larger_than_n0) {
+  auto n0 = 1.0;
+  auto g = 0.5;
+  auto min_pop = 1000.0;
+
+  auto pop_model = Exp_pop_model{0.0, n0, g, min_pop};
+
+  // t_c = log(1000/1) / 0.5 = log(1000) / 0.5 ~ 13.8
+  // At t=0, unclamped = 1.0 < 1000, so clamped everywhere near t=0
+  EXPECT_THAT(pop_model.pop_at_time(0.0), testing::DoubleNear(min_pop, 1e-6));
+  EXPECT_THAT(pop_model.pop_integral(-10.0, 10.0), testing::DoubleNear(20.0 * min_pop, 1e-6));
+  EXPECT_THAT(pop_model.intensity_integral(-10.0, 10.0), testing::DoubleNear(20.0 / min_pop, 1e-6));
 }
 
 TEST(Pop_model_test, skygrid_pop_model_invalid) {
@@ -691,7 +843,7 @@ TEST(Pop_model_test, render_population_curve_exp_pop_model) {
   auto n0 = 10.0;
   auto g = 2.0;
 
-  auto pop_model = Exp_pop_model{t0, n0, g};
+  auto pop_model = Exp_pop_model{t0, n0, g, 0.0};
 
   auto result = render_population_curve(pop_model, 0.0, 10.0, 10);
 

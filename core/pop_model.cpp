@@ -19,39 +19,128 @@ auto Const_pop_model::pop_at_time(double) const -> double { return pop_; }
 auto Const_pop_model::pop_integral(double a, double b) const -> double { return (b-a) * pop_; }
 auto Const_pop_model::intensity_integral(double a, double b) const -> double { return (b-a) / pop_; }
 
-Exp_pop_model::Exp_pop_model(double t0, double pop_at_t0, double growth_rate)
-    : t0_{t0}, pop_at_t0_{pop_at_t0}, growth_rate_{growth_rate} {
+Exp_pop_model::Exp_pop_model(double t0, double pop_at_t0, double growth_rate, double min_pop)
+    : t0_{t0}, pop_at_t0_{pop_at_t0}, growth_rate_{growth_rate}, min_pop_{min_pop} {
   if (pop_at_t0 <= 0.0) {
     throw std::invalid_argument(absl::StrFormat(
-        "Initial population size should be positive (not %f)", pop_at_t0));
+        "Initial effective population size should be positive (not %f)", pop_at_t0));
+  }
+  if (min_pop < 0.0) {
+    throw std::invalid_argument(absl::StrFormat(
+        "Minimum effective population size should be non-negative (not %f)", min_pop));
+  }
+  if (min_pop > 0.0 && growth_rate != 0.0) {
+    t_c_ = t0 + std::log(min_pop / pop_at_t0) / growth_rate;
+  } else {
+    t_c_ = std::numeric_limits<double>::quiet_NaN();
   }
 }
 
 auto Exp_pop_model::pop_at_time(double t) const -> double {
-  return pop_at_t0_ * std::exp((t - t0_) * growth_rate_);
+  return std::max(min_pop_, pop_at_t0_ * std::exp((t - t0_) * growth_rate_));
 }
 
 auto Exp_pop_model::pop_integral(double a, double b) const -> double {
-  // int_a^b dt' n0 exp[g (t' - t0)] = n0/g [exp[g (b - t0)] - exp[g (a - t0)]]
-  //                                 = n0/g exp[g (a - t0)] [exp[g (b - a)] - 1]
-  if (growth_rate_ == 0.0) {
-    return (b-a) * pop_at_t0_;
+  CHECK_LE(a, b);
+  if (min_pop_ == 0.0) {
+    if (growth_rate_ == 0.0) {
+      // no barrier, constant pop
+      return (b - a) * pop_at_t0_;
+    } else {
+      // no barrier, exponential pop
+      return pop_at_t0_ / growth_rate_
+          * std::exp(growth_rate_ * (a - t0_))
+          * std::expm1(growth_rate_ * (b - a));
+    }
+  } else if (growth_rate_ == 0.0) {
+    // barrier active, constant pop
+    return (b - a) * std::max(min_pop_, pop_at_t0_);
+  } else if (growth_rate_ > 0.0) {
+    if (b <= t_c_) {
+      // g > 0, [a,b] entirely clamped
+      return (b - a) * min_pop_;
+    } else if (a >= t_c_) {
+      // g > 0, [a,b] entirely unclamped
+      return pop_at_t0_ / growth_rate_
+          * std::exp(growth_rate_ * (a - t0_))
+          * std::expm1(growth_rate_ * (b - a));
+    } else {
+      // g > 0, [a,b] straddles t_c: clamped in [a,t_c], unclamped in [t_c,b]
+      return (t_c_ - a) * min_pop_
+          + pop_at_t0_ / growth_rate_
+          * std::exp(growth_rate_ * (t_c_ - t0_))
+          * std::expm1(growth_rate_ * (b - t_c_));
+    }
   } else {
-    return pop_at_t0_ / growth_rate_ *
-        std::exp(growth_rate_ * (a - t0_)) *
-        std::expm1(growth_rate_ * (b - a));
+    if (a >= t_c_) {
+      // g < 0, [a,b] entirely clamped
+      return (b - a) * min_pop_;
+    } else if (b <= t_c_) {
+      // g < 0, [a,b] entirely unclamped
+      return pop_at_t0_ / growth_rate_
+          * std::exp(growth_rate_ * (a - t0_))
+          * std::expm1(growth_rate_ * (b - a));
+    } else {
+      // g < 0, [a,b] straddles t_c: unclamped in [a,t_c], clamped in [t_c,b]
+      return pop_at_t0_ / growth_rate_
+          * std::exp(growth_rate_ * (a - t0_))
+          * std::expm1(growth_rate_ * (t_c_ - a))
+          + (b - t_c_) * min_pop_;
+    }
   }
 }
 
 auto Exp_pop_model::intensity_integral(double a, double b) const -> double {
-  // int_a^b dt' 1/n0 exp[-g (t - t0))] = 1/(g n0) [exp[-g (a - t0)] - exp[-g (b - t0)]]
-  //                                    = 1/(g n0) [exp[-g (b - t0)]] [exp[g (b - a)] - 1]
-  if (growth_rate_ == 0.0) {
-    return (b-a) / pop_at_t0_;
+  CHECK_LE(a, b);
+  if (min_pop_ == 0.0) {
+    if (growth_rate_ == 0.0) {
+      // no barrier, constant pop
+      return (b - a) / pop_at_t0_;
+    } else {
+      // no barrier, exponential pop
+      return -1.0 / (pop_at_t0_ * growth_rate_)
+          * std::exp(-growth_rate_ * (a - t0_))
+          * std::expm1(-growth_rate_ * (b - a));
+    }
+  } else if (growth_rate_ == 0.0) {
+    // barrier active, constant pop
+    return (b - a) / std::max(min_pop_, pop_at_t0_);
   } else {
-    return (1.0 / (growth_rate_ * pop_at_t0_)) *
-        std::exp(-growth_rate_ * (b - t0_)) *
-        std::expm1(growth_rate_ * (b - a));
+    auto inv_min_pop = 1.0 / min_pop_;
+
+    if (growth_rate_ > 0.0) {
+      if (b <= t_c_) {
+        // g > 0, [a,b] entirely clamped
+        return (b - a) * inv_min_pop;
+      } else if (a >= t_c_) {
+        // g > 0, [a,b] entirely unclamped
+        return -1.0 / (pop_at_t0_ * growth_rate_)
+            * std::exp(-growth_rate_ * (a - t0_))
+            * std::expm1(-growth_rate_ * (b - a));
+      } else {
+        // g > 0, [a,b] straddles t_c: clamped in [a,t_c], unclamped in [t_c,b]
+        return (t_c_ - a) * inv_min_pop
+            - 1.0 / (pop_at_t0_ * growth_rate_)
+            * std::exp(-growth_rate_ * (t_c_ - t0_))
+            * std::expm1(-growth_rate_ * (b - t_c_));
+      }
+    } else {
+      if (a >= t_c_) {
+        // g < 0, [a,b] entirely clamped
+        return (b - a) * inv_min_pop;
+      } else if (b <= t_c_) {
+        // g < 0, [a,b] entirely unclamped
+        return -1.0 / (pop_at_t0_ * growth_rate_)
+            * std::exp(-growth_rate_ * (a - t0_))
+            * std::expm1(-growth_rate_ * (b - a));
+      } else {
+        // g < 0, [a,b] straddles t_c: unclamped in [a,t_c], clamped in [t_c,b]
+        return -1.0 / (pop_at_t0_ * growth_rate_)
+            * std::exp(-growth_rate_ * (a - t0_))
+            * std::expm1(-growth_rate_ * (t_c_ - a))
+            + (b - t_c_) * inv_min_pop;
+      }
+    }
   }
 }
 

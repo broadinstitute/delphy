@@ -231,7 +231,8 @@ auto run_to_api_params(const Run& run) -> flatbuffers::DetachedBuffer {
         fbb,
         exp_pop_model.t0(),
         exp_pop_model.pop_at_t0(),
-        exp_pop_model.growth_rate()).o;  // .o = slight typing glitch in flatbuffers
+        exp_pop_model.growth_rate(),
+        exp_pop_model.min_pop()).o;  // .o = slight typing glitch in flatbuffers
     
   } else if (typeid(pop_model) == typeid(Skygrid_pop_model)) {
     const auto& skygrid_pop_model = static_cast<const Skygrid_pop_model&>(pop_model);
@@ -341,7 +342,8 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
     run.set_pop_model(std::make_shared<Exp_pop_model>(
         api_params->pop_t0(),
         api_params->pop_n0(),
-        api_params->pop_g()));
+        api_params->pop_g(),
+        0.0));
   } else {
     switch (api_params->pop_model_type()) {
       case api::PopModel_ExpPopModel: {
@@ -349,7 +351,8 @@ auto apply_api_params_to_run(const uint8_t* params_fb, Run& run) -> void {
         run.set_pop_model(std::make_shared<Exp_pop_model>(
             api_exp_pop_model->t0(),
             api_exp_pop_model->n0(),
-            api_exp_pop_model->g()));
+            api_exp_pop_model->g(),
+            api_exp_pop_model->min_pop()));
         break;
       }
       case api::PopModel_SkygridPopModel: {

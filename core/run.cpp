@@ -17,7 +17,7 @@ Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
       tree_{std::move(tree)},
       num_parts_{1},
       target_coal_prior_cells_{400},
-      pop_model_{std::make_shared<Exp_pop_model>(calc_max_tip_time(tree_), 1000.0, 0.0)},
+      pop_model_{std::make_shared<Exp_pop_model>(calc_max_tip_time(tree_), 1000.0, 0.0, 1.0)},
       pop_inv_n0_prior_alpha_{0.0},  // Default: Jeffreys 1/x prior on n0
       pop_inv_n0_prior_beta_{0.0},
       pop_g_prior_mu_{0.001 / 365.0},       // BEAUti2 2.6.2 default, in e-foldings / day
@@ -1257,7 +1257,7 @@ auto Run::pop_size_move() -> void {
     
   auto old_log_coal = log_coalescent_prior_;
   auto old_pop_model = exp_pop_model;
-  pop_model_ = std::make_shared<Exp_pop_model>(old_pop_model->t0(), new_n0, old_pop_model->growth_rate());
+  pop_model_ = std::make_shared<Exp_pop_model>(old_pop_model->t0(), new_n0, old_pop_model->growth_rate(), old_pop_model->min_pop());
   coalescent_prior_.pop_model_changed(pop_model_);
   auto new_log_coal = calc_cur_log_coalescent_prior();
     
@@ -1301,7 +1301,7 @@ auto Run::pop_growth_rate_move() -> void {
     
   auto old_log_coal = log_coalescent_prior_;
   auto old_pop_model = exp_pop_model;
-  pop_model_ = std::make_shared<Exp_pop_model>(old_pop_model->t0(), old_pop_model->pop_at_t0(), new_g);
+  pop_model_ = std::make_shared<Exp_pop_model>(old_pop_model->t0(), old_pop_model->pop_at_t0(), new_g, old_pop_model->min_pop());
   coalescent_prior_.pop_model_changed(pop_model_);
   auto new_log_coal = calc_cur_log_coalescent_prior();
     

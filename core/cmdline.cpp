@@ -285,6 +285,11 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        "Must be specified together with --v0-pop-n0-prior-mean.  "
        "Mutually exclusive with --v0-pop-inv-n0-prior-alpha / --v0-pop-inv-n0-prior-beta.",
        cxxopts::value<double>())
+      ("v0-pop-min-pop",
+       "[pop-model == exponential] Minimum effective population size for exponential model, in years "
+       "(0 = disabled, default = 1 day = 1/365 years).  Effective population sizes below this minimum "
+       "are clamped to this value.  This prevents numerical issues in deep trees.",
+       cxxopts::value<double>()->default_value(absl::StrFormat("%.5g", 1.0 / 365.0)))
 
       // The following only make sense for a Skygrid population model
       ("v0-skygrid-type",
@@ -821,7 +826,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         std::exit(EXIT_FAILURE);
       }
 
-      run->set_pop_model(std::make_unique<Exp_pop_model>(t0, init_final_pop_size, init_pop_growth_rate));
+      auto min_pop = opts["v0-pop-min-pop"].as<double>() * 365.0;
+      run->set_pop_model(std::make_unique<Exp_pop_model>(t0, init_final_pop_size, init_pop_growth_rate, min_pop));
       run->set_final_pop_size_move_enabled(not fix_final_pop_size);
       run->set_pop_growth_rate_move_enabled(not fix_pop_growth_rate);
 

@@ -59,12 +59,13 @@ class Const_pop_model : public Pop_model {
 
 class Exp_pop_model : public Pop_model {
  public:
-  Exp_pop_model(double t0, double pop_at_t0, double growth_rate);
+  Exp_pop_model(double t0, double pop_at_t0, double growth_rate, double min_pop);
 
   // No setters: change by assigning a new model (resets all params at once and consolidates validation in constructor)
   auto t0() const -> double { return t0_; }
   auto pop_at_t0() const -> double { return pop_at_t0_; }
   auto growth_rate() const -> double { return growth_rate_; }
+  auto min_pop() const -> double { return min_pop_; }
 
   auto pop_at_time(double t) const -> double override;
   auto pop_integral(double a, double b) const -> double override;
@@ -74,10 +75,12 @@ class Exp_pop_model : public Pop_model {
   double t0_;
   double pop_at_t0_;
   double growth_rate_;
-  
+  double min_pop_;
+  double t_c_;  // time where n0*exp(g*(t-t0)) == min_pop; NaN if no crossing
+
   auto print_to(std::ostream& os) const -> void override {
-    os << absl::StreamFormat("Exp_pop_model{t0=%g, n0=%g, g=%g}",
-                             t0(), pop_at_t0(), growth_rate());
+    os << absl::StreamFormat("Exp_pop_model{t0=%g, n0=%g, g=%g, min_pop=%g}",
+                             t0(), pop_at_t0(), growth_rate(), min_pop());
   }
 };
 

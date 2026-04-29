@@ -513,7 +513,8 @@ struct ExpPopModel FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_T0 = 4,
     VT_N0 = 6,
-    VT_G = 8
+    VT_G = 8,
+    VT_MIN_POP = 10
   };
   double t0() const {
     return GetField<double>(VT_T0, 0.0);
@@ -524,11 +525,15 @@ struct ExpPopModel FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   double g() const {
     return GetField<double>(VT_G, 0.0);
   }
+  double min_pop() const {
+    return GetField<double>(VT_MIN_POP, 0.0);
+  }
   bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyField<double>(verifier, VT_T0, 8) &&
            VerifyField<double>(verifier, VT_N0, 8) &&
            VerifyField<double>(verifier, VT_G, 8) &&
+           VerifyField<double>(verifier, VT_MIN_POP, 8) &&
            verifier.EndTable();
   }
 };
@@ -546,6 +551,9 @@ struct ExpPopModelBuilder {
   void add_g(double g) {
     fbb_.AddElement<double>(ExpPopModel::VT_G, g, 0.0);
   }
+  void add_min_pop(double min_pop) {
+    fbb_.AddElement<double>(ExpPopModel::VT_MIN_POP, min_pop, 0.0);
+  }
   explicit ExpPopModelBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
@@ -561,8 +569,10 @@ inline ::flatbuffers::Offset<ExpPopModel> CreateExpPopModel(
     ::flatbuffers::FlatBufferBuilder &_fbb,
     double t0 = 0.0,
     double n0 = 0.0,
-    double g = 0.0) {
+    double g = 0.0,
+    double min_pop = 0.0) {
   ExpPopModelBuilder builder_(_fbb);
+  builder_.add_min_pop(min_pop);
   builder_.add_g(g);
   builder_.add_n0(n0);
   builder_.add_t0(t0);

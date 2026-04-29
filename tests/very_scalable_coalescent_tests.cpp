@@ -100,7 +100,7 @@ TEST(Very_scalable_coalescent_test, delta_log_prior) {
   auto n0 = 20.0;   // N_e * rho, in days
   auto g = 0.1;     // growing by a factor of `e` every 10 days
 
-  auto pop_model = std::make_shared<Exp_pop_model>(0.0, n0, g);
+  auto pop_model = std::make_shared<Exp_pop_model>(0.0, n0, g, 0.0);
 
   auto num_tips = 10;
   auto num_nodes = 2*num_tips - 1;
