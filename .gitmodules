@@ -5,6 +5,7 @@
 [submodule "third-party/abseil-cpp"]
 	path = third-party/abseil-cpp
 	url = https://github.com/abseil/abseil-cpp.git
+	ignore = dirty
 [submodule "third-party/ctpl"]
 	path = third-party/ctpl
 	url = https://github.com/vit-vit/ctpl.git

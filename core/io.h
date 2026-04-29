@@ -33,8 +33,11 @@ auto read_maple(
     = default_sequence_warning_hook)
     -> Maple_file;
 
-struct stamp_version_into_log_file{};  // dummy type for stream command
-auto operator<<(std::ostream& os, stamp_version_into_log_file) -> std::ostream&;
+class Run;  // forward declaration
+struct stamp_version_into_log_file {
+  const Run& run;
+};
+auto operator<<(std::ostream& os, stamp_version_into_log_file s) -> std::ostream&;
 
 auto output_resolved_fasta(const Phylo_tree& tree, std::ostream& os) -> void;
 

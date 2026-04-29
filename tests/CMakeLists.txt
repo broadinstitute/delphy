@@ -23,6 +23,7 @@ add_executable(tests
   site_states_tree_prober_tests.cpp
   spr_move_tests.cpp
   spr_study_tests.cpp
+  deterministic_abseil_containers_tests.cpp
   staircase_tests.cpp
   tests_main.cpp
   tree_editing_tests.cpp

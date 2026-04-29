@@ -17,7 +17,7 @@ namespace delphy {
 
 class Run {
  public:
-  Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree);
+  Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, uint32_t prng_seed, Phylo_tree tree);
 
   auto bitgen() -> absl::BitGenRef { return bitgen_; }
   auto tree() -> Phylo_tree& { return tree_; }
@@ -28,6 +28,7 @@ class Run {
   auto set_step(int64_t num_steps) -> void;
   auto local_moves_per_global_move() const -> int { return local_moves_per_global_move_; }
   auto set_local_moves_per_global_move(int local_moves_per_global_move) -> void;
+  auto prng_seed() const -> uint32_t { return prng_seed_; }
   auto num_parts() const -> int { return num_parts_; }
   auto set_num_parts(int num_parts) -> void { num_parts_ = num_parts; partition_stencils_valid_ = false; }
   auto target_coal_prior_cells() const -> int { return target_coal_prior_cells_; }
@@ -225,6 +226,7 @@ class Run {
  private:
   ctpl::thread_pool* thread_pool_;
   std::mt19937 bitgen_;
+  uint32_t prng_seed_;
   Phylo_tree tree_;
 
   int64_t step_;

@@ -76,6 +76,32 @@ find_package(Threads REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Boost REQUIRED)
 set(ABSL_PROPAGATE_CXX_STD ON)
+
+# Apply Delphy patches to vendored Abseil (deterministic hash iteration).
+# The patch neutralizes PerTableSalt, RandomSeed, and absl::Hash::Seed so that
+# flat_hash_map/set iteration order depends only on hash values, not on table
+# memory addresses or ASLR.  This is required for reproducible MCMC runs.
+# If the patch has already been applied (e.g., on a reconfigure), git apply
+# --check --reverse will detect that and we skip it.  If the patch fails for
+# any other reason (e.g., Abseil was upgraded), the build fails loudly.
+set(_abseil_patch "${CMAKE_SOURCE_DIR}/patches/abseil-deterministic-hash-iteration.patch")
+execute_process(
+  COMMAND git apply --check --reverse ${_abseil_patch}
+  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/third-party/abseil-cpp
+  RESULT_VARIABLE _patch_already_applied
+  OUTPUT_QUIET ERROR_QUIET)
+if(_patch_already_applied)
+  execute_process(
+    COMMAND git apply ${_abseil_patch}
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/third-party/abseil-cpp
+    RESULT_VARIABLE _patch_result)
+  if(_patch_result)
+    message(FATAL_ERROR
+      "Failed to apply Abseil patch ${_abseil_patch}. "
+      "If Abseil was upgraded, the patch may need updating.")
+  endif()
+endif()
+
 add_subdirectory(third-party/abseil-cpp EXCLUDE_FROM_ALL)
 
 # Optional UI libraries

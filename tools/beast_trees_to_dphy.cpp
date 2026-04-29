@@ -596,7 +596,7 @@ auto write_delphy_file(
   
   auto num_threads = 1;  // Don't need to really run anything...
   auto thread_pool = ctpl::thread_pool{num_threads};
-  auto fake_run = Run{thread_pool, bitgen, trees.begin()->second};
+  auto fake_run = Run{thread_pool, bitgen, 0, trees.begin()->second};
 
   // Fill in parameters with values that are hopefully obviously fake
   fake_run.set_mu(42e-3 / 365.0);

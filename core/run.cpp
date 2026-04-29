@@ -11,9 +11,10 @@
 
 namespace delphy {
 
-Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, Phylo_tree tree)
+Run::Run(ctpl::thread_pool& thread_pool, std::mt19937 bitgen, uint32_t prng_seed, Phylo_tree tree)
     : thread_pool_{&thread_pool},
       bitgen_{bitgen},
+      prng_seed_{prng_seed},
       tree_{std::move(tree)},
       num_parts_{1},
       target_coal_prior_cells_{400},

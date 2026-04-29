@@ -66,7 +66,7 @@ class Beasty_log_output_2_x_x : public Beasty_log_output_version_impl {
     
     if (not run.mpox_hack_enabled()) {
       // WARNING: Ensure this matches the logger output from export_beast_2_x_x_input (beasty_input.cpp)
-      os << stamp_version_into_log_file{};
+      os << stamp_version_into_log_file{run};
       os << "Sample\t"
          << "numMuts\t"    // Not output by BEAST, but useful for downstream analysis of Delphy results
          << "posterior_for_Delphy\t"        // Not really BEAST's posterior
@@ -275,7 +275,7 @@ class Beasty_log_output_X_10_5_0 : public Beasty_log_output_version_impl {
     const auto& pop_model = run.pop_model();
     
     // WARNING: Ensure this matches the logger output from export_beast_X_10_5_0_input (beasty_input.cpp)
-    os << stamp_version_into_log_file{};
+    os << stamp_version_into_log_file{run};
     os << "state\t"
        << "numMuts\t"    // Not output by BEAST, but useful for downstream analysis of Delphy results
        << "posterior_for_Delphy\t"        // Not really BEAST's "joint"
@@ -513,7 +513,7 @@ auto Beasty_trees_output::output_headers(const Run& run) -> void {
   }
 
   *os_ << "#NEXUS\n"
-       << stamp_version_into_log_file{}
+       << stamp_version_into_log_file{run}
        << "\n"
        << "Begin taxa;\n"
        << "    Dimensions ntax=" << num_tips << ";\n"

@@ -756,8 +756,9 @@ auto delphy_create_run(
     -> Run* {
   
   try {
-    auto prng = std::mt19937{prng_seed == 0 ? absl::Uniform<std::mt19937::result_type>(ctx.bitgen_) : prng_seed};
-    return new Run(ctx.thread_pool_, prng, std::move(phylo_tree));  // TODO: don't move!
+    auto real_seed = prng_seed == 0 ? absl::Uniform<std::mt19937::result_type>(ctx.bitgen_) : prng_seed;
+    auto prng = std::mt19937{real_seed};
+    return new Run(ctx.thread_pool_, prng, real_seed, std::move(phylo_tree));  // TODO: don't move!
   } catch (std::exception& e) {
     std::cerr << e.what() << std::endl;
     return nullptr;

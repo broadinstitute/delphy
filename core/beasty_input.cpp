@@ -191,7 +191,7 @@ static auto export_beast_2_6_2_input(
   os << absl::StreamFormat("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n")
      << absl::StreamFormat("\n")
      << absl::StreamFormat("<!-- \n")
-     << stamp_version_into_log_file{}
+     << stamp_version_into_log_file{run}
      << absl::StreamFormat("-->\n")
      << absl::StreamFormat("\n")
      << absl::StreamFormat("<!-- BEAST2 v2.6.2 input file, modelled on run analyzed in \n")
@@ -579,7 +579,7 @@ static auto export_beast_2_7_7_input(
   os << absl::StreamFormat("<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"no\"?>\n")
      << absl::StreamFormat("\n")
      << absl::StreamFormat("<!-- \n")
-     << stamp_version_into_log_file{}
+     << stamp_version_into_log_file{run}
      << absl::StreamFormat("-->\n")
      << absl::StreamFormat("\n")
      << absl::StreamFormat("<!-- BEAST2 v2.7.7 input file, modelled on run analyzed in \n")
@@ -1111,7 +1111,7 @@ static auto export_beast_X_10_5_0_input(
   os << absl::StreamFormat("<?xml version=\"1.0\" standalone=\"yes\"?>\n")
      << absl::StreamFormat("\n")
      << absl::StreamFormat("<!-- \n")
-     << stamp_version_into_log_file{}
+     << stamp_version_into_log_file{run}
      << absl::StreamFormat("-->\n")
      << absl::StreamFormat("\n")
      << absl::StreamFormat("<!-- BEAST X 10.5.0 input file, modelled on run analyzed in \n")

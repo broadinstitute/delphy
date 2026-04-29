@@ -625,7 +625,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
 
     // Create and configure initial run
     auto t0 = calc_max_tip_time(tree);
-    auto run = std::make_shared<Run>(*thread_pool, prng, std::move(tree));
+    auto run = std::make_shared<Run>(*thread_pool, prng, seed, std::move(tree));
     run->set_paranoid(opts["v0-paranoid"].as<bool>());
     run->set_mpox_hack_enabled(mpox_hack_enabled);
     run->set_alpha_move_enabled(alpha_move_enabled);

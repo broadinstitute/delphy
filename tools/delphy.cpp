@@ -128,7 +128,7 @@ static auto print_stats_line(const Run& run) -> void {
 auto cli_main_loop(Processed_cmd_line& c) -> int {
 
   auto parallelism = c.thread_pool->size();
-  std::cout << "# Parallelism: " << parallelism << "\n";
+  std::cerr << "# Parallelism: " << parallelism << "\n";
   c.run->set_num_parts(parallelism);
 
   auto beasty_log_output = std::unique_ptr<Beasty_log_output>{};

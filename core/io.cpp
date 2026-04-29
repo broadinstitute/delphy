@@ -255,7 +255,7 @@ auto read_maple(
   return result;
 }
 
-auto operator<<(std::ostream& os, stamp_version_into_log_file) -> std::ostream& {
+auto operator<<(std::ostream& os, stamp_version_into_log_file s) -> std::ostream& {
   os << absl::StreamFormat("# Produced by delphy version %s (build %d, commit %s)\n",
                            k_delphy_version_string, k_delphy_build_number, k_delphy_commit_string);
   if (delphy_invoked_via_cli) {
@@ -266,6 +266,8 @@ auto operator<<(std::ostream& os, stamp_version_into_log_file) -> std::ostream& 
     }
     os << "\n";
   }
+  os << "# Seed: " << s.run.prng_seed() << "\n";
+  os << "# Parallelism: " << s.run.num_parts() << "\n";
   return os;
 }
 

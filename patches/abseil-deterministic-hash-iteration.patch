@@ -1,0 +1,77 @@
+diff --git a/absl/container/internal/raw_hash_set.cc b/absl/container/internal/raw_hash_set.cc
+index e8a54321..1a7dbddd 100644
+--- a/absl/container/internal/raw_hash_set.cc
++++ b/absl/container/internal/raw_hash_set.cc
+@@ -71,19 +71,12 @@ namespace {
+ 
+ // Returns "random" seed.
+ inline size_t RandomSeed() {
+-#ifdef ABSL_HAVE_THREAD_LOCAL
+-  static thread_local size_t counter = 0;
+-  // On Linux kernels >= 5.4 the MSAN runtime has a false-positive when
+-  // accessing thread local storage data from loaded libraries
+-  // (https://github.com/google/sanitizers/issues/1265), for this reason counter
+-  // needs to be annotated as initialized.
+-  ABSL_ANNOTATE_MEMORY_IS_INITIALIZED(&counter, sizeof(size_t));
+-  size_t value = ++counter;
+-#else   // ABSL_HAVE_THREAD_LOCAL
+-  static std::atomic<size_t> counter(0);
+-  size_t value = counter.fetch_add(1, std::memory_order_relaxed);
+-#endif  // ABSL_HAVE_THREAD_LOCAL
+-  return value ^ static_cast<size_t>(reinterpret_cast<uintptr_t>(&counter));
++  // DELPHY PATCH: return a fixed constant so that debug-mode insertion
++  // perturbation (ShouldInsertBackwardsForDebug, ShouldRehashForBugDetection)
++  // is deterministic regardless of how many tables have been created before.
++  // The original code returned an incrementing counter XOR'd with the address
++  // of a static variable.
++  return 1;
+ }
+ 
+ bool ShouldRehashForBugDetection(const ctrl_t* ctrl, size_t capacity) {
+diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
+index cc693f6c..6e3e3858 100644
+--- a/absl/container/internal/raw_hash_set.h
++++ b/absl/container/internal/raw_hash_set.h
+@@ -629,11 +629,13 @@ ABSL_ATTRIBUTE_ALWAYS_INLINE inline auto GetInsertionOffset(
+ //
+ // The seed consists of the ctrl_ pointer, which adds enough entropy to ensure
+ // non-determinism of iteration order in most cases.
+-inline size_t PerTableSalt(const ctrl_t* ctrl) {
+-  // The low bits of the pointer have little or no entropy because of
+-  // alignment. We shift the pointer to try to use higher entropy bits. A
+-  // good number seems to be 12 bits, because that aligns with page size.
+-  return reinterpret_cast<uintptr_t>(ctrl) >> 12;
++inline size_t PerTableSalt(const ctrl_t* /*ctrl*/) {
++  // DELPHY PATCH: return 0 so that iteration order is fully determined by
++  // the hash values alone.  Delphy needs deterministic runs (same seed =>
++  // same MCMC trajectory), and several hot loops iterate over flat_hash_maps
++  // while consuming RNG draws.  The original code here was:
++  //   return reinterpret_cast<uintptr_t>(ctrl) >> 12;
++  return 0;
+ }
+ // Extracts the H1 portion of a hash: 57 bits mixed with a per-table salt.
+ inline size_t H1(size_t hash, const ctrl_t* ctrl) {
+diff --git a/absl/hash/internal/hash.h b/absl/hash/internal/hash.h
+index 60827c8c..ea7ed500 100644
+--- a/absl/hash/internal/hash.h
++++ b/absl/hash/internal/hash.h
+@@ -1225,15 +1225,10 @@ class ABSL_DLL MixingHashState : public HashStateBase<MixingHashState> {
+   // On other platforms this is still going to be non-deterministic but most
+   // probably per-build and not per-process.
+   ABSL_ATTRIBUTE_ALWAYS_INLINE static uint64_t Seed() {
+-#if (!defined(__clang__) || __clang_major__ > 11) && \
+-    (!defined(__apple_build_version__) ||            \
+-     __apple_build_version__ >= 19558921)  // Xcode 12
+-    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(&kSeed));
+-#else
+-    // Workaround the absence of
+-    // https://github.com/llvm/llvm-project/commit/bc15bf66dcca76cc06fe71fca35b74dc4d521021.
+-    return static_cast<uint64_t>(reinterpret_cast<uintptr_t>(kSeed));
+-#endif
++    // DELPHY PATCH: return a fixed seed so that absl::Hash is deterministic
++    // across runs.  The original code derived the seed from the address of a
++    // static variable, which varies with ASLR.
++    return 0x243F6A8885A308D3ULL;  // first 64 bits of the fractional part of pi
+   }
+   static const void* const kSeed;
+ 
