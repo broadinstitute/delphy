@@ -29,6 +29,7 @@ add_library(delphy_core
   subrun.cpp
   tree_editing.cpp
   tree_partitioning.cpp
+  utree.cpp
   very_scalable_coalescent.cpp
   )
 

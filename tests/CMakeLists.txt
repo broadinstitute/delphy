@@ -29,6 +29,7 @@ add_executable(tests
   tree_editing_tests.cpp
   tree_prober_tests.cpp
   tree_tests.cpp
+  utree_tests.cpp
   very_scalable_coalescent_tests.cpp
   )
 

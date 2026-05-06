@@ -241,6 +241,44 @@ TEST(Interval_set_test, intersect) {
   EXPECT_THAT(interval_sets_intersect(s1, s2), testing::IsTrue());
 }
 
+TEST(Interval_set_test, is_subset_of) {
+  auto s1 = Interval_set<>{{Site_interval{10, 20}, Site_interval{30, 40}}};
+  auto s2 = Interval_set<>{{Site_interval{5, 25}, Site_interval{28, 45}}};
+
+  // s1 is a subset of s2 (each interval of s1 is fully contained in some interval of s2)
+  EXPECT_THAT(interval_set_is_subset_of(s1, s2), testing::IsTrue());
+
+  // s2 is not a subset of s1
+  EXPECT_THAT(interval_set_is_subset_of(s2, s1), testing::IsFalse());
+
+  // Everything is a subset of itself
+  EXPECT_THAT(interval_set_is_subset_of(s1, s1), testing::IsTrue());
+
+  // Empty set is a subset of anything
+  auto empty = Interval_set<>{};
+  EXPECT_THAT(interval_set_is_subset_of(empty, s1), testing::IsTrue());
+  EXPECT_THAT(interval_set_is_subset_of(empty, empty), testing::IsTrue());
+
+  // Nothing non-empty is a subset of the empty set
+  EXPECT_THAT(interval_set_is_subset_of(s1, empty), testing::IsFalse());
+
+  // Partial overlap is not a subset
+  auto s3 = Interval_set<>{{Site_interval{15, 25}}};
+  EXPECT_THAT(interval_set_is_subset_of(s3, s1), testing::IsFalse());
+
+  // Subset that spans two intervals of the superset fails
+  auto s4 = Interval_set<>{{Site_interval{10, 40}}};
+  EXPECT_THAT(interval_set_is_subset_of(s4, s1), testing::IsFalse());
+
+  // Touching boundary: [10,20) is a subset of [10,20)
+  auto s5 = Interval_set<>{{Site_interval{10, 20}}};
+  EXPECT_THAT(interval_set_is_subset_of(s5, s1), testing::IsTrue());
+
+  // One point past the boundary: [10,21) is not a subset of {[10,20), [30,40)}
+  auto s6 = Interval_set<>{{Site_interval{10, 21}}};
+  EXPECT_THAT(interval_set_is_subset_of(s6, s1), testing::IsFalse());
+}
+
 TEST(Interval_set_test, subtract) {
   //
   //                                                                                                         1111111111

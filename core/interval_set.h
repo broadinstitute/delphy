@@ -191,10 +191,10 @@ class Interval_set {
   
   auto no_consecutive_intervals() const -> bool {
     if (empty()) { return true; }
-    
+
     auto it = intervals_.begin();
     auto it2 = std::ranges::next(it);
-    
+
     while (it2 != intervals_.end()) {
       auto [prev_start, prev_end] = *it;
       auto [cur_start, cur_end] = *it2;
@@ -202,8 +202,20 @@ class Interval_set {
       it = it2;
       ++it2;
     }
-    
+
     return true;
+  }
+
+  // CHECK-fails if any interval is empty, out of [0, num_sites), or consecutive/overlapping.
+  auto assert_valid(Site_index num_sites) const -> void {
+    auto prev_end = Site_index{-1};
+    for (const auto& [start, end] : intervals_) {
+      CHECK_GE(start, 0) << "Interval start out of range";
+      CHECK_LE(end, num_sites) << "Interval end out of range (num_sites=" << num_sites << ")";
+      CHECK_LT(start, end) << "Empty interval [" << start << ", " << end << ")";
+      CHECK_GT(start, prev_end) << "Intervals not sorted, overlapping, or consecutive at " << start;
+      prev_end = end;
+    }
   }
   
  private:
@@ -367,6 +379,43 @@ auto interval_sets_intersect(
   }
 
   return false;
+}
+
+// Test whether A is a subset of B (every point in A is also in B).
+template<typename Alloc1, typename Alloc2>
+auto interval_set_is_subset_of(
+    const Interval_set<Alloc1>& A,
+    const Interval_set<Alloc2>& B)
+    -> bool {
+
+  DCHECK(A.no_consecutive_intervals());
+  DCHECK(B.no_consecutive_intervals());
+
+  // In a nutshell: every interval [start_A, end_A) in A must be fully within a single interval [start_B, end_B) in B
+  auto it_A = A.begin();
+  auto it_B = B.begin();
+  while (not (it_A == A.end() || it_B == B.end())) {
+    auto [start_A, end_A] = *it_A;
+    auto [start_B, end_B] = *it_B;
+
+    if (end_B <= start_A) {
+      // Current B interval fully precedes A interval: next B!
+      ++it_B;
+      
+    } else if (start_B <= start_A && end_A <= end_B) {
+      // Current B interval completely contains A interval: good, next A!
+      ++it_A;
+      
+    } else {
+      // Current B interval does not cover all of A; because B has no consecutive intervals,
+      // there's at least one site of A (either at the beginning or the end) not covered by B,
+      // so A is not a subset of B.
+      return false;
+    }
+  }
+
+  // Check that there are no left-over A intervals once B is exhausted
+  return it_A == A.end();
 }
 
 template<typename Alloc_dst, typename Alloc_A, typename Alloc_B>
