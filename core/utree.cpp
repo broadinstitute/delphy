@@ -1,5 +1,6 @@
 #include "utree.h"
 
+#include <cmath>
 #include <queue>
 #include <random>
 
@@ -42,6 +43,8 @@ class Utree_builder {
       tree_ = Utree::make_empty(N);
     }
     tree_.ref_sequence = std::move(ref_sequence);
+    L_ = static_cast<int>(std::ssize(tree_.ref_sequence));
+    sqrt_6L_ = std::sqrt(6.0 * L_);
   }
 
   // Add tip X to the tree.  Tips can be added in any order, but each tip index
@@ -76,9 +79,20 @@ class Utree_builder {
   auto finish() -> Utree { return std::move(tree_); }
 
  private:
-  static constexpr auto k_pruning_threshold = 2;
+  static constexpr auto k_min_pruning_threshold = 2;
   static constexpr auto pq_cmp = std::greater<>{};
   using Pq_entry = std::pair<int, Arc_index>;
+
+  // Under JC69, the expected number of same-site blips (mutation+reversal pairs) on
+  // a path with `cost` differing sites out of L total is approximately Poisson(sigma^2),
+  // where sigma = cost / sqrt(6L).  The threshold is the 5-sigma upper bound on how many
+  // blips could be simultaneously open, scaled by 10x to absorb site-rate heterogeneity.
+  // See plans/2026-05-07-01-adaptive-pruning-threshold.md for the full derivation.
+  auto pruning_threshold(int cost) -> int {
+    auto sigma = cost / sqrt_6L_;
+    auto threshold = static_cast<int>(std::ceil(10.0 * sigma * (sigma + 5)));
+    return std::clamp(threshold, k_min_pruning_threshold, L_);
+  }
 
   // Initialize the tree with the very first tip: set it as focus, copy its seq_deltas
   // into deltas_ref_to_focus, and initialize globally_missing_sites from its missation
@@ -178,7 +192,7 @@ class Utree_builder {
 
       // All remaining entries have priority >= this one; if even this one is too expensive,
       // no further entry can improve the best
-      if (priority > best_cost + k_pruning_threshold) {
+      if (priority > best_cost + pruning_threshold(best_cost)) {
         break;
       }
 
@@ -305,6 +319,8 @@ class Utree_builder {
   absl::BitGenRef bitgen_;
   Utree tree_;
   int tips_added_ = 0;
+  int L_ = 0;
+  double sqrt_6L_ = 0.0;
 
   Heap_site_deltas focus_to_X_deltas_;   // Deltas from focus to tip X being added
   Heap_site_deltas M_to_X_deltas_;       // Deltas from the new inner node M to tip X
