@@ -167,9 +167,18 @@ class Utree_builder {
     // away from the optimum, once the cheapest remaining entry exceeds best_cost + threshold,
     // no remaining entry can improve the best — so we stop.
 
-    // `<=` below ensures a real arc wins ties over k_no_arc
     auto best_cost = static_cast<int>(std::ssize(focus_to_X_deltas_));
-    auto best_arc = k_no_arc;
+    best_arcs_.clear();
+
+    auto record = [&](int cost, Arc_index a) {
+      if (cost < best_cost) {
+        best_cost = cost;
+        best_arcs_.clear();
+      }
+      if (cost == best_cost) {
+        best_arcs_.push_back(a);
+      }
+    };
 
     pq_.clear();
 
@@ -177,10 +186,7 @@ class Utree_builder {
     for (auto a : tree_.nodes[tree_.focus].arcs) {
       if (a != k_no_arc) {
         auto cost = eval_focal_arc(a);
-        if (cost <= best_cost) {
-          best_cost = cost;
-          best_arc = a;
-        }
+        record(cost, a);
         pq_.push_back({cost, a});
       }
     }
@@ -204,17 +210,18 @@ class Utree_builder {
       for (auto a : tree_.nodes[tree_.focus].arcs) {
         if (a != k_no_arc && a != tree_.mate(arc_R)) {
           auto cost = eval_focal_arc(a);
-          if (cost <= best_cost) {
-            best_cost = cost;
-            best_arc = a;
-          }
+          record(cost, a);
           pq_.push_back({cost, a});
           std::push_heap(pq_.begin(), pq_.end(), pq_cmp);
         }
       }
     }
 
-    return best_arc;
+    if (best_arcs_.empty()) {
+      return k_no_arc;
+    }
+    auto idx = absl::Uniform<int>(bitgen_, 0, static_cast<int>(best_arcs_.size()));
+    return best_arcs_[idx];
   }
 
   // Attach tip X with a direct edge from the current focus (no edge splitting).
@@ -328,6 +335,7 @@ class Utree_builder {
   Heap_site_deltas focus_to_X_deltas_;   // Deltas from focus to tip X being added
   Heap_site_deltas M_to_X_deltas_;       // Deltas from the new inner node M to tip X
   std::vector<Pq_entry> pq_;             // Min-heap for branch-and-bound search
+  std::vector<Arc_index> best_arcs_;     // Equal-best-cost arcs for random tie-breaking
 };
 
 // Build a rough "guide tree" by inserting tips one at a time in input order.
@@ -577,8 +585,7 @@ auto utree_to_phylo_tree(
   phylo_tree.ref_sequence = utree.ref_sequence;
   phylo_tree.root = root;
 
-  // min_branch_length: half a day or half a mutation interval, whichever is larger
-  auto min_branch_length = std::max(0.5, 0.5 / lambda);
+  auto min_branch_length = 0.1;
 
   // Initialize root
   auto& root_node = phylo_tree.at(root);
