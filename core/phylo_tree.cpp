@@ -135,6 +135,72 @@ auto assert_phylo_tree_integrity(const Phylo_tree& tree, bool force) -> void {
   }
 }
 
+auto assert_phylo_tree_matches_tip_descs(
+    const Phylo_tree& tree,
+    const Real_sequence& orig_ref_sequence,
+    const std::vector<Tip_desc>& tip_descs,
+    bool force) -> void {
+  if (not estd::is_debug_enabled && not force) { return; }
+
+  // DFS tracking running sequence state and accumulated missing site intervals
+  auto cur_seq = Sequence_overlay{tree.ref_sequence};
+  auto cur_missing_sites = Interval_set<>{};
+  auto scratch_sites = Interval_set<>{};
+
+  for (const auto& [node, children_so_far] : traversal(tree)) {
+    if (children_so_far == 0) {
+      // Entering node: apply mutations and accumulate missation intervals
+      for (const auto& m : tree.at(node).mutations) {
+        CHECK_EQ(m.from, cur_seq[m.site]);
+        cur_seq[m.site] = m.to;
+      }
+      CHECK(not interval_sets_intersect(tree.at(node).missations.intervals, cur_missing_sites));
+      merge_interval_sets(scratch_sites, tree.at(node).missations.intervals, cur_missing_sites);
+      swap(cur_missing_sites, scratch_sites);
+    }
+
+    if (children_so_far == std::ssize(tree.at(node).children)) {
+      // Leaving node: check tips, then revert
+      if (tree.at(node).is_tip()) {
+        CHECK_LT(node, std::ssize(tip_descs));
+
+        // Check missing site intervals match
+        CHECK_EQ(cur_missing_sites, tip_descs[node].missations.intervals)
+            << "Tip " << node << " (" << tree.at(node).name << "): "
+            << "missing site intervals differ";
+
+        // Build expected tip sequence from orig_ref_sequence + seq_deltas
+        auto expected = Sequence_overlay{orig_ref_sequence};
+        for (const auto& sd : tip_descs[node].seq_deltas) {
+          CHECK_EQ(sd.from, expected[sd.site]);
+          expected[sd.site] = sd.to;
+        }
+
+        // Check non-missing sites match
+        auto L = std::ssize(orig_ref_sequence);
+        for (auto site = Site_index{0}; site < L; ++site) {
+          if (not cur_missing_sites.contains(site)) {
+            CHECK_EQ(cur_seq[site], expected[site])
+                << "Tip " << node << " (" << tree.at(node).name << "), site " << site;
+          }
+        }
+      }
+
+      // Revert missations
+      if (not tree.at(node).missations.intervals.empty()) {
+        auto old_missing_sites = std::move(cur_missing_sites);
+        subtract_interval_sets(cur_missing_sites, old_missing_sites, tree.at(node).missations.intervals);
+      }
+
+      // Revert mutations
+      for (const auto& m : tree.at(node).mutations | std::views::reverse) {
+        CHECK_EQ(m.to, cur_seq[m.site]);
+        cur_seq[m.site] = m.from;
+      }
+    }
+  }
+}
+
 auto find_MRCA_of(const Phylo_tree& tree, Node_index P, Node_index Q) -> Node_index {
   if (P == k_no_node) { return P; }
   if (Q == k_no_node) { return Q; }
@@ -668,7 +734,7 @@ auto build_random_tree(
   // Set up tree with tips and ensure absence of links
   // Initial mutations are all at tip end
   auto tree = Phylo_tree{2*num_tips - 1};
-  tree.ref_sequence = std::move(ref_sequence);
+  tree.ref_sequence = ref_sequence;
   for (auto tip = 0; tip != std::ssize(tip_descs); ++tip) {
     auto& tip_desc = tip_descs[tip];
     tree.at(tip).parent = k_no_node;
@@ -719,6 +785,7 @@ auto build_random_tree(
   rereference_to_root_sequence(tree);
 
   assert_phylo_tree_integrity(tree, true);
+  assert_phylo_tree_matches_tip_descs(tree, ref_sequence, tip_descs, true);
 
   // Randomize tree
   randomize_tree(tree, bitgen);
@@ -788,7 +855,7 @@ auto build_usher_like_tree(
   // Initial mutations are all at tip end, and missations are all piled up near the tips
   // (a call to fix_up_missations at the end fixes this)
   auto tree = Phylo_tree{2*num_tips - 1};
-  tree.ref_sequence = std::move(ref_sequence);
+  tree.ref_sequence = ref_sequence;
   for (auto tip = 0; tip != std::ssize(tip_descs); ++tip) {
     auto& tip_desc = tip_descs[tip];
     tree.at(tip).name = std::move(tip_desc.name);
@@ -974,7 +1041,8 @@ auto build_usher_like_tree(
   randomize_mutation_times(tree, bitgen);
   
   assert_phylo_tree_integrity(tree, true);
-  
+  assert_phylo_tree_matches_tip_descs(tree, ref_sequence, tip_descs, true);
+
   return tree;
 }
 

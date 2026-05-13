@@ -14,6 +14,7 @@
 #include "phylo_tree.h"
 #include "phylo_tree_calc.h"
 #include "sequence_utils.h"
+#include "utree.h"
 #include "version.h"
 
 namespace delphy {
@@ -86,7 +87,7 @@ auto fasta_to_maple(
 
 auto build_rough_initial_tree_from_maple(
     Maple_file&& in_maple,
-    bool random,
+    Init_method init_method,
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook)
     -> Phylo_tree {
@@ -97,13 +98,19 @@ auto build_rough_initial_tree_from_maple(
   if (std::ssize(in_maple.tip_descs) == 1) {
     throw std::runtime_error("Input has only 1 sequence (after discarding those with warnings)!");
   }
-  
-  // Join all the tips up in a very rough approximation to greedy parsimony
-  if (random) {
-    return build_random_tree(std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen, progress_hook);
-  } else {
-    return build_usher_like_tree(std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen, progress_hook);
+
+  switch (init_method) {
+    case Init_method::random:
+      return build_random_tree(
+          std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen, progress_hook);
+    case Init_method::old_usher_like:
+      return build_usher_like_tree(
+          std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen, progress_hook);
+    case Init_method::mp_plus_timing:
+      return build_initial_phylo_tree(
+          std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen, progress_hook);
   }
+  CHECK(false) << "Unknown init method";
 }
 
 // Mean of a Laplace(mu, s) distribution truncated to [a, b].
@@ -164,9 +171,11 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<bool>()->default_value("false"))
       ("v0-in-fasta", "input FASTA file", cxxopts::value<std::string>())
       ("v0-in-maple", "input MAPLE file", cxxopts::value<std::string>())
-      ("v0-init-heuristic", "Build initial tree with rough heuristics instead of randomly (default)",
+      ("v0-init", "Tree initialization method: random, old-usher-like, mp-plus-timing (default: old-usher-like)",
+       cxxopts::value<std::string>())
+      ("v0-init-heuristic", "[deprecated, use --v0-init old-usher-like]",
        cxxopts::value<bool>())
-      ("v0-init-random", "Build initial tree with random",
+      ("v0-init-random", "[deprecated, use --v0-init random]",
        cxxopts::value<bool>())
       ("v0-steps", "Total number of steps to run (default: ~100,000 per tip)",
        cxxopts::value<int64_t>())
@@ -410,14 +419,31 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     auto prng = std::mt19937{seed};
     std::cerr << "# Seed: " << seed << "\n";
     
-    if (opts.count("v0-init-heuristic") > 0 && opts.count("v0-init-random") > 0) {
-      std::cerr << "ERROR: The options --v0-init-heuristic and --v0-init-random are mutually exclusive.  Pick one.\n";
+    auto num_init_options =
+        (opts.count("v0-init") > 0 ? 1 : 0) +
+        (opts.count("v0-init-heuristic") > 0 ? 1 : 0) +
+        (opts.count("v0-init-random") > 0 ? 1 : 0);
+    if (num_init_options > 1) {
+      std::cerr << "ERROR: The options --v0-init, --v0-init-heuristic, and --v0-init-random are mutually exclusive.  Pick one.\n";
       std::exit(EXIT_FAILURE);
     }
-    auto init_random =
-        opts.count("v0-init-heuristic") > 0 ? false :
-        opts.count("v0-init-random") > 0 ? true :
-        false;
+    auto init_method = Init_method::old_usher_like;
+    if (opts.count("v0-init") > 0) {
+      auto init_str = opts["v0-init"].as<std::string>();
+      if (init_str == "random") {
+        init_method = Init_method::random;
+      } else if (init_str == "old-usher-like") {
+        init_method = Init_method::old_usher_like;
+      } else if (init_str == "mp-plus-timing") {
+        init_method = Init_method::mp_plus_timing;
+      } else {
+        std::cerr << "ERROR: Unknown --v0-init value: " << init_str
+                  << " (expected: random, old-usher-like, mp-plus-timing)\n";
+        std::exit(EXIT_FAILURE);
+      }
+    } else if (opts.count("v0-init-random") > 0) {
+      init_method = Init_method::random;
+    }
 
     auto tree = Phylo_tree{};
     if (opts.count("v0-in-fasta") > 0 && opts.count("v0-in-maple") > 0) {
@@ -479,9 +505,9 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       in_maple_is.close();
     }
     
-    std::cerr << (init_random ? "Building random initial tree..." : "Building rough initial tree...") << "\n";
+    std::cerr << "Building initial tree...\n";
     tree = build_rough_initial_tree_from_maple(
-        std::move(maple_file), init_random, prng,
+        std::move(maple_file), init_method, prng,
         [](int tips_so_far, int total_tips) {
           std::cerr << absl::StreamFormat("- added %d / %d tips\n", tips_so_far, total_tips);
         });

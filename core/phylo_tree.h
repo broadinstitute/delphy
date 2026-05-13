@@ -142,6 +142,15 @@ struct Tip_desc {
   Missation_map<> missations;
 };
 
+// CHECK-fails if any tip's reconstructed sequence (from root-to-tip mutations starting from
+// tree.ref_sequence) disagrees with orig_ref_sequence + tip_descs[i].seq_deltas at non-missing sites,
+// or if the tip's missing site intervals differ from tip_descs[i].missations.intervals.
+auto assert_phylo_tree_matches_tip_descs(
+    const Phylo_tree& tree,
+    const Real_sequence& orig_ref_sequence,
+    const std::vector<Tip_desc>& tip_descs,
+    bool force = false) -> void;
+
 // Given a reference sequence and a vector of tip descriptions, build a random tree (equivalent to building
 // a tree somehow, and then calling randomize_tree).
 auto build_random_tree(

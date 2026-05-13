@@ -22,10 +22,12 @@ auto fasta_to_maple(
     = default_sequence_warning_hook)
     -> Maple_file;
 
+enum class Init_method { random, old_usher_like, mp_plus_timing };
+
 // TODO: Should live elsewhere
 auto build_rough_initial_tree_from_maple(
     Maple_file&& in_maple,
-    bool random,
+    Init_method init_method,
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook = [](int,int){})
     -> Phylo_tree;

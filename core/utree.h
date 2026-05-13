@@ -2,6 +2,8 @@
 #define DELPHY_UTREE_H_
 
 #include <array>
+#include <functional>
+#include <ranges>
 #include <vector>
 
 #include "absl/log/check.h"
@@ -70,7 +72,7 @@ struct Utree {
   static auto make_empty(int num_tips) -> Utree {
     auto tree = Utree{};
     tree.num_tips = num_tips;
-    auto num_nodes = std::max(1, 2 * num_tips - 2);
+    auto num_nodes = std::max(1, 2 * num_tips - 1);
     auto num_arc_pairs = std::max(1, 2 * num_tips - 3 + 2);  // +2 scratch for split_edge
     tree.nodes.resize(num_nodes);
     tree.arcs.resize(2 * num_arc_pairs);
@@ -103,6 +105,14 @@ struct Utree {
     auto d = 0;
     for (auto a : nodes[node].arcs) { if (a != k_no_arc) { ++d; } }
     return d;
+  }
+
+  // Whether node is a tip (degree-1 node)
+  auto is_tip(Node_index node) const -> bool { return degree(node) == 1; }
+
+  // Number of site deltas on an arc
+  auto count_arc_deltas(Arc_index arc) const -> int {
+    return static_cast<int>(std::ssize(arcs[arc].deltas));
   }
 
   // Pop a pair from the free list and return the even (base) index.
@@ -183,8 +193,38 @@ struct Utree {
 auto build_guide_tree(
     Real_sequence ref_sequence,
     const std::vector<Tip_desc>& tip_descs,
-    absl::BitGenRef bitgen)
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook = [](int,int){})
     -> Utree;
+
+// Root the Utree at the timed midpoint of a diametral path.  Modifies the tree in place:
+// inserts a root node.  Returns the root node index.
+// The focus location is undefined after this call.
+auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs) -> Node_index;
+
+// Result of OLS regression of root-to-tip mutation counts against tip dates.
+struct Rate_estimate {
+  double lambda;   // overall mutations per day (not per-site)
+  double t_root;   // estimated root date (days since epoch)
+};
+
+// Estimate overall mutation rate and root date from root-to-tip distances and tip dates.
+// `root` is the root node index returned by midpoint_root_utree.
+auto estimate_rate_and_root_date(
+    const Utree& tree, Node_index root, const std::vector<Tip_desc>& tip_descs) -> Rate_estimate;
+
+// Convert a rooted Utree to a Phylo_tree.
+// `root` is the root node index returned by midpoint_root_utree.
+// Moves the focus to `root` if not already there.
+auto utree_to_phylo_tree(
+    Utree& utree, Node_index root, const std::vector<Tip_desc>& tip_descs,
+    const Rate_estimate& rate, absl::BitGenRef bitgen) -> Phylo_tree;
+
+// Full pipeline: build guide tree, root it, estimate rate, convert to Phylo_tree.
+auto build_initial_phylo_tree(
+    Real_sequence ref_sequence, std::vector<Tip_desc> tip_descs,
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook = [](int,int){}) -> Phylo_tree;
 
 enum class Arc_direction { entering, leaving };
 struct Annotated_arc {
@@ -227,6 +267,11 @@ inline auto arc_euler_tour(const Utree& tree, Node_index source)
   for (auto [arc, direction] : annotated_arc_euler_tour(tree, source)) {
     co_yield arc;
   }
+}
+
+// Iterate over all tip node indices in the tree: [0, num_tips).
+inline auto utree_tips(const Utree& tree) {
+  return std::views::iota(Node_index{0}, static_cast<Node_index>(tree.num_tips));
 }
 
 // CHECK-fails on any structural inconsistency in the tree (node degrees, arc wiring,

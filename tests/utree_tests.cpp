@@ -252,6 +252,19 @@ auto make_tip(std::vector<Seq_delta> seq_deltas, Interval_set<> missing = {}) ->
   return td;
 }
 
+// Helper: make a Tip_desc with name, date bounds, seq_deltas, and optional missing intervals
+auto make_dated_tip(
+    std::string name, float t_min, float t_max,
+    std::vector<Seq_delta> seq_deltas, Interval_set<> missing = {}) -> Tip_desc {
+  auto td = Tip_desc{};
+  td.name = std::move(name);
+  td.t_min = t_min;
+  td.t_max = t_max;
+  td.seq_deltas = std::move(seq_deltas);
+  td.missations.intervals = std::move(missing);
+  return td;
+}
+
 TEST(Utree_test, guide_tree_zero_tips) {
   auto ref = Real_sequence{rA, rC, rG, rT};
   auto bitgen = std::mt19937{42};
@@ -508,6 +521,26 @@ TEST(Utree_test, arc_euler_tour_matches_annotated) {
   EXPECT_THAT(plain, testing::ElementsAreArray(annotated_arcs));
 }
 
+// --- utree_tips ---
+
+TEST(Utree_test, utree_tips_empty) {
+  auto tree = Utree::make_empty(0);
+  auto tips = std::vector<Node_index>{};
+  for (auto tip : utree_tips(tree)) {
+    tips.push_back(tip);
+  }
+  EXPECT_THAT(tips, testing::IsEmpty());
+}
+
+TEST(Utree_test, utree_tips_3tip_tree) {
+  auto tree = make_3tip_tree();
+  auto tips = std::vector<Node_index>{};
+  for (auto tip : utree_tips(tree)) {
+    tips.push_back(tip);
+  }
+  EXPECT_THAT(tips, testing::ElementsAre(0, 1, 2));
+}
+
 // --- assert_utree_integrity ---
 
 TEST(Utree_test, assert_integrity_passes_on_valid_tree) {
@@ -582,5 +615,194 @@ TEST(Utree_test, assert_matches_catches_wrong_tip) {
   EXPECT_DEATH(assert_utree_matches_tip_descs(tree, tips, /*force=*/true), "");
 }
 #endif
+
+// --- midpoint_root_utree ---
+
+TEST(Utree_test, midpoint_root_zero_tips) {
+  auto tree = Utree::make_empty(0);
+  auto root = midpoint_root_utree(tree, {});
+  EXPECT_EQ(root, k_no_node);
+}
+
+TEST(Utree_test, midpoint_root_one_tip) {
+  auto ref = Real_sequence{rA, rC, rG, rT};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 100.0f, 100.0f, {{0, rA, rT}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  auto root = midpoint_root_utree(tree, tips);
+  EXPECT_EQ(root, 0);
+}
+
+TEST(Utree_test, midpoint_root_two_tips_equal_dates) {
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 100.0f, 100.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 100.0f, 100.0f, {{1, rA, rG}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  assert_utree_integrity(tree, true);
+  auto root = midpoint_root_utree(tree, tips);
+  assert_utree_integrity(tree, true);
+
+  // Root should be a new inner node
+  EXPECT_GE(root, tree.num_tips);
+  // Tree should have 3 nodes total (2 tips + 1 inner)
+  EXPECT_EQ(tree.num_tips + tree.num_inner_nodes_so_far, 3);
+}
+
+TEST(Utree_test, midpoint_root_three_tips) {
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 100.0f, 100.0f, {{0, rA, rC}, {1, rA, rC}}),
+      make_dated_tip("tip1", 100.0f, 100.0f, {{2, rA, rG}, {3, rA, rG}}),
+      make_dated_tip("tip2", 100.0f, 100.0f, {{4, rA, rT}, {5, rA, rT}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  auto root = midpoint_root_utree(tree, tips);
+  assert_utree_integrity(tree, true);
+
+  EXPECT_GE(root, tree.num_tips);
+  // 3 tips + 2 inner nodes (original + root)
+  EXPECT_EQ(tree.num_tips + tree.num_inner_nodes_so_far, 5);
+}
+
+TEST(Utree_test, midpoint_root_unequal_dates) {
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  // tip0 is much earlier, tip1 is recent — root should be shifted toward tip0
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 0.0f, 0.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 100.0f, 100.0f, {{1, rA, rG}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  auto root = midpoint_root_utree(tree, tips);
+  assert_utree_integrity(tree, true);
+  EXPECT_GE(root, tree.num_tips);
+}
+
+// --- estimate_rate_and_root_date ---
+
+TEST(Utree_test, estimate_rate_known_rate) {
+  // Build a tree where tips have known distances from root and known dates
+  // so we can verify the OLS estimate
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  // 3 tips at different dates with mutations proportional to time
+  // lambda = 0.1 mutations/day, t_root = 0
+  // tip0: t=10, m=1; tip1: t=20, m=2; tip2: t=30, m=3
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 10.0f, 10.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 20.0f, 20.0f, {{0, rA, rC}, {1, rA, rG}}),
+      make_dated_tip("tip2", 30.0f, 30.0f, {{0, rA, rC}, {1, rA, rG}, {2, rA, rT}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  auto root = midpoint_root_utree(tree, tips);
+
+  auto rate = estimate_rate_and_root_date(tree, root, tips);
+  EXPECT_GT(rate.lambda, 0.0);
+  EXPECT_LT(rate.t_root, 10.0);  // root should be before earliest tip
+}
+
+TEST(Utree_test, estimate_rate_same_dates_fallback) {
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 100.0f, 100.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 100.0f, 100.0f, {{1, rA, rG}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  auto root = midpoint_root_utree(tree, tips);
+
+  auto rate = estimate_rate_and_root_date(tree, root, tips);
+  // Should fall back to lambda = 1/30
+  EXPECT_NEAR(rate.lambda, 1.0 / 30.0, 1e-10);
+}
+
+// --- utree_to_phylo_tree ---
+
+TEST(Utree_test, utree_to_phylo_tree_three_tips) {
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 10.0f, 10.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 20.0f, 20.0f, {{1, rA, rG}}),
+      make_dated_tip("tip2", 30.0f, 30.0f, {{2, rA, rT}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  auto root = midpoint_root_utree(tree, tips);
+  auto rate = estimate_rate_and_root_date(tree, root, tips);
+  auto phylo_tree = utree_to_phylo_tree(tree, root, tips, rate, bitgen);
+
+  // Basic checks
+  EXPECT_EQ(std::ssize(phylo_tree), 2 * 3 - 1);
+  EXPECT_EQ(phylo_tree.at(0).name, "tip0");
+  EXPECT_EQ(phylo_tree.at(1).name, "tip1");
+  EXPECT_EQ(phylo_tree.at(2).name, "tip2");
+
+  // Tip times should be clamped to their date bounds
+  EXPECT_NEAR(phylo_tree.at(0).t, 10.0, 1e-6);
+  EXPECT_NEAR(phylo_tree.at(1).t, 20.0, 1e-6);
+  EXPECT_NEAR(phylo_tree.at(2).t, 30.0, 1e-6);
+
+  // Root should be before all tips
+  EXPECT_LT(phylo_tree.at(phylo_tree.root).t, 10.0);
+}
+
+// --- build_initial_phylo_tree (end-to-end) ---
+
+TEST(Utree_test, build_initial_phylo_tree_end_to_end) {
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("seq1", 10.0f, 10.0f, {{0, rA, rC}, {1, rA, rG}}),
+      make_dated_tip("seq2", 20.0f, 20.0f, {{0, rA, rC}, {2, rA, rT}}),
+      make_dated_tip("seq3", 30.0f, 30.0f, {{3, rA, rG}, {4, rA, rT}}),
+      make_dated_tip("seq4", 40.0f, 40.0f, {{5, rA, rC}, {6, rA, rG}, {7, rA, rT}})
+  };
+
+  auto phylo_tree = build_initial_phylo_tree(ref, tips, bitgen);
+
+  EXPECT_EQ(std::ssize(phylo_tree), 2 * 4 - 1);
+
+  // Verify tip names preserved
+  EXPECT_EQ(phylo_tree.at(0).name, "seq1");
+  EXPECT_EQ(phylo_tree.at(1).name, "seq2");
+  EXPECT_EQ(phylo_tree.at(2).name, "seq3");
+  EXPECT_EQ(phylo_tree.at(3).name, "seq4");
+
+  // Verify tip dates preserved
+  EXPECT_NEAR(phylo_tree.at(0).t, 10.0, 1e-6);
+  EXPECT_NEAR(phylo_tree.at(1).t, 20.0, 1e-6);
+  EXPECT_NEAR(phylo_tree.at(2).t, 30.0, 1e-6);
+  EXPECT_NEAR(phylo_tree.at(3).t, 40.0, 1e-6);
+
+  // Root should be before all tips
+  EXPECT_LT(phylo_tree.at(phylo_tree.root).t, 10.0);
+
+  // assert_phylo_tree_integrity and assert_phylo_tree_matches_tip_descs
+  // are already called inside build_initial_phylo_tree, so if we get here, they passed
+}
+
+TEST(Utree_test, build_initial_phylo_tree_with_missing_data) {
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("seq1", 10.0f, 10.0f, {{2, rA, rC}}, Interval_set<>{{Site_interval{0, 2}}}),
+      make_dated_tip("seq2", 20.0f, 20.0f, {{3, rA, rG}}),
+      make_dated_tip("seq3", 30.0f, 30.0f, {{4, rA, rT}})
+  };
+
+  auto phylo_tree = build_initial_phylo_tree(ref, tips, bitgen);
+
+  EXPECT_EQ(std::ssize(phylo_tree), 2 * 3 - 1);
+  EXPECT_EQ(phylo_tree.at(0).name, "seq1");
+}
 
 }  // namespace delphy

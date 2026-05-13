@@ -36,8 +36,9 @@ class Utree_builder {
  public:
   Utree_builder(Real_sequence ref_sequence,
                 const std::vector<Tip_desc>& tip_descs,
-                absl::BitGenRef bitgen)
-      : tip_descs_{tip_descs}, bitgen_{bitgen} {
+                absl::BitGenRef bitgen,
+                const std::function<void(int,int)>& progress_hook = [](int,int){})
+      : tip_descs_{tip_descs}, bitgen_{bitgen}, progress_hook_{progress_hook} {
     auto N = std::ssize(tip_descs);
     if (N > 0) {
       tree_ = Utree::make_empty(N);
@@ -73,6 +74,7 @@ class Utree_builder {
       }
     }
     ++tips_added_;
+    progress_hook_(tips_added_, static_cast<int>(std::ssize(tip_descs_)));
   }
 
   // Return the finished tree, transferring ownership.
@@ -317,6 +319,7 @@ class Utree_builder {
 
   const std::vector<Tip_desc>& tip_descs_;
   absl::BitGenRef bitgen_;
+  std::function<void(int,int)> progress_hook_;
   Utree tree_;
   int tips_added_ = 0;
   int L_ = 0;
@@ -333,13 +336,345 @@ class Utree_builder {
 auto build_guide_tree(
     Real_sequence ref_sequence,
     const std::vector<Tip_desc>& tip_descs,
-    absl::BitGenRef bitgen)
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook)
     -> Utree {
-  auto builder = Utree_builder{std::move(ref_sequence), tip_descs, bitgen};
+  auto builder = Utree_builder{std::move(ref_sequence), tip_descs, bitgen, progress_hook};
   for (auto k = 0; k < std::ssize(tip_descs); ++k) {
     builder.add_tip(k);
   }
   return builder.finish();
+}
+
+// Helper: find the farthest node from `start` by total site delta count, via DFS.
+// Returns {farthest_node, distance}.
+static auto farthest_node_from(const Utree& tree, Node_index start)
+    -> std::pair<Node_index, int> {
+  auto best_node = start;
+  auto best_dist = 0;
+  auto cur_dist = 0;
+  for (auto [arc, direction] : annotated_arc_euler_tour(tree, start)) {
+    auto arc_deltas = tree.count_arc_deltas(arc);
+    if (direction == Arc_direction::entering) {
+      cur_dist += arc_deltas;
+      if (cur_dist > best_dist) {
+        best_dist = cur_dist;
+        best_node = tree.target(arc);
+      }
+    } else {
+      cur_dist -= arc_deltas;
+    }
+  }
+  return {best_node, best_dist};
+}
+
+// Root an unrooted Utree at a timed midpoint of a diametral path.
+//
+// Strategy:
+// 1. Find a diametral pair (u, v) — two tips at maximum distance by total site delta
+//    count — using the standard two-pass algorithm (DFS from arbitrary tip to find u,
+//    DFS from u to find v).
+// 2. Place the root along the u→v path at a position that accounts for the time
+//    difference between u and v.  Under a rough molecular clock (lambda_rough = 1/30
+//    mutations/day), the root time t_R satisfies lambda * [(t_u - t_R) + (t_v - t_R)] = D,
+//    giving t_R = (t_u + t_v)/2 - D/(2*lambda).  The root position along the path is at
+//    fraction c = (t_u - t_R) / [(t_u - t_R) + (t_v - t_R)] from u.  When t_u = t_v,
+//    c = 1/2, recovering standard midpoint rooting.
+// 3. Walk from u toward v (following arc_to_focus links after moving the focus to v),
+//    find the edge where cumulative distance crosses the target, split that edge to
+//    insert the root node.
+//
+// The focus location is undefined after this call.
+auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs)
+    -> Node_index {
+  auto N = tree.num_tips;
+  if (N == 0) { return k_no_node; }
+  if (N == 1) { return 0; }
+
+  // Step 1: Two-pass diameter algorithm
+  auto [u, _ignore] = farthest_node_from(tree, 0);
+  auto [v, D] = farthest_node_from(tree, u);
+  CHECK(tree.is_tip(u));
+  CHECK(tree.is_tip(v));
+
+  // Step 2: Compute timed midpoint position along the u→v path
+  auto lambda_rough = 1.0 / 30.0;  // ~1 mutation per 30 days
+  auto t_u = static_cast<double>(tip_descs[u].t_min + tip_descs[u].t_max) / 2.0;
+  auto t_v = static_cast<double>(tip_descs[v].t_min + tip_descs[v].t_max) / 2.0;
+  auto M = static_cast<double>(D);
+
+  static constexpr auto k_min_root_branch_length = 14.0;  // days
+  auto t_R = std::min(
+      (t_u + t_v) / 2.0 - M / (2.0 * lambda_rough),
+      std::min(t_u, t_v) - k_min_root_branch_length);
+
+  auto c = (t_u - t_R) / ((t_u - t_R) + (t_v - t_R));
+  auto n_u_total = static_cast<int>(std::lround(c * D));
+  CHECK_GE(n_u_total, 0);
+  CHECK_LE(n_u_total, D);
+
+  // Step 3: Walk from u toward v to find the root edge, split it, insert root
+  tree.move_focus_to(v);
+  auto cum_dist = 0;
+  auto cur = u;
+  auto root_arc = k_no_arc;
+  auto n_u = 0;
+  while (cur != v) {
+    auto arc = tree.nodes[cur].arc_to_focus;
+    CHECK_NE(arc, k_no_arc);
+    auto arc_deltas = tree.count_arc_deltas(arc);
+    if (cum_dist + arc_deltas >= n_u_total) {
+      root_arc = arc;
+      n_u = n_u_total - cum_dist;
+      break;
+    }
+    cum_dist += arc_deltas;
+    cur = tree.target(arc);
+  }
+  CHECK_NE(root_arc, k_no_arc);  // At worst, cum_dist + edge-size == D >= n_u_total on the last iteration above
+
+  // Allocate root node and split the root edge
+  auto R = tree.num_tips + tree.num_inner_nodes_so_far;
+  tree.num_inner_nodes_so_far += 1;
+
+  auto deltas_assigned = 0;
+  tree.split_edge(root_arc, R, [&](Seq_delta /*sd*/, Node_index A, Node_index B) -> Node_index {
+    auto side = (deltas_assigned < n_u) ? A : B;
+    ++deltas_assigned;
+    return side;
+  });
+
+  return R;
+}
+
+// Estimate mutation rate (lambda) and root date (t_root) via OLS regression of
+// root-to-tip delta counts (m_i) against tip dates (t_i).
+//
+// Model: m_i = lambda * (t_i - t_root), so regressing m on t gives
+//   lambda = Cov(m, t) / Var(t),  t_root = mean_t - mean_m / lambda.
+//
+// To avoid catastrophic cancellation when tip dates have a large offset (e.g.,
+// days since 2020), we compute Var and Cov using deviations from mean_t.
+// This requires two passes: one to find mean_t, one to accumulate statistics.
+auto estimate_rate_and_root_date(
+    const Utree& tree, Node_index root, const std::vector<Tip_desc>& tip_descs)
+    -> Rate_estimate {
+  auto N = tree.num_tips;
+  static constexpr auto lambda_fallback = 1.0 / 30.0;  // 1 mutation per month, rough ballpark for most viruses
+
+  if (N <= 1) {
+    auto t_tip = (N == 1)
+        ? static_cast<double>(tip_descs[0].t_min + tip_descs[0].t_max) / 2.0
+        : 0.0;
+    return {lambda_fallback, t_tip};
+  }
+
+  // Pass 1: compute mean tip time
+  auto sum_t = 0.0;
+  for (auto tip : utree_tips(tree)) {
+    sum_t += static_cast<double>(tip_descs[tip].t_min + tip_descs[tip].t_max) / 2.0;
+  }
+  auto Nd = static_cast<double>(N);
+  auto mean_t = sum_t / Nd;
+
+  // Pass 2: accumulate Var(t) and Cov(m, t) using deviations from mean_t
+  auto cur_dist = 0;
+  auto sum_m = 0.0;
+  auto sum_dt_dt = 0.0;
+  auto sum_m_dt = 0.0;
+
+  for (auto [arc, direction] : annotated_arc_euler_tour(tree, root)) {
+    auto arc_deltas = tree.count_arc_deltas(arc);
+    if (direction == Arc_direction::entering) {
+      cur_dist += arc_deltas;
+      auto node = tree.target(arc);
+      if (tree.is_tip(node)) {
+        auto m_i = static_cast<double>(cur_dist);
+        auto dt_i = static_cast<double>(tip_descs[node].t_min + tip_descs[node].t_max) / 2.0 - mean_t;
+        sum_m += m_i;
+        sum_dt_dt += dt_i * dt_i;
+        sum_m_dt += m_i * dt_i;
+      }
+    } else {
+      cur_dist -= arc_deltas;
+    }
+  }
+
+  auto mean_m = sum_m / Nd;
+  auto var_t = sum_dt_dt / Nd;
+  auto cov_mt = sum_m_dt / Nd;  // E[m * dt] = Cov(m,t) because E[dt] = 0
+
+  if (var_t > 0.0 && cov_mt > 0.0) {
+    auto lambda = cov_mt / var_t;
+    auto t_root = mean_t - mean_m / lambda;
+    return {lambda, t_root};
+  }
+
+  return {lambda_fallback, mean_t - mean_m / lambda_fallback};
+}
+
+// Convert a rooted Utree to a Phylo_tree ready for MCMC.
+//
+// Strategy:
+// 1. Move focus to root, then set the Phylo_tree's ref_sequence to the Utree's original
+//    ref_sequence (which the tip_descs' missation from_states are relative to).  Place
+//    mutations above the root from deltas_ref_to_focus (ref→root state changes).
+//    rereference_to_root_sequence in post-processing normalizes ref_sequence to the root
+//    and rewires all missation maps.
+// 2. Single DFS from the root.  For each node, set parent/children, copy tip metadata,
+//    estimate time from root-to-node delta count and the OLS rate, and place mutations
+//    from the arc's site deltas.  On leaving each inner node, fix up its time to be
+//    strictly earlier than both children.
+// 3. Post-process: fix_up_missations, randomize_mutation_times,
+//    rereference_to_root_sequence, assert_phylo_tree_integrity.
+//
+// Node indices in the Utree and the Phylo_tree match 1-to-1: tips are [0, N),
+// inner nodes are [N, 2N-1).
+auto utree_to_phylo_tree(
+    Utree& utree, Node_index root, const std::vector<Tip_desc>& tip_descs,
+    const Rate_estimate& rate, absl::BitGenRef bitgen) -> Phylo_tree {
+
+  auto N = utree.num_tips;
+  auto lambda = rate.lambda;
+  auto t_root = rate.t_root;
+
+  // N=0: empty tree
+  if (N == 0) {
+    return Phylo_tree{0};
+  }
+
+  // deltas_ref_to_focus gives the ref→root state changes, used below to place root mutations
+  utree.move_focus_to(root);
+
+  // N=1: single-tip tree
+  if (N == 1) {
+    auto phylo_tree = Phylo_tree{1};
+    phylo_tree.ref_sequence = utree.ref_sequence;
+    phylo_tree.root = root;
+    auto& phylo_node = phylo_tree.at(root);
+    phylo_node.parent = k_no_node;
+    phylo_node.children = {};
+    CHECK_LT(root, std::ssize(tip_descs));
+    phylo_node.name = tip_descs[root].name;
+    phylo_node.t_min = tip_descs[root].t_min;
+    phylo_node.t_max = tip_descs[root].t_max;
+    phylo_node.t = std::clamp(t_root,
+        static_cast<double>(phylo_node.t_min), static_cast<double>(phylo_node.t_max));
+    phylo_node.missations = tip_descs[root].missations;
+    // Place mutations above root (ref → root state changes)
+    for (const auto& [site, delta] : utree.deltas_ref_to_focus) {
+      phylo_node.mutations.push_back(Mutation{delta.from, site, delta.to, phylo_node.t});
+    }
+    rereference_to_root_sequence(phylo_tree);
+    assert_phylo_tree_integrity(phylo_tree, true);
+    assert_phylo_tree_matches_tip_descs(phylo_tree, utree.ref_sequence, tip_descs, true);
+    return phylo_tree;
+  }
+
+  // General case: N >= 2
+  CHECK_EQ(utree.num_inner_nodes_so_far, N - 1);
+  auto phylo_tree = Phylo_tree{2 * N - 1};
+  phylo_tree.ref_sequence = utree.ref_sequence;
+  phylo_tree.root = root;
+
+  // min_branch_length: half a day or half a mutation interval, whichever is larger
+  auto min_branch_length = std::max(0.5, 0.5 / lambda);
+
+  // Initialize root
+  auto& root_node = phylo_tree.at(root);
+  root_node.parent = k_no_node;
+  root_node.t = t_root;
+  root_node.t_min = -std::numeric_limits<float>::max();
+  root_node.t_max = +std::numeric_limits<float>::max();
+
+  // DFS from root
+  auto m_X = 0;  // root-to-current-node delta count
+
+  for (auto [arc, direction] : annotated_arc_euler_tour(utree, root)) {
+    auto arc_deltas = utree.count_arc_deltas(arc);
+
+    if (direction == Arc_direction::entering) {
+      // Entering arc P -> X
+      auto P = utree.origin(arc);
+      auto X = utree.target(arc);
+      auto& node_X = phylo_tree.at(X);
+      m_X += arc_deltas;
+
+      // Topology
+      node_X.parent = P;
+      phylo_tree.at(P).children.push_back(X);
+
+      // Time estimate
+      auto t_X_est = t_root + static_cast<double>(m_X) / lambda;
+
+      if (utree.is_tip(X)) {
+        // Tip: copy metadata, clamp time to date bounds
+        CHECK_LT(X, std::ssize(tip_descs));
+        node_X.name = tip_descs[X].name;
+        node_X.t_min = tip_descs[X].t_min;
+        node_X.t_max = tip_descs[X].t_max;
+        node_X.t = std::clamp(t_X_est,
+            static_cast<double>(tip_descs[X].t_min),
+            static_cast<double>(tip_descs[X].t_max));
+        node_X.missations = tip_descs[X].missations;
+        node_X.children = {};
+      } else {
+        // Inner node
+        node_X.t = t_X_est;
+        node_X.t_min = -std::numeric_limits<float>::max();
+        node_X.t_max = +std::numeric_limits<float>::max();
+      }
+
+      // Place mutations from arc deltas
+      for (const auto& [site, delta] : utree.arcs[arc].deltas) {
+        node_X.mutations.push_back(Mutation{delta.from, site, delta.to, node_X.t});
+      }
+
+    } else {
+      // Leaving node X: fix up inner node time, restore m_X
+      auto X = utree.origin(arc);
+      auto& node_X = phylo_tree.at(X);
+      m_X -= arc_deltas;
+
+      if (not utree.is_tip(X)) {
+        auto t_children_min = std::min(
+            phylo_tree.at(node_X.left_child()).t,
+            phylo_tree.at(node_X.right_child()).t);
+        node_X.t = std::min(node_X.t, t_children_min - min_branch_length);
+      }
+    }
+  }
+
+  // Place mutations above root (ref → root state changes)
+  for (const auto& [site, delta] : utree.deltas_ref_to_focus) {
+    root_node.mutations.push_back(Mutation{delta.from, site, delta.to, root_node.t});
+  }
+
+  // Fix up root time (DFS doesn't yield a leaving event for the source)
+  auto t_children_min = std::min(
+      phylo_tree.at(root_node.left_child()).t,
+      phylo_tree.at(root_node.right_child()).t);
+  root_node.t = std::min(root_node.t, t_children_min - min_branch_length);
+
+  // Post-process
+  fix_up_missations(phylo_tree);
+  randomize_mutation_times(phylo_tree, bitgen);
+  rereference_to_root_sequence(phylo_tree);
+  assert_phylo_tree_integrity(phylo_tree, true);
+  assert_phylo_tree_matches_tip_descs(phylo_tree, utree.ref_sequence, tip_descs, true);
+
+  return phylo_tree;
+}
+
+auto build_initial_phylo_tree(
+    Real_sequence ref_sequence, std::vector<Tip_desc> tip_descs,
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook) -> Phylo_tree {
+
+  auto utree = build_guide_tree(ref_sequence, tip_descs, bitgen, progress_hook);
+  auto root = midpoint_root_utree(utree, tip_descs);
+  auto rate = estimate_rate_and_root_date(utree, root, tip_descs);
+  return utree_to_phylo_tree(utree, root, tip_descs, rate, bitgen);
 }
 
 auto assert_utree_integrity(const Utree& tree, bool force) -> void {
@@ -361,7 +696,7 @@ auto assert_utree_integrity(const Utree& tree, bool force) -> void {
       CHECK_EQ(tree.degree(i), 1) << "Tip " << i;
     }
     for (auto i = tree.num_tips; i < num_nodes; ++i) {
-      CHECK_EQ(tree.degree(i), 3) << "Inner node " << i;
+      CHECK(tree.degree(i) == 2 || tree.degree(i) == 3) << "Inner node " << i;
     }
   }
 

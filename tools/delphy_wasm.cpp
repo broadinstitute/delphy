@@ -215,11 +215,11 @@ auto delphy_parse_fasta_into_initial_tree_async(
       
       // Stage 3: Initial tree build file
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 3);}, stage_progress_hook_id);
-      auto init_random = false;  // true = random, false = UShER-like
+      auto init_method = Init_method::old_usher_like;
       auto bitgen = std::mt19937{subbitgen_seed};
       auto tree = new Phylo_tree{
         build_rough_initial_tree_from_maple(
-            std::move(maple_file), init_random, bitgen,
+            std::move(maple_file), init_method, bitgen,
             [initial_build_progress_hook_id](int tips_so_far, int total_tips) {
               MAIN_THREAD_ASYNC_EM_ASM(
                   {delphyRunHook($0, $1, $2);},
@@ -289,11 +289,11 @@ auto delphy_parse_maple_into_initial_tree_async(
 
       // Stage 2: Initial tree build file
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 2);}, stage_progress_hook_id);
-      auto init_random = false;  // true = random, false = UShER-like
+      auto init_method = Init_method::old_usher_like;
       auto bitgen = std::mt19937{subbitgen_seed};
       auto tree = new Phylo_tree{
         build_rough_initial_tree_from_maple(
-            std::move(in_maple), init_random, bitgen,
+            std::move(in_maple), init_method, bitgen,
             [initial_build_progress_hook_id](int tips_so_far, int total_tips) {
               MAIN_THREAD_ASYNC_EM_ASM(
                   {delphyRunHook($0, $1, $2);},
