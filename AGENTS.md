@@ -208,6 +208,8 @@ for (const auto& node : index_order_traversal(tree)) { ... }
 
 11. **Git staging** - Always use explicit file paths with `git add` (e.g., `git add file.cpp`).  Never use `git add -A` or `git add .` which may stage unintended files.
 
+12. **Plain ASCII in plans** - Plans and other written documents must use only ASCII characters.  Use `->` for arrows, `---` for em dashes (parenthetical remarks), `--` for en dashes (number ranges), `>=`/`<=` for comparisons.  No Unicode arrows, check marks, em/en dashes, or other fancy characters.
+
 ---
 
 ## Git Conventions

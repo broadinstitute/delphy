@@ -80,6 +80,9 @@ class Utree_builder {
   // Return the finished tree, transferring ownership.
   auto finish() -> Utree { return std::move(tree_); }
 
+  // Reposition the tree's focus.  Only valid between add_tip calls.
+  auto move_focus_to(Node_index target) -> void { tree_.move_focus_to(target); }
+
  private:
   static constexpr auto k_min_pruning_threshold = 2;
   static constexpr auto pq_cmp = std::greater<>{};
@@ -351,6 +354,165 @@ auto build_guide_tree(
   for (auto k = 0; k < std::ssize(tip_descs); ++k) {
     builder.add_tip(k);
   }
+  return builder.finish();
+}
+
+// Traverse the guide tree in nearest-first order: starting from a random tip, always visit
+// the nearest unvisited tip next.  Two DFS passes annotate each arc with the nearest tip
+// reachable in that direction, then a priority-queue walk peels off tips in order.
+// See plans/2026-05-15-01-better-tree-init-round3-guide-tree-reordering.md for details.
+auto for_each_tip_in_nearest_first_order(
+    const Utree& guide_tree,
+    absl::BitGenRef bitgen,
+    const std::function<void(Node_index tip, Node_index closest_prev_tip)>& callback) -> void {
+
+  auto N = guide_tree.num_tips;
+  if (N == 0) { return; }
+  if (N == 1) {
+    callback(0, k_no_node);
+    return;
+  }
+
+  // arc_nearest[a] = {tip, dist}: the nearest tip reachable from origin(a) in the direction
+  // of a, and its guide-tree distance (sum of arc delta counts along the path).
+  struct Arc_nearest {
+    Node_index tip = k_no_node;
+    int dist = 0;
+  };
+  auto arc_nearest = std::vector<Arc_nearest>(std::ssize(guide_tree.arcs));
+
+  auto R = Node_index{0};
+
+  // Pass 1: fill in arc_nearest for every arc pointing away from R (post-order).
+  // On each leaving event for arc X->P, annotate the mate arc P->X.
+  for (auto [arc_X_to_P, direction] : annotated_arc_euler_tour(guide_tree, R)) {
+    if (direction != Arc_direction::leaving) { continue; }
+
+    auto X = guide_tree.origin(arc_X_to_P);
+    auto arc_P_to_X = guide_tree.mate(arc_X_to_P);
+    auto deltas_P_X = guide_tree.count_arc_deltas(arc_P_to_X);
+
+    auto closest_tip_T_from_X_not_via_P = k_no_node;
+    auto d_X_T = std::numeric_limits<int>::max();
+    for (auto a : guide_tree.nodes[X].arcs) {
+      if (a == k_no_arc || a == arc_X_to_P) { continue; }
+      if (arc_nearest[a].dist < d_X_T) {
+        d_X_T = arc_nearest[a].dist;
+        closest_tip_T_from_X_not_via_P = arc_nearest[a].tip;
+      }
+    }
+
+    if (closest_tip_T_from_X_not_via_P == k_no_node) {
+      arc_nearest[arc_P_to_X] = {X, deltas_P_X};  // X is a tip with no outgoing arcs besides arc_X_to_P
+    } else {
+      arc_nearest[arc_P_to_X] = {closest_tip_T_from_X_not_via_P, deltas_P_X + d_X_T};
+    }
+  }
+
+  // Pass 2: fill in arc_nearest for every arc pointing toward R (pre-order).
+  // On each entering event for arc P->X, annotate the mate arc X->P.
+  for (auto [arc_P_to_X, direction] : annotated_arc_euler_tour(guide_tree, R)) {
+    if (direction != Arc_direction::entering) { continue; }
+
+    auto P = guide_tree.origin(arc_P_to_X);
+    auto arc_X_to_P = guide_tree.mate(arc_P_to_X);
+    auto deltas_X_P = guide_tree.count_arc_deltas(arc_X_to_P);
+
+    auto closest_tip_T_from_P_not_via_X = k_no_node;
+    auto d_P_T = std::numeric_limits<int>::max();
+    for (auto a : guide_tree.nodes[P].arcs) {
+      if (a == k_no_arc || a == arc_P_to_X) { continue; }
+      if (arc_nearest[a].dist < d_P_T) {
+        d_P_T = arc_nearest[a].dist;
+        closest_tip_T_from_P_not_via_X = arc_nearest[a].tip;
+      }
+    }
+
+    if (closest_tip_T_from_P_not_via_X == k_no_node) {
+      arc_nearest[arc_X_to_P] = {P, deltas_X_P};  // P is a tip with no outgoing arcs besides arc_P_to_X
+    } else {
+      arc_nearest[arc_X_to_P] = {closest_tip_T_from_P_not_via_X, deltas_X_P + d_P_T};
+    }
+  }
+
+  // At this point, arc_nearest[a] is filled in for every arc a: the nearest tip reachable
+  // from origin(a) in the direction of a, and its distance.
+
+  // Pass 3: nearest-first traversal.  A min-heap tracks arcs at the boundary between the
+  // visited subtree and unvisited tips.  The front entry is the arc pointing to the nearest
+  // pending tip, which is added next.
+  struct Pq_entry {
+    int dist;
+    Arc_index arc;
+    Node_index closest_prev_tip;
+    int d_closest_prev_tip;
+    auto operator>(const Pq_entry& other) const -> bool { return dist > other.dist; }
+  };
+
+  auto pq = std::priority_queue<Pq_entry, std::vector<Pq_entry>, std::greater<Pq_entry>>{};
+
+  auto S = guide_tree.pick_random_tip(bitgen);
+  callback(S, k_no_node);
+
+  for (auto a : guide_tree.nodes[S].arcs) {
+    if (a != k_no_arc) {
+      pq.push({arc_nearest[a].dist, a, S, 0});
+    }
+  }
+
+  while (not pq.empty()) {
+    auto [dist, arc, H, d_I_H] = pq.top();
+    pq.pop();
+
+    auto T = arc_nearest[arc].tip;
+    auto d_T_I = dist;
+
+    callback(T, H);
+
+    // Walk from I toward T, pushing branching arcs at each intermediate node N.
+    auto arc_into_N = arc;
+    auto N = guide_tree.target(arc);
+    auto d_N_I = guide_tree.count_arc_deltas(arc);
+
+    while (N != T) {
+      auto d_N_H = d_N_I + d_I_H;
+      auto d_N_T = d_T_I - d_N_I;
+      auto branch_closest_prev_tip = (d_N_T <= d_N_H) ? T : H;
+      auto branch_d_closest_prev_tip = (d_N_T <= d_N_H) ? d_N_T : d_N_H;
+
+      auto arc_out_of_N = k_no_arc;
+      for (auto a : guide_tree.nodes[N].arcs) {
+        if (a == k_no_arc || a == guide_tree.mate(arc_into_N)) { continue; }
+        if (arc_nearest[a].tip == T) {
+          arc_out_of_N = a;
+        } else {
+          pq.push({arc_nearest[a].dist, a, branch_closest_prev_tip, branch_d_closest_prev_tip});
+        }
+      }
+
+      CHECK_NE(arc_out_of_N, k_no_arc);
+      arc_into_N = arc_out_of_N;
+      N = guide_tree.target(arc_out_of_N);
+      d_N_I += guide_tree.count_arc_deltas(arc_out_of_N);
+    }
+  }
+}
+
+auto build_refined_tree(
+    const Utree& guide_tree,
+    const std::vector<Tip_desc>& tip_descs,
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook) -> Utree {
+
+  auto ref_sequence_copy = guide_tree.ref_sequence;
+  auto builder = Utree_builder{std::move(ref_sequence_copy), tip_descs, bitgen, progress_hook};
+  for_each_tip_in_nearest_first_order(guide_tree, bitgen,
+      [&](Node_index tip, Node_index closest_prev_tip) {
+        if (closest_prev_tip != k_no_node) {
+          builder.move_focus_to(closest_prev_tip);
+        }
+        builder.add_tip(tip);
+      });
   return builder.finish();
 }
 
@@ -676,9 +838,27 @@ auto utree_to_phylo_tree(
 auto build_initial_phylo_tree(
     Real_sequence ref_sequence, std::vector<Tip_desc> tip_descs,
     absl::BitGenRef bitgen,
-    const std::function<void(int,int)>& progress_hook) -> Phylo_tree {
+    const std::function<void(int,int)>& guide_tree_progress_hook,
+    const std::function<void(int,int,int)>& refined_tree_progress_hook) -> Phylo_tree {
 
-  auto utree = build_guide_tree(ref_sequence, tip_descs, bitgen, progress_hook);
+  auto utree = build_guide_tree(std::move(ref_sequence), tip_descs, bitgen,
+                                guide_tree_progress_hook);
+
+  static constexpr auto k_max_refinement_rounds = 5;
+  auto prev_deltas = utree.count_deltas();
+  for (auto round = 1; round <= k_max_refinement_rounds; ++round) {
+    auto refined = build_refined_tree(utree, tip_descs, bitgen,
+        [&](int tips_so_far, int total_tips) {
+          refined_tree_progress_hook(round, tips_so_far, total_tips);
+        });
+    auto refined_deltas = refined.count_deltas();
+    if (refined_deltas >= prev_deltas) {
+      break;
+    }
+    prev_deltas = refined_deltas;
+    utree = std::move(refined);
+  }
+
   auto root = midpoint_root_utree(utree, tip_descs);
   auto rate = estimate_rate_and_root_date(utree, root, tip_descs);
   return utree_to_phylo_tree(utree, root, tip_descs, rate, bitgen);

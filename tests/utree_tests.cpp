@@ -231,18 +231,6 @@ TEST(Utree_test, move_focus_cancelling_deltas) {
 
 // --- build_guide_tree ---
 
-// Count total mutations in tree: sum of ssize(deltas) over all edges.
-// Only counts even-indexed arcs to avoid double-counting (each edge = two arcs).
-// Assumes freed arcs have empty deltas (guaranteed by free_arc_pair).
-auto count_mutations(const Utree& tree) -> int {
-  auto total = 0;
-  for (auto i = 0; i < std::ssize(tree.arcs); i += 2) {
-    if (not tree.arcs[i].deltas.empty()) {
-      total += std::ssize(tree.arcs[i].deltas);
-    }
-  }
-  return total;
-}
 
 // Helper: make a Tip_desc with the given seq_deltas and optional missing intervals
 auto make_tip(std::vector<Seq_delta> seq_deltas, Interval_set<> missing = {}) -> Tip_desc {
@@ -288,7 +276,7 @@ TEST(Utree_test, guide_tree_one_tip) {
   EXPECT_THAT(tree.focus, testing::Eq(0));
   EXPECT_THAT(tree.deltas_ref_to_focus, testing::UnorderedElementsAre(
       site_deltas_entry(0, rA, rT)));
-  EXPECT_THAT(count_mutations(tree), testing::Eq(0));
+  EXPECT_THAT(tree.count_deltas(), testing::Eq(0));
   assert_utree_integrity(tree, true);
   assert_utree_matches_tip_descs(tree, tips, true);
 }
@@ -306,7 +294,7 @@ TEST(Utree_test, guide_tree_two_tips) {
   auto tree = build_guide_tree(ref, tips, bitgen);
 
   EXPECT_THAT(tree.num_tips, testing::Eq(2));
-  EXPECT_THAT(count_mutations(tree), testing::Eq(2));
+  EXPECT_THAT(tree.count_deltas(), testing::Eq(2));
   assert_utree_integrity(tree, true);
   assert_utree_matches_tip_descs(tree, tips, true);
 }
@@ -327,7 +315,7 @@ TEST(Utree_test, guide_tree_three_tips_optimal) {
   auto tree = build_guide_tree(ref, tips, bitgen);
 
   EXPECT_THAT(tree.num_tips, testing::Eq(3));
-  EXPECT_THAT(count_mutations(tree), testing::Le(3));
+  EXPECT_THAT(tree.count_deltas(), testing::Le(3));
   assert_utree_integrity(tree, true);
   assert_utree_matches_tip_descs(tree, tips, true);
 }
@@ -352,7 +340,7 @@ TEST(Utree_test, guide_tree_five_tips_two_clusters) {
 
   EXPECT_THAT(tree.num_tips, testing::Eq(5));
   // Optimal = 4; guide tree may be slightly suboptimal due to insertion order
-  EXPECT_THAT(count_mutations(tree), testing::Le(6));
+  EXPECT_THAT(tree.count_deltas(), testing::Le(6));
   assert_utree_integrity(tree, true);
   assert_utree_matches_tip_descs(tree, tips, true);
 }
@@ -373,7 +361,7 @@ TEST(Utree_test, guide_tree_with_missing_data) {
   // Site 2 is missing at tip 0, so the edge between them should have no delta at site 2
   // (it's globally missing after just tip 0, and when tip 1 is added, the tree's state
   // at site 2 is set to tip 1's state — C — so they agree)
-  EXPECT_THAT(count_mutations(tree), testing::Eq(0));
+  EXPECT_THAT(tree.count_deltas(), testing::Eq(0));
   EXPECT_THAT(tree.globally_missing_sites, testing::IsEmpty());
 
   // When site 2 leaves globally_missing_sites (because tip 1 has data there), the tree's state
@@ -417,7 +405,7 @@ TEST(Utree_test, guide_tree_globally_missing_sites_shrinks) {
   auto bitgen3 = std::mt19937{42};
   auto tree3 = build_guide_tree(ref, all_tips, bitgen3);
   EXPECT_THAT(tree3.globally_missing_sites, testing::IsEmpty());
-  EXPECT_THAT(count_mutations(tree3), testing::Eq(0));
+  EXPECT_THAT(tree3.count_deltas(), testing::Eq(0));
   assert_utree_integrity(tree3, true);
   assert_utree_matches_tip_descs(tree3, all_tips, true);
 }
@@ -752,6 +740,157 @@ TEST(Utree_test, utree_to_phylo_tree_three_tips) {
 
   // Root should be before all tips
   EXPECT_LT(phylo_tree.at(phylo_tree.root).t, 10.0);
+}
+
+// --- for_each_tip_in_nearest_first_order ---
+
+TEST(Utree_test, nearest_first_order_one_tip) {
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto tips = std::vector<Tip_desc>{make_tip({})};
+  auto bitgen = std::mt19937{42};
+  auto tree = build_guide_tree(ref, tips, bitgen);
+
+  auto order = std::vector<std::pair<Node_index, Node_index>>{};
+  for_each_tip_in_nearest_first_order(tree, bitgen, [&](Node_index tip, Node_index prev) {
+    order.push_back({tip, prev});
+  });
+
+  EXPECT_THAT(std::ssize(order), testing::Eq(1));
+  EXPECT_THAT(order[0].first, testing::Eq(0));
+  EXPECT_THAT(order[0].second, testing::Eq(k_no_node));
+}
+
+TEST(Utree_test, nearest_first_order_two_tips) {
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{0, rA, rC}}),
+      make_tip({{1, rA, rG}})
+  };
+  auto bitgen = std::mt19937{42};
+  auto tree = build_guide_tree(ref, tips, bitgen);
+
+  auto order = std::vector<std::pair<Node_index, Node_index>>{};
+  for_each_tip_in_nearest_first_order(tree, bitgen, [&](Node_index tip, Node_index prev) {
+    order.push_back({tip, prev});
+  });
+
+  EXPECT_THAT(std::ssize(order), testing::Eq(2));
+  EXPECT_THAT(order[0].second, testing::Eq(k_no_node));
+  // Second tip's closest_prev_tip should be the first tip
+  EXPECT_THAT(order[1].second, testing::Eq(order[0].first));
+  // Both tips covered
+  auto tips_seen = std::vector<Node_index>{order[0].first, order[1].first};
+  EXPECT_THAT(tips_seen, testing::UnorderedElementsAre(0, 1));
+}
+
+TEST(Utree_test, nearest_first_order_three_tips) {
+  // ref = AAAA.  Tips 0 and 1 share a mutation at site 0 (A->C), tip 2 does not.
+  // Tip 1 also has a unique mutation at site 1 (A->G).
+  // In the guide tree, tips 0 and 1 are closer to each other than to tip 2.
+  // If the starting tip is 0 or 1, the other should come second (before tip 2).
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{0, rA, rC}}),               // tip 0: C at site 0
+      make_tip({{0, rA, rC}, {1, rA, rG}}),  // tip 1: C at site 0, G at site 1
+      make_tip({})                            // tip 2: same as ref
+  };
+
+  // Try multiple seeds to exercise different starting tips
+  for (auto seed = 0; seed < 20; ++seed) {
+    auto bitgen = std::mt19937{static_cast<unsigned>(seed)};
+    auto tree = build_guide_tree(ref, tips, bitgen);
+
+    auto order = std::vector<Node_index>{};
+    for_each_tip_in_nearest_first_order(tree, bitgen, [&](Node_index tip, Node_index) {
+      order.push_back(tip);
+    });
+
+    EXPECT_THAT(order, testing::UnorderedElementsAre(0, 1, 2));
+
+    // If starting tip is 0, tip 1 should come before tip 2 (closer in guide tree)
+    if (order[0] == 0) {
+      EXPECT_THAT(order[1], testing::Eq(1));
+    }
+    // If starting tip is 1, tip 0 should come before tip 2
+    if (order[0] == 1) {
+      EXPECT_THAT(order[1], testing::Eq(0));
+    }
+  }
+}
+
+TEST(Utree_test, nearest_first_order_five_tips_covers_all) {
+  auto ref = Real_sequence{rA, rA, rA, rA, rA};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{0, rA, rC}}),
+      make_tip({{0, rA, rC}, {2, rA, rT}}),
+      make_tip({{0, rA, rC}, {3, rA, rT}}),
+      make_tip({{1, rA, rG}}),
+      make_tip({{1, rA, rG}}),
+  };
+  auto bitgen = std::mt19937{42};
+  auto tree = build_guide_tree(ref, tips, bitgen);
+
+  auto order = std::vector<Node_index>{};
+  for_each_tip_in_nearest_first_order(tree, bitgen, [&](Node_index tip, Node_index) {
+    order.push_back(tip);
+  });
+
+  EXPECT_THAT(order, testing::UnorderedElementsAre(0, 1, 2, 3, 4));
+}
+
+// --- build_refined_tree ---
+
+TEST(Utree_test, build_refined_tree_integrity) {
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA, rA, rA};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{0, rA, rC}, {1, rA, rG}}),
+      make_tip({{0, rA, rC}, {2, rA, rT}}),
+      make_tip({{3, rA, rG}, {4, rA, rT}}),
+      make_tip({{5, rA, rC}, {6, rA, rG}, {7, rA, rT}})
+  };
+  auto bitgen = std::mt19937{42};
+
+  auto guide_tree = build_guide_tree(ref, tips, bitgen);
+  auto refined_tree = build_refined_tree(guide_tree, tips, bitgen);
+
+  assert_utree_integrity(refined_tree, true);
+  assert_utree_matches_tip_descs(refined_tree, tips, true);
+}
+
+TEST(Utree_test, build_refined_tree_parsimony) {
+  auto ref = Real_sequence{rA, rA, rA, rA, rA};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{0, rA, rC}}),
+      make_tip({{0, rA, rC}, {2, rA, rT}}),
+      make_tip({{0, rA, rC}, {3, rA, rT}}),
+      make_tip({{1, rA, rG}}),
+      make_tip({{1, rA, rG}}),
+  };
+
+  for (auto seed = 0; seed < 20; ++seed) {
+    auto bitgen = std::mt19937{static_cast<unsigned>(seed)};
+    auto guide_tree = build_guide_tree(ref, tips, bitgen);
+    auto refined_tree = build_refined_tree(guide_tree, tips, bitgen);
+
+    assert_utree_integrity(refined_tree, true);
+    assert_utree_matches_tip_descs(refined_tree, tips, true);
+  }
+}
+
+TEST(Utree_test, build_refined_tree_with_missing_data) {
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{2, rA, rC}}, Interval_set<>{{Site_interval{0, 2}}}),
+      make_tip({{3, rA, rG}}),
+      make_tip({{4, rA, rT}})
+  };
+  auto bitgen = std::mt19937{42};
+
+  auto guide_tree = build_guide_tree(ref, tips, bitgen);
+  auto refined_tree = build_refined_tree(guide_tree, tips, bitgen);
+
+  assert_utree_integrity(refined_tree, true);
+  assert_utree_matches_tip_descs(refined_tree, tips, true);
 }
 
 // --- build_initial_phylo_tree (end-to-end) ---

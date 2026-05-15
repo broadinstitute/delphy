@@ -89,7 +89,8 @@ auto build_rough_initial_tree_from_maple(
     Maple_file&& in_maple,
     Init_method init_method,
     absl::BitGenRef bitgen,
-    const std::function<void(int,int)>& progress_hook)
+    const std::function<void(int,int)>& progress_hook,
+    const std::function<void(int,int,int)>& refined_tree_progress_hook)
     -> Phylo_tree {
 
   if (in_maple.tip_descs.empty()) {
@@ -108,7 +109,8 @@ auto build_rough_initial_tree_from_maple(
           std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen, progress_hook);
     case Init_method::mp_plus_timing:
       return build_initial_phylo_tree(
-          std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen, progress_hook);
+          std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen,
+          progress_hook, refined_tree_progress_hook);
   }
   CHECK(false) << "Unknown init method";
 }
@@ -517,15 +519,26 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
     }
     
     std::cerr << "Building initial tree...\n";
-    auto build_pct_reported = -1;
+    auto last_pct_reported = -1;
+    auto last_round_reported = 0;
+    auto pct_progress_hook = [&last_pct_reported](const char* label, int tips_so_far, int total_tips) {
+      auto pct = total_tips > 0 ? (10 * tips_so_far / total_tips) * 10 : 0;
+      if (pct > last_pct_reported) {
+        last_pct_reported = pct;
+        std::cerr << absl::StreamFormat("- %s: %d / %d tips (%d%%)\n", label, tips_so_far, total_tips, pct);
+      }
+    };
     tree = build_rough_initial_tree_from_maple(
         std::move(maple_file), init_method, prng,
-        [&build_pct_reported](int tips_so_far, int total_tips) {
-          auto pct = total_tips > 0 ? (10 * tips_so_far / total_tips) * 10 : 0;
-          if (pct > build_pct_reported) {
-            build_pct_reported = pct;
-            std::cerr << absl::StreamFormat("- added %d / %d tips (%d%%)\n", tips_so_far, total_tips, pct);
+        [&](int tips_so_far, int total_tips) {
+          pct_progress_hook("guide tree", tips_so_far, total_tips);
+        },
+        [&](int round, int tips_so_far, int total_tips) {
+          if (round != last_round_reported) {
+            last_round_reported = round;
+            last_pct_reported = -1;
           }
+          pct_progress_hook(absl::StrFormat("refine round %d", round).c_str(), tips_so_far, total_tips);
         });
     
     assert_phylo_tree_integrity(tree);

@@ -8,6 +8,7 @@
 
 #include "absl/log/check.h"
 #include "absl/random/bit_gen_ref.h"
+#include "absl/random/distributions.h"
 #include "cppcoro/generator.hpp"
 
 #include "estd.h"
@@ -110,6 +111,20 @@ struct Utree {
   // Whether node is a tip (degree-1 node)
   auto is_tip(Node_index node) const -> bool { return degree(node) == 1; }
 
+  // Pick a random tip uniformly from [0, num_tips)
+  auto pick_random_tip(absl::BitGenRef bitgen) const -> Node_index {
+    return static_cast<Node_index>(absl::Uniform<int>(bitgen, 0, num_tips));
+  }
+
+  // Total site deltas across all edges (each undirected edge counted once)
+  auto count_deltas() const -> int {
+    auto total = 0;
+    for (auto i = Arc_index{0}; i < std::ssize(arcs); i += 2) {
+      total += count_arc_deltas(i);
+    }
+    return total;
+  }
+
   // Number of site deltas on an arc
   auto count_arc_deltas(Arc_index arc) const -> int {
     return static_cast<int>(std::ssize(arcs[arc].deltas));
@@ -197,6 +212,21 @@ auto build_guide_tree(
     const std::function<void(int,int)>& progress_hook = [](int,int){})
     -> Utree;
 
+// Traverse the guide tree in nearest-first order, calling `callback(tip, closest_prev_tip)`
+// for each tip.  `closest_prev_tip` is the nearest already-added tip in the guide tree
+// (k_no_node for the first tip).
+auto for_each_tip_in_nearest_first_order(
+    const Utree& guide_tree,
+    absl::BitGenRef bitgen,
+    const std::function<void(Node_index tip, Node_index closest_prev_tip)>& callback) -> void;
+
+// Build a refined Utree by adding tips in guide-tree nearest-first order.
+auto build_refined_tree(
+    const Utree& guide_tree,
+    const std::vector<Tip_desc>& tip_descs,
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int)>& progress_hook = [](int,int){}) -> Utree;
+
 // Root the Utree at the timed midpoint of a diametral path.  Modifies the tree in place:
 // inserts a root node.  Returns the root node index.
 // The focus location is undefined after this call.
@@ -220,11 +250,12 @@ auto utree_to_phylo_tree(
     Utree& utree, Node_index root, const std::vector<Tip_desc>& tip_descs,
     const Rate_estimate& rate, absl::BitGenRef bitgen) -> Phylo_tree;
 
-// Full pipeline: build guide tree, root it, estimate rate, convert to Phylo_tree.
+// Full pipeline: build guide tree, refine it, root it, estimate rate, convert to Phylo_tree.
 auto build_initial_phylo_tree(
     Real_sequence ref_sequence, std::vector<Tip_desc> tip_descs,
     absl::BitGenRef bitgen,
-    const std::function<void(int,int)>& progress_hook = [](int,int){}) -> Phylo_tree;
+    const std::function<void(int,int)>& guide_tree_progress_hook = [](int,int){},
+    const std::function<void(int,int,int)>& refined_tree_progress_hook = [](int,int,int){}) -> Phylo_tree;
 
 enum class Arc_direction { entering, leaving };
 struct Annotated_arc {
