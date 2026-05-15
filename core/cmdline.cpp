@@ -464,21 +464,29 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       in_fasta_is.seekg(0, std::ios_base::beg);
       
       std::cerr << "Reading fasta file " << in_fasta_filename << "\n";
+      auto read_pct_reported = -1;
       auto in_fasta = read_fasta(
           in_fasta_is,
-          [total_bytes](int seqs_so_far, size_t bytes_so_far) {
-            std::cerr << absl::StreamFormat("- read %d sequences so far (%d of %d bytes = %.1f%%)\n",
-                                            seqs_so_far, bytes_so_far, total_bytes,
-                                            100.0 * bytes_so_far / static_cast<double>(total_bytes));
+          [total_bytes, &read_pct_reported](int seqs_so_far, size_t bytes_so_far) {
+            auto pct = total_bytes > 0 ? static_cast<int>(10 * bytes_so_far / total_bytes) * 10 : 0;
+            if (pct > read_pct_reported) {
+              read_pct_reported = pct;
+              std::cerr << absl::StreamFormat("- read %d sequences (%d%%)\n", seqs_so_far, pct);
+            }
           },
           default_sequence_warning_hook);
       in_fasta_is.close();
 
       std::cerr << "Analysing fasta file " << in_fasta_filename << "\n";
+      auto analyse_pct_reported = -1;
       maple_file = fasta_to_maple(
-          in_fasta, 
-          [](int seqs_so_far, int total_seqs) {
-            std::cerr << absl::StreamFormat("- analysed %d / %d sequences\n", seqs_so_far, total_seqs);
+          in_fasta,
+          [&analyse_pct_reported](int seqs_so_far, int total_seqs) {
+            auto pct = total_seqs > 0 ? (10 * seqs_so_far / total_seqs) * 10 : 0;
+            if (pct > analyse_pct_reported) {
+              analyse_pct_reported = pct;
+              std::cerr << absl::StreamFormat("- analysed %d / %d sequences (%d%%)\n", seqs_so_far, total_seqs, pct);
+            }
           },
           default_sequence_warning_hook);
     }
@@ -494,22 +502,30 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       in_maple_is.seekg(0, std::ios_base::beg);
       
       std::cerr << "Reading MAPLE file " << in_maple_filename << "\n";
+      auto read_pct_reported = -1;
       maple_file = read_maple(
           in_maple_is,
-          [total_bytes](int seqs_so_far, size_t bytes_so_far) {
-            std::cerr << absl::StreamFormat("- read %d sequences so far (%d of %d bytes = %.1f%%)\n",
-                                            seqs_so_far, bytes_so_far, total_bytes,
-                                            100.0 * bytes_so_far / static_cast<double>(total_bytes));
+          [total_bytes, &read_pct_reported](int seqs_so_far, size_t bytes_so_far) {
+            auto pct = total_bytes > 0 ? static_cast<int>(10 * bytes_so_far / total_bytes) * 10 : 0;
+            if (pct > read_pct_reported) {
+              read_pct_reported = pct;
+              std::cerr << absl::StreamFormat("- read %d sequences (%d%%)\n", seqs_so_far, pct);
+            }
           },
           default_sequence_warning_hook);
       in_maple_is.close();
     }
     
     std::cerr << "Building initial tree...\n";
+    auto build_pct_reported = -1;
     tree = build_rough_initial_tree_from_maple(
         std::move(maple_file), init_method, prng,
-        [](int tips_so_far, int total_tips) {
-          std::cerr << absl::StreamFormat("- added %d / %d tips\n", tips_so_far, total_tips);
+        [&build_pct_reported](int tips_so_far, int total_tips) {
+          auto pct = total_tips > 0 ? (10 * tips_so_far / total_tips) * 10 : 0;
+          if (pct > build_pct_reported) {
+            build_pct_reported = pct;
+            std::cerr << absl::StreamFormat("- added %d / %d tips (%d%%)\n", tips_so_far, total_tips, pct);
+          }
         });
     
     assert_phylo_tree_integrity(tree);
