@@ -365,7 +365,7 @@ static auto farthest_node_from(const Utree& tree, Node_index start)
     auto arc_deltas = tree.count_arc_deltas(arc);
     if (direction == Arc_direction::entering) {
       cur_dist += arc_deltas;
-      if (cur_dist > best_dist) {
+      if (cur_dist >= best_dist) {  // >= so ties resolve to tips, not inner nodes visited earlier in DFS
         best_dist = cur_dist;
         best_node = tree.target(arc);
       }
