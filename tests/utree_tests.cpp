@@ -608,8 +608,8 @@ TEST(Utree_test, assert_matches_catches_wrong_tip) {
 
 TEST(Utree_test, midpoint_root_zero_tips) {
   auto tree = Utree::make_empty(0);
-  auto root = midpoint_root_utree(tree, {});
-  EXPECT_EQ(root, k_no_node);
+  auto rooting_info = midpoint_root_utree(tree, {});
+  EXPECT_EQ(rooting_info.root, k_no_node);
 }
 
 TEST(Utree_test, midpoint_root_one_tip) {
@@ -619,8 +619,8 @@ TEST(Utree_test, midpoint_root_one_tip) {
       make_dated_tip("tip0", 100.0f, 100.0f, {{0, rA, rT}})
   };
   auto tree = build_guide_tree(ref, tips, bitgen);
-  auto root = midpoint_root_utree(tree, tips);
-  EXPECT_EQ(root, 0);
+  auto rooting_info = midpoint_root_utree(tree, tips);
+  EXPECT_EQ(rooting_info.root, 0);
 }
 
 TEST(Utree_test, midpoint_root_two_tips_equal_dates) {
@@ -632,13 +632,15 @@ TEST(Utree_test, midpoint_root_two_tips_equal_dates) {
   };
   auto tree = build_guide_tree(ref, tips, bitgen);
   assert_utree_integrity(tree, true);
-  auto root = midpoint_root_utree(tree, tips);
+  auto rooting_info = midpoint_root_utree(tree, tips);
   assert_utree_integrity(tree, true);
 
   // Root should be a new inner node
-  EXPECT_GE(root, tree.num_tips);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
   // Tree should have 3 nodes total (2 tips + 1 inner)
   EXPECT_EQ(tree.num_tips + tree.num_inner_nodes_so_far, 3);
+  // Same dates => fallback rate
+  EXPECT_NEAR(rooting_info.lambda, 1.0 / 30.0, 1e-10);
 }
 
 TEST(Utree_test, midpoint_root_three_tips) {
@@ -652,10 +654,10 @@ TEST(Utree_test, midpoint_root_three_tips) {
   auto tree = build_guide_tree(ref, tips, bitgen);
   assert_utree_integrity(tree, true);
 
-  auto root = midpoint_root_utree(tree, tips);
+  auto rooting_info = midpoint_root_utree(tree, tips);
   assert_utree_integrity(tree, true);
 
-  EXPECT_GE(root, tree.num_tips);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
   // 3 tips + 2 inner nodes (original + root)
   EXPECT_EQ(tree.num_tips + tree.num_inner_nodes_so_far, 5);
 }
@@ -669,14 +671,14 @@ TEST(Utree_test, midpoint_root_unequal_dates) {
       make_dated_tip("tip1", 100.0f, 100.0f, {{1, rA, rG}})
   };
   auto tree = build_guide_tree(ref, tips, bitgen);
-  auto root = midpoint_root_utree(tree, tips);
+  auto rooting_info = midpoint_root_utree(tree, tips);
   assert_utree_integrity(tree, true);
-  EXPECT_GE(root, tree.num_tips);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
+  EXPECT_GT(rooting_info.lambda, 0.0);
+  EXPECT_LE(rooting_info.t_MRCA, 0.0);  // root should be at or before earliest tip
 }
 
-// --- estimate_rate_and_root_date ---
-
-TEST(Utree_test, estimate_rate_known_rate) {
+TEST(Utree_test, midpoint_root_known_rate) {
   // Build a tree where tips have known distances from root and known dates
   // so we can verify the OLS estimate
   auto ref = Real_sequence{rA, rA, rA, rA, rA, rA};
@@ -690,26 +692,96 @@ TEST(Utree_test, estimate_rate_known_rate) {
       make_dated_tip("tip2", 30.0f, 30.0f, {{0, rA, rC}, {1, rA, rG}, {2, rA, rT}})
   };
   auto tree = build_guide_tree(ref, tips, bitgen);
-  auto root = midpoint_root_utree(tree, tips);
+  auto rooting_info = midpoint_root_utree(tree, tips);
 
-  auto rate = estimate_rate_and_root_date(tree, root, tips);
-  EXPECT_GT(rate.lambda, 0.0);
-  EXPECT_LT(rate.t_root, 10.0);  // root should be before earliest tip
+  EXPECT_EQ(rooting_info.method, Rooting_method::midpoint);
+  EXPECT_GT(rooting_info.lambda, 0.0);
+  EXPECT_LT(rooting_info.t_MRCA, 10.0);  // root should be before earliest tip
 }
 
-TEST(Utree_test, estimate_rate_same_dates_fallback) {
+// --- regression_root_utree ---
+
+TEST(Utree_test, regression_root_three_tips_known_rate) {
+  // 3 tips with non-overlapping mutations and dates proportional to mutation count.
+  // Each tip has distinct mutations, so the guide tree places them on tip-specific branches.
+  // tip0: t=100, 1 unique mutation; tip1: t=200, 2 unique; tip2: t=300, 3 unique
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 100.0f, 100.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 200.0f, 200.0f, {{1, rA, rG}, {2, rA, rT}}),
+      make_dated_tip("tip2", 300.0f, 300.0f, {{3, rA, rC}, {4, rA, rG}, {5, rA, rT}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  auto rooting_info = regression_root_utree(tree, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  EXPECT_EQ(rooting_info.method, Rooting_method::regression);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
+  EXPECT_GT(rooting_info.lambda, 0.0);
+  EXPECT_LT(rooting_info.t_MRCA, 100.0);  // root should be before earliest tip
+}
+
+TEST(Utree_test, regression_root_same_dates_fallback) {
+  // All tips have the same date: Var(t) = 0, should fall back to midpoint rooting
   auto ref = Real_sequence{rA, rA, rA, rA};
   auto bitgen = std::mt19937{42};
   auto tips = std::vector<Tip_desc>{
       make_dated_tip("tip0", 100.0f, 100.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 100.0f, 100.0f, {{1, rA, rG}}),
+      make_dated_tip("tip2", 100.0f, 100.0f, {{2, rA, rT}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+
+  auto rooting_info = regression_root_utree(tree, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  EXPECT_EQ(rooting_info.method, Rooting_method::midpoint);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
+  // Fallback rate = 1/30
+  EXPECT_NEAR(rooting_info.lambda, 1.0 / 30.0, 1e-10);
+}
+
+TEST(Utree_test, regression_root_two_tips_fallback) {
+  // N <= 2: should fall back to midpoint rooting
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 0.0f, 0.0f, {{0, rA, rC}}),
       make_dated_tip("tip1", 100.0f, 100.0f, {{1, rA, rG}})
   };
   auto tree = build_guide_tree(ref, tips, bitgen);
-  auto root = midpoint_root_utree(tree, tips);
 
-  auto rate = estimate_rate_and_root_date(tree, root, tips);
-  // Should fall back to lambda = 1/30
-  EXPECT_NEAR(rate.lambda, 1.0 / 30.0, 1e-10);
+  auto rooting_info = regression_root_utree(tree, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  EXPECT_EQ(rooting_info.method, Rooting_method::midpoint);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
+  EXPECT_GT(rooting_info.lambda, 0.0);
+}
+
+TEST(Utree_test, regression_root_star_topology) {
+  // Star topology: all tips equidistant from center, different dates
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 10.0f, 10.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 20.0f, 20.0f, {{1, rA, rG}}),
+      make_dated_tip("tip2", 30.0f, 30.0f, {{2, rA, rT}}),
+      make_dated_tip("tip3", 40.0f, 40.0f, {{3, rA, rC}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  auto rooting_info = regression_root_utree(tree, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  EXPECT_EQ(rooting_info.method, Rooting_method::regression);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
+  EXPECT_GT(rooting_info.lambda, 0.0);
+  EXPECT_LT(rooting_info.t_MRCA, 10.0);  // root before earliest tip
 }
 
 // --- utree_to_phylo_tree ---
@@ -723,9 +795,8 @@ TEST(Utree_test, utree_to_phylo_tree_three_tips) {
       make_dated_tip("tip2", 30.0f, 30.0f, {{2, rA, rT}})
   };
   auto tree = build_guide_tree(ref, tips, bitgen);
-  auto root = midpoint_root_utree(tree, tips);
-  auto rate = estimate_rate_and_root_date(tree, root, tips);
-  auto phylo_tree = utree_to_phylo_tree(tree, root, tips, rate, bitgen);
+  auto rooting_info = midpoint_root_utree(tree, tips);
+  auto phylo_tree = utree_to_phylo_tree(tree, rooting_info, tips, bitgen);
 
   // Basic checks
   EXPECT_EQ(std::ssize(phylo_tree), 2 * 3 - 1);

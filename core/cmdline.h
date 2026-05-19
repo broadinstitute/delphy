@@ -10,6 +10,7 @@
 #include "phylo_tree.h"
 #include "run.h"
 #include "sequence_utils.h"
+#include "utree.h"
 
 namespace delphy {
 
@@ -30,7 +31,8 @@ auto build_rough_initial_tree_from_maple(
     Init_method init_method,
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook = [](int,int){},
-    const std::function<void(int,int,int)>& refined_tree_progress_hook = [](int,int,int){})
+    const std::function<void(int,int,int)>& refined_tree_progress_hook = [](int,int,int){},
+    const std::function<void(const Rooting_info&)>& rooting_hook = [](const Rooting_info&){})
     -> Phylo_tree;
 
 struct Processed_cmd_line {

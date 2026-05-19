@@ -90,7 +90,8 @@ auto build_rough_initial_tree_from_maple(
     Init_method init_method,
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook,
-    const std::function<void(int,int,int)>& refined_tree_progress_hook)
+    const std::function<void(int,int,int)>& refined_tree_progress_hook,
+    const std::function<void(const Rooting_info&)>& rooting_hook)
     -> Phylo_tree {
 
   if (in_maple.tip_descs.empty()) {
@@ -110,7 +111,7 @@ auto build_rough_initial_tree_from_maple(
     case Init_method::mp_plus_timing:
       return build_initial_phylo_tree(
           std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen,
-          progress_hook, refined_tree_progress_hook);
+          progress_hook, refined_tree_progress_hook, rooting_hook);
   }
   CHECK(false) << "Unknown init method";
 }
@@ -528,6 +529,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
         std::cerr << absl::StreamFormat("- %s: %d / %d tips (%d%%)\n", label, tips_so_far, total_tips, pct);
       }
     };
+    auto L = std::ssize(maple_file.ref_sequence);
     tree = build_rough_initial_tree_from_maple(
         std::move(maple_file), init_method, prng,
         [&](int tips_so_far, int total_tips) {
@@ -539,6 +541,15 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
             last_pct_reported = -1;
           }
           pct_progress_hook(absl::StrFormat("refine round %d", round).c_str(), tips_so_far, total_tips);
+        },
+        [&](const Rooting_info& rooting_info) {
+          auto method_str = (rooting_info.method == Rooting_method::regression)
+              ? "root-to-tip regression" : "midpoint";
+          std::cerr << absl::StreamFormat("- rooting: %s, R^2 = %.4f", method_str, rooting_info.r2)
+                    << absl::StreamFormat(", lambda = %.4g mut/yr (%.2g * 10^-3 mut/site/yr)",
+                                          rooting_info.lambda * 365.0,
+                                          rooting_info.lambda * 365.0 / L * 1000)
+                    << absl::StreamFormat(", t_MRCA = %s\n", to_iso_date(rooting_info.t_MRCA));
         });
     
     assert_phylo_tree_integrity(tree);

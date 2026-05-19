@@ -556,10 +556,19 @@ static auto farthest_node_from(const Utree& tree, Node_index start)
 //
 // The focus location is undefined after this call.
 auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs)
-    -> Node_index {
+    -> Rooting_info {
   auto N = tree.num_tips;
-  if (N == 0) { return k_no_node; }
-  if (N == 1) { return 0; }
+  static constexpr auto lambda_fallback = 1.0 / 30.0;
+
+  if (N == 0) {
+    return {.root = k_no_node, .method = Rooting_method::midpoint,
+            .r2 = 0.0, .lambda = lambda_fallback, .t_MRCA = 0.0};
+  }
+  if (N == 1) {
+    auto t_tip = static_cast<double>(tip_descs[0].t_min + tip_descs[0].t_max) / 2.0;
+    return {.root = 0, .method = Rooting_method::midpoint,
+            .r2 = 0.0, .lambda = lambda_fallback, .t_MRCA = t_tip};
+  }
 
   // Step 1: Two-pass diameter algorithm
   auto [u, _ignore] = farthest_node_from(tree, 0);
@@ -614,46 +623,31 @@ auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs)
     return side;
   });
 
-  return R;
-}
+  // Estimate mutation rate (lambda) and root date (t_MRCA) via OLS regression of
+  // root-to-tip delta counts (m_i) against tip dates (t_i).
+  //
+  // Model: m_i = lambda * (t_i - t_MRCA), so regressing m on t gives
+  //   lambda = Cov(m, t) / Var(t),  t_MRCA = mean_t - mean_m / lambda.
+  //
+  // To avoid catastrophic cancellation when tip dates have a large offset (e.g.,
+  // days since 2020), we compute Var and Cov using deviations from mean_t.
+  auto Nd = static_cast<double>(N);
 
-// Estimate mutation rate (lambda) and root date (t_root) via OLS regression of
-// root-to-tip delta counts (m_i) against tip dates (t_i).
-//
-// Model: m_i = lambda * (t_i - t_root), so regressing m on t gives
-//   lambda = Cov(m, t) / Var(t),  t_root = mean_t - mean_m / lambda.
-//
-// To avoid catastrophic cancellation when tip dates have a large offset (e.g.,
-// days since 2020), we compute Var and Cov using deviations from mean_t.
-// This requires two passes: one to find mean_t, one to accumulate statistics.
-auto estimate_rate_and_root_date(
-    const Utree& tree, Node_index root, const std::vector<Tip_desc>& tip_descs)
-    -> Rate_estimate {
-  auto N = tree.num_tips;
-  static constexpr auto lambda_fallback = 1.0 / 30.0;  // 1 mutation per month, rough ballpark for most viruses
-
-  if (N <= 1) {
-    auto t_tip = (N == 1)
-        ? static_cast<double>(tip_descs[0].t_min + tip_descs[0].t_max) / 2.0
-        : 0.0;
-    return {lambda_fallback, t_tip};
-  }
-
-  // Pass 1: compute mean tip time
+  // Rate estimation pass 1: compute mean tip time
   auto sum_t = 0.0;
   for (auto tip : utree_tips(tree)) {
     sum_t += static_cast<double>(tip_descs[tip].t_min + tip_descs[tip].t_max) / 2.0;
   }
-  auto Nd = static_cast<double>(N);
   auto mean_t = sum_t / Nd;
 
-  // Pass 2: accumulate Var(t) and Cov(m, t) using deviations from mean_t
+  // Rate estimation pass 2: accumulate Var(t), Var(m), and Cov(m, t)
   auto cur_dist = 0;
   auto sum_m = 0.0;
-  auto sum_dt_dt = 0.0;
+  auto sum_m2 = 0.0;
+  auto sum_dt2 = 0.0;
   auto sum_m_dt = 0.0;
 
-  for (auto [arc, direction] : annotated_arc_euler_tour(tree, root)) {
+  for (auto [arc, direction] : annotated_arc_euler_tour(tree, R)) {
     auto arc_deltas = tree.count_arc_deltas(arc);
     if (direction == Arc_direction::entering) {
       cur_dist += arc_deltas;
@@ -662,7 +656,8 @@ auto estimate_rate_and_root_date(
         auto m_i = static_cast<double>(cur_dist);
         auto dt_i = static_cast<double>(tip_descs[node].t_min + tip_descs[node].t_max) / 2.0 - mean_t;
         sum_m += m_i;
-        sum_dt_dt += dt_i * dt_i;
+        sum_m2 += m_i * m_i;
+        sum_dt2 += dt_i * dt_i;
         sum_m_dt += m_i * dt_i;
       }
     } else {
@@ -671,16 +666,198 @@ auto estimate_rate_and_root_date(
   }
 
   auto mean_m = sum_m / Nd;
-  auto var_t = sum_dt_dt / Nd;
+  auto var_t = sum_dt2 / Nd;
+  auto var_m = sum_m2 / Nd - mean_m * mean_m;
   auto cov_mt = sum_m_dt / Nd;  // E[m * dt] = Cov(m,t) because E[dt] = 0
+
+  auto r2 = (var_m > 0.0 && var_t > 0.0) ? (cov_mt * cov_mt) / (var_m * var_t) : 0.0;
 
   if (var_t > 0.0 && cov_mt > 0.0) {
     auto lambda = cov_mt / var_t;
-    auto t_root = mean_t - mean_m / lambda;
-    return {lambda, t_root};
+    auto t_MRCA = mean_t - mean_m / lambda;
+    return {.root = R, .method = Rooting_method::midpoint,
+            .r2 = r2, .lambda = lambda, .t_MRCA = t_MRCA};
   }
 
-  return {lambda_fallback, mean_t - mean_m / lambda_fallback};
+  return {.root = R, .method = Rooting_method::midpoint,
+          .r2 = r2, .lambda = lambda_fallback, .t_MRCA = mean_t - mean_m / lambda_fallback};
+}
+
+// Root the tree at the position that maximizes R^2 of a root-to-tip OLS regression of
+// mutation counts against tip dates.  For each candidate root position (every inter-delta
+// point along every edge), the regression quantities are computed in O(1) from per-arc
+// subtree statistics populated by two DFS passes.
+// See plans/2026-05-18-01-better-tree-init-round4-regression-rooting.md for full details.
+auto regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
+                           absl::BitGenRef bitgen)
+    -> Rooting_info {
+  auto N = tree.num_tips;
+  auto Nd = static_cast<double>(N);
+
+  // Subtree statistics for one arc `a`, with distances measured from target(a).
+  // Sub(a) = the connected component containing target(a) after removing the edge.
+  // Computed for every arc in the tree across two DFS passes.
+  struct Arc_stats {
+    int n = 0;             // number of tips in Sub(a)
+    double sum_dt = 0.0;   // sum of (t_i - mean_t) for tips i in Sub(a)
+    double sum_m = 0.0;    // sum of dist(target(a), i) for tips i in Sub(a)
+    double sum_m_dt = 0.0; // sum of dist(target(a), i) * (t_i - mean_t) for tips i in Sub(a)
+    double sum_m2 = 0.0;   // sum of dist(target(a), i)^2 for tips i in Sub(a)
+  };
+
+  // Extend stats by prepending D deltas: each tip's distance increases by D
+  auto prepend = [](const Arc_stats& s, int D) -> Arc_stats {
+    auto Dd = static_cast<double>(D);
+    return {
+      .n = s.n,
+      .sum_dt = s.sum_dt,
+      .sum_m = Dd * s.n + s.sum_m,
+      .sum_m_dt = Dd * s.sum_dt + s.sum_m_dt,
+      .sum_m2 = Dd * Dd * s.n + 2 * Dd * s.sum_m + s.sum_m2
+    };
+  };
+
+  // Merge stats from two disjoint tip sets measured from the same node
+  auto combine = [](const Arc_stats& a, const Arc_stats& b) -> Arc_stats {
+    return {
+      .n = a.n + b.n,
+      .sum_dt = a.sum_dt + b.sum_dt,
+      .sum_m = a.sum_m + b.sum_m,
+      .sum_m_dt = a.sum_m_dt + b.sum_m_dt,
+      .sum_m2 = a.sum_m2 + b.sum_m2
+    };
+  };
+
+  if (N <= 2) { return midpoint_root_utree(tree, tip_descs); }
+
+  // Pass 0: compute mean_t and Var_t
+  auto sum_t = 0.0;
+  for (auto tip : utree_tips(tree)) {
+    sum_t += static_cast<double>(tip_descs[tip].t_min + tip_descs[tip].t_max) / 2.0;
+  }
+  auto mean_t = sum_t / Nd;
+
+  auto dt_of = [&](Node_index tip) -> double {
+    return static_cast<double>(tip_descs[tip].t_min + tip_descs[tip].t_max) / 2.0 - mean_t;
+  };
+
+  auto sum_dt2 = 0.0;
+  for (auto tip : utree_tips(tree)) {
+    auto dt = dt_of(tip);
+    sum_dt2 += dt * dt;
+  }
+  auto var_t = sum_dt2 / Nd;
+  if (var_t <= 0.0) { return midpoint_root_utree(tree, tip_descs); }
+
+  // Per-arc stats, indexed by Arc_index
+  auto arc_stats = std::vector<Arc_stats>(std::ssize(tree.arcs));
+
+  // Pass 1: bottom-up (post-order) DFS — compute stats for arcs pointing away from F
+  auto F = Node_index{0};
+  for (auto [arc_X_to_P, direction] : annotated_arc_euler_tour(tree, F)) {
+    if (direction == Arc_direction::leaving) {
+      // Leaving arc is X->P (backtracking toward F).  We've finished visiting X's subtree,
+      // so compute stats for the mate arc P->X (pointing away from F).
+      auto X = tree.origin(arc_X_to_P);
+      auto arc_P_to_X = tree.mate(arc_X_to_P);
+
+      if (tree.is_tip(X)) {
+        arc_stats[arc_P_to_X] = {.n = 1, .sum_dt = dt_of(X), .sum_m = 0, .sum_m_dt = 0, .sum_m2 = 0};
+      } else {
+        // Combine prepended stats of all children arcs (arcs from X away from F)
+        auto combined = Arc_stats{};
+        for (auto a : tree.nodes[X].arcs) {
+          if (a != k_no_arc && a != arc_X_to_P) {
+            combined = combine(combined, prepend(arc_stats[a], tree.count_arc_deltas(a)));
+          }
+        }
+        arc_stats[arc_P_to_X] = combined;
+      }
+    }
+  }
+
+  // Pass 2: top-down (pre-order) DFS + R^2 evaluation
+  auto best_r2 = -1.0;
+  auto best_candidates = std::vector<std::pair<Arc_index, int>>{};  // (arc P->X, position k)
+
+  for (auto [arc_P_to_X, direction] : annotated_arc_euler_tour(tree, F)) {
+    if (direction == Arc_direction::entering) {
+      // Entering arc is P->X (going deeper).  Compute stats for mate X->P (toward F).
+      auto P = tree.origin(arc_P_to_X);
+      auto arc_X_to_P = tree.mate(arc_P_to_X);
+
+      if (tree.is_tip(P)) {
+        // P is a tip: Sub(X->P) is just P itself
+        arc_stats[arc_X_to_P] = {.n = 1, .sum_dt = dt_of(P), .sum_m = 0, .sum_m_dt = 0, .sum_m2 = 0};
+      } else {
+        // Combine prepended stats of all outgoing arcs from P other than P->X
+        auto combined = Arc_stats{};
+        for (auto a : tree.nodes[P].arcs) {
+          if (a != k_no_arc && a != arc_P_to_X) {
+            combined = combine(combined, prepend(arc_stats[a], tree.count_arc_deltas(a)));
+          }
+        }
+        arc_stats[arc_X_to_P] = combined;
+      }
+
+      // R^2 evaluation: iterate over all positions k on this edge
+      auto D = tree.count_arc_deltas(arc_P_to_X);
+      const auto& stats_P_to_X = arc_stats[arc_P_to_X];
+      const auto& stats_X_to_P = arc_stats[arc_X_to_P];
+
+      for (auto k = 0; k <= D; ++k) {
+        auto root_stats = combine(prepend(stats_X_to_P, k), prepend(stats_P_to_X, D - k));
+
+        auto cov_mt = root_stats.sum_m_dt / Nd;
+        if (cov_mt <= 0.0) { continue; }
+
+        auto mean_m = root_stats.sum_m / Nd;
+        auto var_m = root_stats.sum_m2 / Nd - mean_m * mean_m;
+        if (var_m <= 0.0) { continue; }
+
+        auto r2 = (cov_mt * cov_mt) / (var_m * var_t);
+
+        if (r2 > best_r2) {
+          best_r2 = r2;
+          best_candidates.clear();
+        }
+        if (r2 == best_r2) {
+          best_candidates.push_back({arc_P_to_X, k});
+        }
+      }
+    }
+  }
+
+  if (best_candidates.empty()) { return midpoint_root_utree(tree, tip_descs); }
+
+  // Pick winner, breaking ties randomly
+  auto idx = absl::Uniform<int>(bitgen, 0, static_cast<int>(best_candidates.size()));
+  auto [best_arc, best_k] = best_candidates[idx];
+
+  // Recompute root_stats at the winning position for the Rooting_info
+  auto best_D = tree.count_arc_deltas(best_arc);
+  auto best_root_stats = combine(
+      prepend(arc_stats[tree.mate(best_arc)], best_k),
+      prepend(arc_stats[best_arc], best_D - best_k));
+
+  // Allocate root node and split the edge
+  auto R = tree.num_tips + tree.num_inner_nodes_so_far;
+  tree.num_inner_nodes_so_far += 1;
+
+  auto deltas_assigned = 0;
+  tree.split_edge(best_arc, R, [&](Seq_delta /*sd*/, Node_index A, Node_index B) -> Node_index {
+    auto side = (deltas_assigned < best_k) ? A : B;
+    ++deltas_assigned;
+    return side;
+  });
+
+  auto cov_mt = best_root_stats.sum_m_dt / Nd;
+  auto lambda = cov_mt / var_t;
+  auto mean_m = best_root_stats.sum_m / Nd;
+  auto t_MRCA = mean_t - mean_m / lambda;
+
+  return {.root = R, .method = Rooting_method::regression,
+          .r2 = best_r2, .lambda = lambda, .t_MRCA = t_MRCA};
 }
 
 // Convert a rooted Utree to a Phylo_tree ready for MCMC.
@@ -701,12 +878,13 @@ auto estimate_rate_and_root_date(
 // Node indices in the Utree and the Phylo_tree match 1-to-1: tips are [0, N),
 // inner nodes are [N, 2N-1).
 auto utree_to_phylo_tree(
-    Utree& utree, Node_index root, const std::vector<Tip_desc>& tip_descs,
-    const Rate_estimate& rate, absl::BitGenRef bitgen) -> Phylo_tree {
+    Utree& utree, const Rooting_info& rooting_info, const std::vector<Tip_desc>& tip_descs,
+    absl::BitGenRef bitgen) -> Phylo_tree {
 
   auto N = utree.num_tips;
-  auto lambda = rate.lambda;
-  auto t_root = rate.t_root;
+  auto root = rooting_info.root;
+  auto lambda = rooting_info.lambda;
+  auto t_root = rooting_info.t_MRCA;
 
   // N=0: empty tree
   if (N == 0) {
@@ -839,7 +1017,8 @@ auto build_initial_phylo_tree(
     Real_sequence ref_sequence, std::vector<Tip_desc> tip_descs,
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& guide_tree_progress_hook,
-    const std::function<void(int,int,int)>& refined_tree_progress_hook) -> Phylo_tree {
+    const std::function<void(int,int,int)>& refined_tree_progress_hook,
+    const std::function<void(const Rooting_info&)>& rooting_hook) -> Phylo_tree {
 
   auto utree = build_guide_tree(std::move(ref_sequence), tip_descs, bitgen,
                                 guide_tree_progress_hook);
@@ -859,9 +1038,9 @@ auto build_initial_phylo_tree(
     utree = std::move(refined);
   }
 
-  auto root = midpoint_root_utree(utree, tip_descs);
-  auto rate = estimate_rate_and_root_date(utree, root, tip_descs);
-  return utree_to_phylo_tree(utree, root, tip_descs, rate, bitgen);
+  auto rooting_info = regression_root_utree(utree, tip_descs, bitgen);
+  rooting_hook(rooting_info);
+  return utree_to_phylo_tree(utree, rooting_info, tip_descs, bitgen);
 }
 
 auto assert_utree_integrity(const Utree& tree, bool force) -> void {

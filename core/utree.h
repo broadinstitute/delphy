@@ -227,35 +227,43 @@ auto build_refined_tree(
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook = [](int,int){}) -> Utree;
 
-// Root the Utree at the timed midpoint of a diametral path.  Modifies the tree in place:
-// inserts a root node.  Returns the root node index.
-// The focus location is undefined after this call.
-auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs) -> Node_index;
+enum class Rooting_method { regression, midpoint };
 
-// Result of OLS regression of root-to-tip mutation counts against tip dates.
-struct Rate_estimate {
+struct Rooting_info {
+  Node_index root;
+  Rooting_method method;
+  double r2;       // R^2 of root-to-tip regression (may be <= 0 if no clock signal)
   double lambda;   // overall mutations per day (not per-site)
-  double t_root;   // estimated root date (days since epoch)
+  double t_MRCA;   // estimated root date (days since epoch)
 };
 
-// Estimate overall mutation rate and root date from root-to-tip distances and tip dates.
-// `root` is the root node index returned by midpoint_root_utree.
-auto estimate_rate_and_root_date(
-    const Utree& tree, Node_index root, const std::vector<Tip_desc>& tip_descs) -> Rate_estimate;
+// Root the Utree at the timed midpoint of a diametral path, then estimate
+// the mutation rate and root date via OLS regression of root-to-tip mutation
+// counts against tip dates.  Modifies the tree in place: inserts a root node.
+// The focus location is undefined after this call.
+auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs) -> Rooting_info;
+
+// Root the Utree at the position that maximizes R^2 of root-to-tip regression against tip dates.
+// Falls back to midpoint rooting if regression is not applicable (e.g., all tips have the same date).
+// Modifies the tree in place: inserts a root node.  The focus location is undefined after this call.
+auto regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
+                           absl::BitGenRef bitgen)
+    -> Rooting_info;
 
 // Convert a rooted Utree to a Phylo_tree.
-// `root` is the root node index returned by midpoint_root_utree.
-// Moves the focus to `root` if not already there.
+// Moves the focus to `rooting_info.root` if not already there.
 auto utree_to_phylo_tree(
-    Utree& utree, Node_index root, const std::vector<Tip_desc>& tip_descs,
-    const Rate_estimate& rate, absl::BitGenRef bitgen) -> Phylo_tree;
+    Utree& utree, const Rooting_info& rooting_info, const std::vector<Tip_desc>& tip_descs,
+    absl::BitGenRef bitgen) -> Phylo_tree;
 
 // Full pipeline: build guide tree, refine it, root it, estimate rate, convert to Phylo_tree.
 auto build_initial_phylo_tree(
     Real_sequence ref_sequence, std::vector<Tip_desc> tip_descs,
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& guide_tree_progress_hook = [](int,int){},
-    const std::function<void(int,int,int)>& refined_tree_progress_hook = [](int,int,int){}) -> Phylo_tree;
+    const std::function<void(int,int,int)>& refined_tree_progress_hook = [](int,int,int){},
+    const std::function<void(const Rooting_info&)>& rooting_hook = [](const Rooting_info&){})
+    -> Phylo_tree;
 
 enum class Arc_direction { entering, leaving };
 struct Annotated_arc {
