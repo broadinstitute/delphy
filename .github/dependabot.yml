@@ -1,0 +1,13 @@
+version: 2
+updates:
+  # Keep GitHub Actions up to date
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # Group minor/patch updates into a single PR to reduce noise
+    groups:
+      actions-minor:
+        update-types:
+          - "minor"
+          - "patch"

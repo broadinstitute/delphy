@@ -1,0 +1,12 @@
+# .trivyignore - CVE exceptions for Trivy security scanning
+#
+# Add CVE IDs (one per line) to suppress known false positives or
+# accepted risks. Each entry should include a comment explaining why
+# it's safe to ignore.
+#
+# Format:
+#   # Reason for ignoring
+#   CVE-YYYY-NNNNN
+#
+# Review this file periodically to remove entries for CVEs that have
+# been fixed upstream.
