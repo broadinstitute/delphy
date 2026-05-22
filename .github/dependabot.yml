@@ -5,9 +5,14 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-    # Group minor/patch updates into a single PR to reduce noise
+    # Group all updates (including major) into a single PR to reduce noise
     groups:
-      actions-minor:
+      all-actions:
         update-types:
+          - "major"
           - "minor"
           - "patch"
+    # Leave SHA-pinned third-party actions alone
+    ignore:
+      - dependency-name: "aquasecurity/trivy-action"
+      - dependency-name: "github/codeql-action"
