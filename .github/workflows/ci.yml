@@ -144,14 +144,14 @@ jobs:
           ./build/release/tests/tests --gtest_output=xml:test-results.xml
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-${{ matrix.artifact_suffix }}
           path: test-results.xml
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: delphy-${{ matrix.artifact_suffix }}
           path: |
@@ -221,7 +221,7 @@ jobs:
         run: ./build/wasm-release/tests/tests
 
       - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: delphy-wasm
           path: |
