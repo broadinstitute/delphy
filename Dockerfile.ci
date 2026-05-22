@@ -8,7 +8,7 @@
 
 ARG TARGETARCH
 
-FROM alpine:3.19
+FROM alpine:3.21
 
 ARG TARGETARCH
 
@@ -26,5 +26,9 @@ RUN chmod +x /usr/local/bin/delphy \
 
 # Verify the binary runs
 RUN /usr/local/bin/delphy --version
+
+# Run as non-root user
+RUN adduser -D delphy
+USER delphy
 
 ENTRYPOINT ["/usr/local/bin/delphy"]
