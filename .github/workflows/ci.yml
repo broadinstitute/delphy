@@ -302,7 +302,7 @@ jobs:
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.info
-          fail_ci_if_error: true
+          fail_ci_if_error: ${{ github.actor != 'dependabot[bot]' }}
           verbose: true
 
   # Job 4: Docker multi-arch image
@@ -349,7 +349,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Login to alternate registry
-        if: vars.DOCKER_ALT_REGISTRY != ''
+        if: vars.DOCKER_ALT_REGISTRY != '' && secrets.DOCKER_USERNAME != '' && secrets.DOCKER_PASSWORD != ''
         uses: docker/login-action@v4
         with:
           registry: ${{ vars.DOCKER_ALT_REGISTRY }}
