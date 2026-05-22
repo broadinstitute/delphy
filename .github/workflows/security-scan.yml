@@ -1,0 +1,137 @@
+name: Security Scan
+
+# Daily security scan for dependencies, container images, secrets, and misconfigurations
+# using Trivy. Results uploaded to GitHub Security tab via SARIF.
+#
+# Note: CodeQL also runs on this repo via a broadinstitute org-level rule
+# (outside our control). This workflow focuses on dependency CVEs and
+# infrastructure scanning.
+
+on:
+  schedule:
+    # Daily at 3 AM UTC (early morning CET/CEST for primary developer timezone)
+    - cron: '0 3 * * *'
+  workflow_dispatch: {}
+  push:
+    branches: [main]
+    paths:
+      - 'conanfile.txt'
+      - '.gitmodules'
+      - 'CMakeLists.txt'
+      - 'Dockerfile.ci'
+      - '.trivyignore'
+      - '.trivy-ignore-policy.rego'
+      - '.github/workflows/security-scan.yml'
+
+permissions:
+  contents: read
+
+env:
+  CONAN_VERSION: '2.8.1'
+
+jobs:
+  # Primary scan: filesystem for dependency CVEs, secrets, and misconfigurations
+  filesystem-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write    # Required for SARIF upload
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      # Generate conan.lock for Trivy's C++ dependency scanner
+      # Delphy doesn't commit conan.lock, so we generate it here
+      - name: Generate Conan lockfile for vulnerability scanning
+        run: |
+          pip install 'conan==${{ env.CONAN_VERSION }}'
+          conan profile detect --force
+          conan lock create .
+
+      - name: Run Trivy filesystem scan (vulnerabilities + secrets)
+        # Pinned to commit SHA due to March 2026 supply chain compromise
+        # (all version tags were force-pushed to malicious commits).
+        # SHA ed142fd0673e97e23eac54620cfb913e5ce36c25 is vetted v0.36.0.
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'vuln,secret'
+          format: 'sarif'
+          output: 'trivy-fs-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: true
+          trivyignores: '.trivyignore'
+          ignore-policy: '.trivy-ignore-policy.rego'
+
+      - name: Run Trivy misconfiguration scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'misconfig'
+          format: 'sarif'
+          output: 'trivy-misconfig-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: true
+          trivyignores: '.trivyignore'
+          ignore-policy: '.trivy-ignore-policy.rego'
+
+      - name: Upload vulnerability/secret results to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: 'trivy-fs-results.sarif'
+          category: 'trivy-filesystem-vuln'
+
+      - name: Upload misconfiguration results to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: 'trivy-misconfig-results.sarif'
+          category: 'trivy-filesystem-misconfig'
+
+  # Secondary scan: container image for Alpine OS-level CVEs
+  container-scan:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read              # Required to pull from GHCR
+      security-events: write      # Required for SARIF upload
+
+    steps:
+      - name: Checkout (for .trivyignore and .trivy-ignore-policy.rego)
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            .trivyignore
+            .trivy-ignore-policy.rego
+          sparse-checkout-cone-mode: false
+
+      - name: Run Trivy container image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: 'image'
+          image-ref: 'ghcr.io/broadinstitute/delphy:latest'
+          scanners: 'vuln'
+          format: 'sarif'
+          output: 'trivy-image-results.sarif'
+          severity: 'CRITICAL,HIGH'
+          limit-severities-for-sarif: true
+          trivyignores: '.trivyignore'
+          ignore-policy: '.trivy-ignore-policy.rego'
+
+      - name: Upload container scan results to GitHub Security
+        uses: github/codeql-action/upload-sarif@7211b7c8077ea37d8641b6271f6a365a22a5fbfa # v4.36.0
+        if: always()
+        with:
+          sarif_file: 'trivy-image-results.sarif'
+          category: 'trivy-container-image'
