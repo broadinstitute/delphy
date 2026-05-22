@@ -319,13 +319,13 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Download Linux x86_64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: delphy-linux-x86_64
           path: artifacts/linux/amd64
 
       - name: Download Linux ARM64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: delphy-linux-arm64
           path: artifacts/linux/arm64
@@ -397,13 +397,13 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: delphy-*
           path: artifacts
 
       - name: Download WASM artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: delphy-wasm
           path: artifacts/delphy-wasm
