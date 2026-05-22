@@ -42,13 +42,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
           fetch-depth: 2
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -79,7 +79,7 @@ jobs:
           brew install cmake
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: |
             ~/.cache/pip
@@ -87,7 +87,7 @@ jobs:
           key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
 
       - name: Cache Conan
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.conan2
           key: ${{ runner.os }}-${{ matrix.arch }}-conan-${{ hashFiles('conanfile.txt') }}-v2
@@ -144,14 +144,14 @@ jobs:
           ./build/release/tests/tests --gtest_output=xml:test-results.xml
 
       - name: Upload test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         if: always()
         with:
           name: test-results-${{ matrix.artifact_suffix }}
           path: test-results.xml
 
       - name: Upload artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: delphy-${{ matrix.artifact_suffix }}
           path: |
@@ -165,13 +165,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
           fetch-depth: 2
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -181,13 +181,13 @@ jobs:
           sudo apt-get install -y build-essential cmake
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
 
       - name: Cache Conan
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.conan2
           key: ${{ runner.os }}-wasm-conan-${{ hashFiles('conanfile.txt', 'wasm.profile') }}-v2
@@ -210,7 +210,7 @@ jobs:
         run: cmake --preset conan-emscripten-release
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
         with:
           node-version: '20'
 
@@ -221,7 +221,7 @@ jobs:
         run: ./build/wasm-release/tests/tests
 
       - name: Upload WASM artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: delphy-wasm
           path: |
@@ -236,13 +236,13 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           submodules: recursive
           fetch-depth: 2
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: '3.11'
 
@@ -252,13 +252,13 @@ jobs:
           sudo apt-get install -y build-essential cmake lcov
 
       - name: Cache pip
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
 
       - name: Cache Conan
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: ~/.conan2
           key: ${{ runner.os }}-x86_64-conan-coverage-${{ hashFiles('conanfile.txt') }}-v2
@@ -298,11 +298,11 @@ jobs:
           lcov --list coverage.info
 
       - name: Upload to Codecov
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v6
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
           files: coverage.info
-          fail_ci_if_error: true
+          fail_ci_if_error: ${{ github.actor != 'dependabot[bot]' }}
           verbose: true
 
   # Job 4: Docker multi-arch image
@@ -316,16 +316,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Download Linux x86_64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: delphy-linux-x86_64
           path: artifacts/linux/amd64
 
       - name: Download Linux ARM64 artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: delphy-linux-arm64
           path: artifacts/linux/arm64
@@ -336,13 +336,13 @@ jobs:
           chmod +x artifacts/linux/arm64/*
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
+        uses: docker/setup-qemu-action@v4
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Login to GHCR
-        uses: docker/login-action@v3
+        uses: docker/login-action@v4
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -350,7 +350,8 @@ jobs:
 
       - name: Login to alternate registry
         if: vars.DOCKER_ALT_REGISTRY != ''
-        uses: docker/login-action@v3
+        continue-on-error: true
+        uses: docker/login-action@v4
         with:
           registry: ${{ vars.DOCKER_ALT_REGISTRY }}
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -367,7 +368,7 @@ jobs:
 
       - name: Generate Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           images: ${{ steps.images.outputs.list }}
           tags: |
@@ -378,7 +379,7 @@ jobs:
             latest=false
 
       - name: Build and push multi-arch image
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: Dockerfile.ci
@@ -397,13 +398,13 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           pattern: delphy-*
           path: artifacts
 
       - name: Download WASM artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: delphy-wasm
           path: artifacts/delphy-wasm
@@ -423,7 +424,7 @@ jobs:
           ls -la *.tar.gz
 
       - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: artifacts/*.tar.gz
           draft: true    # Since we have immutable releases on, automatic releases are drafts to allow editing of description
