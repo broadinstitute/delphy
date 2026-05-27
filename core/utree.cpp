@@ -688,45 +688,11 @@ auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs)
 // point along every edge), the regression quantities are computed in O(1) from per-arc
 // subtree statistics populated by two DFS passes.
 // See plans/2026-05-18-01-better-tree-init-round4-regression-rooting.md for full details.
-auto regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
-                           absl::BitGenRef bitgen)
+auto ols_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
+                               absl::BitGenRef bitgen)
     -> Rooting_info {
   auto N = tree.num_tips;
   auto Nd = static_cast<double>(N);
-
-  // Subtree statistics for one arc `a`, with distances measured from target(a).
-  // Sub(a) = the connected component containing target(a) after removing the edge.
-  // Computed for every arc in the tree across two DFS passes.
-  struct Arc_stats {
-    int n = 0;             // number of tips in Sub(a)
-    double sum_dt = 0.0;   // sum of (t_i - mean_t) for tips i in Sub(a)
-    double sum_m = 0.0;    // sum of dist(target(a), i) for tips i in Sub(a)
-    double sum_m_dt = 0.0; // sum of dist(target(a), i) * (t_i - mean_t) for tips i in Sub(a)
-    double sum_m2 = 0.0;   // sum of dist(target(a), i)^2 for tips i in Sub(a)
-  };
-
-  // Extend stats by prepending D deltas: each tip's distance increases by D
-  auto prepend = [](const Arc_stats& s, int D) -> Arc_stats {
-    auto Dd = static_cast<double>(D);
-    return {
-      .n = s.n,
-      .sum_dt = s.sum_dt,
-      .sum_m = Dd * s.n + s.sum_m,
-      .sum_m_dt = Dd * s.sum_dt + s.sum_m_dt,
-      .sum_m2 = Dd * Dd * s.n + 2 * Dd * s.sum_m + s.sum_m2
-    };
-  };
-
-  // Merge stats from two disjoint tip sets measured from the same node
-  auto combine = [](const Arc_stats& a, const Arc_stats& b) -> Arc_stats {
-    return {
-      .n = a.n + b.n,
-      .sum_dt = a.sum_dt + b.sum_dt,
-      .sum_m = a.sum_m + b.sum_m,
-      .sum_m_dt = a.sum_m_dt + b.sum_m_dt,
-      .sum_m2 = a.sum_m2 + b.sum_m2
-    };
-  };
 
   if (N <= 2) { return midpoint_root_utree(tree, tip_descs); }
 
@@ -749,8 +715,42 @@ auto regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
   auto var_t = sum_dt2 / Nd;
   if (var_t <= 0.0) { return midpoint_root_utree(tree, tip_descs); }
 
-  // Per-arc stats, indexed by Arc_index
-  auto arc_stats = std::vector<Arc_stats>(std::ssize(tree.arcs));
+  // Subtree statistics for one arc `a`, with distances measured from target(a).
+  // Sub(a) = the connected component containing target(a) after removing the edge.
+  // These are the OLS (unweighted) sufficient statistics; cf. Gls_stats below.
+  struct Ols_stats {
+    int n = 0;             // number of tips in Sub(a)
+    double sum_dt = 0.0;   // sum of (t_i - mean_t) for tips i in Sub(a)
+    double sum_m = 0.0;    // sum of dist(target(a), i) for tips i in Sub(a)
+    double sum_m_dt = 0.0; // sum of dist(target(a), i) * (t_i - mean_t) for tips i in Sub(a)
+    double sum_m2 = 0.0;   // sum of dist(target(a), i)^2 for tips i in Sub(a)
+  };
+
+  // Shift stats through an arc with D mutations: each tip's distance increases by D
+  auto shift = [](const Ols_stats& s, int D) -> Ols_stats {
+    auto Dd = static_cast<double>(D);
+    return {
+      .n = s.n,
+      .sum_dt = s.sum_dt,
+      .sum_m = Dd * s.n + s.sum_m,
+      .sum_m_dt = Dd * s.sum_dt + s.sum_m_dt,
+      .sum_m2 = Dd * Dd * s.n + 2 * Dd * s.sum_m + s.sum_m2
+    };
+  };
+
+  // Merge stats from two disjoint tip sets measured from the same node
+  auto combine = [](const Ols_stats& a, const Ols_stats& b) -> Ols_stats {
+    return {
+      .n = a.n + b.n,
+      .sum_dt = a.sum_dt + b.sum_dt,
+      .sum_m = a.sum_m + b.sum_m,
+      .sum_m_dt = a.sum_m_dt + b.sum_m_dt,
+      .sum_m2 = a.sum_m2 + b.sum_m2
+    };
+  };
+
+  // Per-arc OLS stats, indexed by Arc_index
+  auto ols_stats = std::vector<Ols_stats>(std::ssize(tree.arcs));
 
   // Pass 1: bottom-up (post-order) DFS — compute stats for arcs pointing away from F
   auto F = Node_index{0};
@@ -762,24 +762,22 @@ auto regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
       auto arc_P_to_X = tree.mate(arc_X_to_P);
 
       if (tree.is_tip(X)) {
-        arc_stats[arc_P_to_X] = {.n = 1, .sum_dt = dt_of(X), .sum_m = 0, .sum_m_dt = 0, .sum_m2 = 0};
+        // Tip base case: one tip at distance 0 from itself
+        ols_stats[arc_P_to_X] = {.n = 1, .sum_dt = dt_of(X), .sum_m = 0, .sum_m_dt = 0, .sum_m2 = 0};
       } else {
-        // Combine prepended stats of all children arcs (arcs from X away from F)
-        auto combined = Arc_stats{};
+        // Combine shifted stats of all child arcs (arcs from X away from F)
+        auto combined = Ols_stats{};
         for (auto a : tree.nodes[X].arcs) {
           if (a != k_no_arc && a != arc_X_to_P) {
-            combined = combine(combined, prepend(arc_stats[a], tree.count_arc_deltas(a)));
+            combined = combine(combined, shift(ols_stats[a], tree.count_arc_deltas(a)));
           }
         }
-        arc_stats[arc_P_to_X] = combined;
+        ols_stats[arc_P_to_X] = combined;
       }
     }
   }
 
-  // Pass 2: top-down (pre-order) DFS + R^2 evaluation
-  auto best_r2 = -1.0;
-  auto best_candidates = std::vector<std::pair<Arc_index, int>>{};  // (arc P->X, position k)
-
+  // Pass 2: top-down (pre-order) DFS — compute stats for arcs pointing toward F
   for (auto [arc_P_to_X, direction] : annotated_arc_euler_tour(tree, F)) {
     if (direction == Arc_direction::entering) {
       // Entering arc is P->X (going deeper).  Compute stats for mate X->P (toward F).
@@ -788,42 +786,53 @@ auto regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
 
       if (tree.is_tip(P)) {
         // P is a tip: Sub(X->P) is just P itself
-        arc_stats[arc_X_to_P] = {.n = 1, .sum_dt = dt_of(P), .sum_m = 0, .sum_m_dt = 0, .sum_m2 = 0};
+        ols_stats[arc_X_to_P] = {.n = 1, .sum_dt = dt_of(P), .sum_m = 0, .sum_m_dt = 0, .sum_m2 = 0};
       } else {
-        // Combine prepended stats of all outgoing arcs from P other than P->X
-        auto combined = Arc_stats{};
+        // Combine shifted stats of all outgoing arcs from P other than P->X
+        auto combined = Ols_stats{};
         for (auto a : tree.nodes[P].arcs) {
           if (a != k_no_arc && a != arc_P_to_X) {
-            combined = combine(combined, prepend(arc_stats[a], tree.count_arc_deltas(a)));
+            combined = combine(combined, shift(ols_stats[a], tree.count_arc_deltas(a)));
           }
         }
-        arc_stats[arc_X_to_P] = combined;
+        ols_stats[arc_X_to_P] = combined;
       }
+    }
+  }
 
-      // R^2 evaluation: iterate over all positions k on this edge
-      auto D = tree.count_arc_deltas(arc_P_to_X);
-      const auto& stats_P_to_X = arc_stats[arc_P_to_X];
-      const auto& stats_X_to_P = arc_stats[arc_X_to_P];
+  // Pass 3: root evaluation — maximize R^2 over all edges and positions
+  auto best_r2 = -1.0;
+  auto best_candidates = std::vector<std::pair<Arc_index, int>>{};  // (arc A->B, position k)
 
-      for (auto k = 0; k <= D; ++k) {
-        auto root_stats = combine(prepend(stats_X_to_P, k), prepend(stats_P_to_X, D - k));
+  for (auto arc_A_to_B = Arc_index{0}; arc_A_to_B < std::ssize(tree.arcs); arc_A_to_B += 2) {
+    if (ols_stats[arc_A_to_B].n == 0 && ols_stats[tree.mate(arc_A_to_B)].n == 0) {
+      continue;  // free arc pair
+    }
 
-        auto cov_mt = root_stats.sum_m_dt / Nd;
-        if (cov_mt <= 0.0) { continue; }
+    auto arc_B_to_A = tree.mate(arc_A_to_B);
+    auto D = tree.count_arc_deltas(arc_A_to_B);
+    const auto& stats_A_to_B = ols_stats[arc_A_to_B];
+    const auto& stats_B_to_A = ols_stats[arc_B_to_A];
 
-        auto mean_m = root_stats.sum_m / Nd;
-        auto var_m = root_stats.sum_m2 / Nd - mean_m * mean_m;
-        if (var_m <= 0.0) { continue; }
+    // R^2 evaluation: iterate over all positions k on this edge
+    for (auto k = 0; k <= D; ++k) {
+      auto root_stats = combine(shift(stats_B_to_A, k), shift(stats_A_to_B, D - k));
 
-        auto r2 = (cov_mt * cov_mt) / (var_m * var_t);
+      auto cov_mt = root_stats.sum_m_dt / Nd;
+      if (cov_mt <= 0.0) { continue; }
 
-        if (r2 > best_r2) {
-          best_r2 = r2;
-          best_candidates.clear();
-        }
-        if (r2 == best_r2) {
-          best_candidates.push_back({arc_P_to_X, k});
-        }
+      auto mean_m = root_stats.sum_m / Nd;
+      auto var_m = root_stats.sum_m2 / Nd - mean_m * mean_m;
+      if (var_m <= 0.0) { continue; }
+
+      auto r2 = (cov_mt * cov_mt) / (var_m * var_t);
+
+      if (r2 > best_r2) {
+        best_r2 = r2;
+        best_candidates.clear();
+      }
+      if (r2 == best_r2) {
+        best_candidates.push_back({arc_A_to_B, k});
       }
     }
   }
@@ -837,8 +846,8 @@ auto regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
   // Recompute root_stats at the winning position for the Rooting_info
   auto best_D = tree.count_arc_deltas(best_arc);
   auto best_root_stats = combine(
-      prepend(arc_stats[tree.mate(best_arc)], best_k),
-      prepend(arc_stats[best_arc], best_D - best_k));
+      shift(ols_stats[tree.mate(best_arc)], best_k),
+      shift(ols_stats[best_arc], best_D - best_k));
 
   // Allocate root node and split the edge
   auto R = tree.num_tips + tree.num_inner_nodes_so_far;
@@ -851,6 +860,7 @@ auto regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
     return side;
   });
 
+  // Final regression result at best root
   auto cov_mt = best_root_stats.sum_m_dt / Nd;
   auto lambda = cov_mt / var_t;
   auto mean_m = best_root_stats.sum_m / Nd;
@@ -858,6 +868,273 @@ auto regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
 
   return {.root = R, .method = Rooting_method::regression,
           .r2 = best_r2, .lambda = lambda, .t_MRCA = t_MRCA};
+}
+
+// Root the tree at the position that minimizes chi^2 of a root-to-tip GLS (generalized
+// least squares) regression of mutation counts against tip dates.  Uses the phylogenetic
+// covariance structure via Sherman-Morrison rank-1 updates, avoiding N x N matrix inversion.
+// See plans/2026-05-21-01-better-tree-init-round4bis-gls-regression-rooting.md for details.
+auto gls_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
+                               absl::BitGenRef bitgen)
+    -> Rooting_info {
+  auto N = tree.num_tips;
+  auto Nd = static_cast<double>(N);
+
+  if (N <= 2) { return midpoint_root_utree(tree, tip_descs); }
+
+  // Pass 0: compute mean_t and Var_t
+  auto sum_t = 0.0;
+  for (auto tip : utree_tips(tree)) {
+    sum_t += static_cast<double>(tip_descs[tip].t_min + tip_descs[tip].t_max) / 2.0;
+  }
+  auto mean_t = sum_t / Nd;
+
+  auto dt_of = [&](Node_index tip) -> double {
+    return static_cast<double>(tip_descs[tip].t_min + tip_descs[tip].t_max) / 2.0 - mean_t;
+  };
+
+  auto sum_dt2 = 0.0;
+  for (auto tip : utree_tips(tree)) {
+    auto dt = dt_of(tip);
+    sum_dt2 += dt * dt;
+  }
+  auto var_t = sum_dt2 / Nd;
+  if (var_t <= 0.0) { return midpoint_root_utree(tree, tip_descs); }
+
+  // Regularization: epsilon ensures no branch has zero variance
+  auto epsilon = 0.05 * tree.count_deltas() / Nd;
+
+  // Subtree statistics for one arc `a`, with distances measured from target(a).
+  // Six precision-weighted inner products (a^T W b for a, b in {1, dt, m}) that are
+  // sufficient statistics for the GLS regression.  sum_1_W_1 == -1 is a sentinel for
+  // an unshifted tip (dt stashed in sum_dt_W_1).
+  struct Gls_stats {
+    double sum_1_W_1 = 0.0;    // 1^T  W 1   total precision weight
+    double sum_dt_W_1 = 0.0;   // dt^T W 1   weighted sum of centered dates
+    double sum_m_W_1 = 0.0;    // m^T  W 1   weighted sum of distances
+    double sum_dt_W_dt = 0.0;  // dt^T W dt  weighted sum of squared dates
+    double sum_m_W_dt = 0.0;   // m^T  W dt  weighted cross-product
+    double sum_m_W_m = 0.0;    // m^T  W m   weighted sum of squared distances
+  };
+
+  // Shift stats through an arc with z mutations and variance sigma^2 = z + epsilon.
+  // Two effects applied in sequence:
+  //   1. Distance shift: every tip's distance increases by z (m -> m + z), same as
+  //      the OLS prepend operation.  Affects sum_m_W_1, sum_m_W_dt, sum_m_W_m.
+  //   2. Sherman-Morrison covariance correction: the shared branch adds variance
+  //      sigma^2 to all tips, updating W via (Sigma + sigma^2 * 1*1^T)^{-1}.
+  //      gamma = 1 / (1 + sigma^2 * sum_1_W_1) controls the precision shrinkage.
+  // The code uses the combined formulas (distance shift then correction in one step).
+  auto shift = [epsilon](Gls_stats s, int z) -> Gls_stats {
+    auto zd = static_cast<double>(z);
+    auto sigma_sq = zd + epsilon;
+
+    if (s.sum_1_W_1 >= 0.0) {
+      // General case: distance shift + Sherman-Morrison correction.
+      //
+      // Distance shift alone (m -> m + z, W unchanged):
+      //   sum_1_W_1'   = sum_1_W_1
+      //   sum_dt_W_1'  = sum_dt_W_1
+      //   sum_m_W_1'   = sum_m_W_1 + z * sum_1_W_1
+      //   sum_dt_W_dt' = sum_dt_W_dt
+      //   sum_m_W_dt'  = sum_m_W_dt + z * sum_dt_W_1
+      //   sum_m_W_m'   = sum_m_W_m + 2*z*sum_m_W_1 + z^2*sum_1_W_1
+      //
+      // Sherman-Morrison correction alone (a^T W b -> a^T W b - sigma^2 * (a^T W 1)(1^T W b) * gamma):
+      //   Each component a^T W b is reduced by sigma^2 * (a^T W 1) * (1^T W b) * gamma.
+      //
+      // The combined formulas below apply distance shift first, then correction.
+      auto gamma = 1.0 / (1.0 + sigma_sq * s.sum_1_W_1);
+      auto shifted_sum_m_W_1 = s.sum_m_W_1 + zd * s.sum_1_W_1;
+
+      return {
+        .sum_1_W_1 = s.sum_1_W_1 * gamma,
+        .sum_dt_W_1 = s.sum_dt_W_1 * gamma,
+        .sum_m_W_1 = shifted_sum_m_W_1 * gamma,
+        .sum_dt_W_dt = s.sum_dt_W_dt - sigma_sq * s.sum_dt_W_1 * s.sum_dt_W_1 * gamma,
+        .sum_m_W_dt = (s.sum_m_W_dt + zd * s.sum_dt_W_1)
+                      - sigma_sq * s.sum_dt_W_1 * shifted_sum_m_W_1 * gamma,
+        .sum_m_W_m = (s.sum_m_W_m + 2.0 * zd * s.sum_m_W_1 + zd * zd * s.sum_1_W_1)
+                     - sigma_sq * shifted_sum_m_W_1 * shifted_sum_m_W_1 * gamma
+      };
+    } else {
+      // Tip special case: 1x1 GLS with Sigma = [sigma^2], W = [1/sigma^2]
+      auto dt_X = s.sum_dt_W_1;
+      auto inv_sigma_sq = 1.0 / sigma_sq;
+      return {
+        .sum_1_W_1 = inv_sigma_sq,
+        .sum_dt_W_1 = dt_X * inv_sigma_sq,
+        .sum_m_W_1 = zd * inv_sigma_sq,
+        .sum_dt_W_dt = dt_X * dt_X * inv_sigma_sq,
+        .sum_m_W_dt = zd * dt_X * inv_sigma_sq,
+        .sum_m_W_m = zd * zd * inv_sigma_sq
+      };
+    }
+  };
+
+  // Merge stats from two disjoint tip sets measured from the same node
+  auto combine = [](const Gls_stats& a, const Gls_stats& b) -> Gls_stats {
+    CHECK_GE(a.sum_1_W_1, 0);
+    CHECK_GE(b.sum_1_W_1, 0);
+    return {
+      .sum_1_W_1 = a.sum_1_W_1 + b.sum_1_W_1,
+      .sum_dt_W_1 = a.sum_dt_W_1 + b.sum_dt_W_1,
+      .sum_m_W_1 = a.sum_m_W_1 + b.sum_m_W_1,
+      .sum_dt_W_dt = a.sum_dt_W_dt + b.sum_dt_W_dt,
+      .sum_m_W_dt = a.sum_m_W_dt + b.sum_m_W_dt,
+      .sum_m_W_m = a.sum_m_W_m + b.sum_m_W_m
+    };
+  };
+
+  // Per-arc GLS stats, indexed by Arc_index
+  auto gls_stats = std::vector<Gls_stats>(std::ssize(tree.arcs));
+
+  // Pass 1: bottom-up (post-order) DFS — compute stats for arcs pointing away from F
+  auto F = Node_index{0};
+  for (auto [arc_X_to_P, direction] : annotated_arc_euler_tour(tree, F)) {
+    if (direction == Arc_direction::leaving) {
+      // Leaving arc is X->P (backtracking toward F).  We've finished visiting X's subtree,
+      // so compute stats for the mate arc P->X (pointing away from F).
+      auto X = tree.origin(arc_X_to_P);
+      auto arc_P_to_X = tree.mate(arc_X_to_P);
+
+      if (tree.is_tip(X)) {
+        // Tip base case: sentinel value patched up by subsequent `shift` operations
+        gls_stats[arc_P_to_X] = {.sum_1_W_1 = -1, .sum_dt_W_1 = dt_of(X)};
+      } else {
+        // Combine shifted stats of all child arcs (arcs from X away from F)
+        auto combined = Gls_stats{};
+        for (auto a : tree.nodes[X].arcs) {
+          if (a != k_no_arc && a != arc_X_to_P) {
+            combined = combine(combined, shift(gls_stats[a], tree.count_arc_deltas(a)));
+          }
+        }
+        gls_stats[arc_P_to_X] = combined;
+      }
+    }
+  }
+
+  // Pass 2: top-down (pre-order) DFS — compute stats for arcs pointing toward F
+  for (auto [arc_P_to_X, direction] : annotated_arc_euler_tour(tree, F)) {
+    if (direction == Arc_direction::entering) {
+      // Entering arc is P->X (going deeper).  Compute stats for mate X->P (toward F).
+      auto P = tree.origin(arc_P_to_X);
+      auto arc_X_to_P = tree.mate(arc_P_to_X);
+
+      if (tree.is_tip(P)) {
+        // P is a tip: Sub(X->P) is just P itself
+        gls_stats[arc_X_to_P] = {.sum_1_W_1 = -1, .sum_dt_W_1 = dt_of(P)};
+      } else {
+        // Combine shifted stats of all outgoing arcs from P other than P->X
+        auto combined = Gls_stats{};
+        for (auto a : tree.nodes[P].arcs) {
+          if (a != k_no_arc && a != arc_P_to_X) {
+            combined = combine(combined, shift(gls_stats[a], tree.count_arc_deltas(a)));
+          }
+        }
+        gls_stats[arc_X_to_P] = combined;
+      }
+    }
+  }
+
+  // Pass 3: root evaluation — minimize chi^2 over all edges and positions
+  auto best_chi2 = std::numeric_limits<double>::infinity();
+  auto best_candidates = std::vector<std::pair<Arc_index, int>>{};  // (arc A->B, position k)
+
+  for (auto arc_A_to_B = Arc_index{0}; arc_A_to_B < std::ssize(tree.arcs); arc_A_to_B += 2) {
+    if (gls_stats[arc_A_to_B].sum_1_W_1 == 0.0 && gls_stats[tree.mate(arc_A_to_B)].sum_1_W_1 == 0.0) {
+      continue;  // free arc pair
+    }
+
+    auto arc_B_to_A = tree.mate(arc_A_to_B);
+    auto D = tree.count_arc_deltas(arc_A_to_B);
+    const auto& stats_A_to_B = gls_stats[arc_A_to_B];
+    const auto& stats_B_to_A = gls_stats[arc_B_to_A];
+
+    // chi^2 evaluation: iterate over all positions k on this edge
+    for (auto k = 0; k <= D; ++k) {
+      auto root_stats = combine(shift(stats_B_to_A, k), shift(stats_A_to_B, D - k));
+
+      auto denom = root_stats.sum_dt_W_dt * root_stats.sum_1_W_1
+                 - root_stats.sum_dt_W_1 * root_stats.sum_dt_W_1;
+      if (denom <= 0.0) { continue; }
+      auto alpha = (root_stats.sum_m_W_dt * root_stats.sum_1_W_1
+                  - root_stats.sum_m_W_1 * root_stats.sum_dt_W_1) / denom;
+      if (alpha <= 0.0) { continue; }
+      auto beta = (root_stats.sum_m_W_1 - alpha * root_stats.sum_dt_W_1)
+                / root_stats.sum_1_W_1;
+
+      auto chi2 = root_stats.sum_m_W_m - alpha * root_stats.sum_m_W_dt
+                - beta * root_stats.sum_m_W_1;
+
+      if (chi2 < best_chi2) {
+        best_chi2 = chi2;
+        best_candidates.clear();
+      }
+      if (chi2 == best_chi2) {
+        best_candidates.push_back({arc_A_to_B, k});
+      }
+    }
+  }
+
+  if (best_candidates.empty()) { return midpoint_root_utree(tree, tip_descs); }
+
+  // Pick winner, breaking ties randomly
+  auto idx = absl::Uniform<int>(bitgen, 0, static_cast<int>(best_candidates.size()));
+  auto [best_arc, best_k] = best_candidates[idx];
+
+  // Recompute root_stats at the winning position for the Rooting_info
+  auto best_D = tree.count_arc_deltas(best_arc);
+  auto best_root_stats = combine(
+      shift(gls_stats[tree.mate(best_arc)], best_k),
+      shift(gls_stats[best_arc], best_D - best_k));
+
+  // Allocate root node and split the edge
+  auto R = tree.num_tips + tree.num_inner_nodes_so_far;
+  tree.num_inner_nodes_so_far += 1;
+
+  auto deltas_assigned = 0;
+  tree.split_edge(best_arc, R, [&](Seq_delta /*sd*/, Node_index A, Node_index B) -> Node_index {
+    auto side = (deltas_assigned < best_k) ? A : B;
+    ++deltas_assigned;
+    return side;
+  });
+
+  // R^2 computation (final pass): unweighted root-to-tip distances
+  auto cur_dist = 0;
+  auto sum_m = 0.0, sum_m2 = 0.0, sum_m_dt = 0.0;
+  for (auto [arc, direction] : annotated_arc_euler_tour(tree, R)) {
+    auto arc_deltas = tree.count_arc_deltas(arc);
+    if (direction == Arc_direction::entering) {
+      cur_dist += arc_deltas;
+      if (tree.is_tip(tree.target(arc))) {
+        auto m = static_cast<double>(cur_dist);
+        auto dt = dt_of(tree.target(arc));
+        sum_m += m;
+        sum_m2 += m * m;
+        sum_m_dt += m * dt;
+      }
+    } else {
+      cur_dist -= arc_deltas;
+    }
+  }
+  auto mean_m = sum_m / Nd;
+  auto cov_mt = sum_m_dt / Nd;
+  auto var_m = sum_m2 / Nd - mean_m * mean_m;
+  auto r2 = (var_m > 0.0 && var_t > 0.0) ? (cov_mt * cov_mt) / (var_m * var_t) : 0.0;
+
+  // Final regression result at best root
+  auto best_denom = best_root_stats.sum_dt_W_dt * best_root_stats.sum_1_W_1
+                  - best_root_stats.sum_dt_W_1 * best_root_stats.sum_dt_W_1;
+  auto alpha = (best_root_stats.sum_m_W_dt * best_root_stats.sum_1_W_1
+              - best_root_stats.sum_m_W_1 * best_root_stats.sum_dt_W_1) / best_denom;
+  auto beta = (best_root_stats.sum_m_W_1 - alpha * best_root_stats.sum_dt_W_1)
+            / best_root_stats.sum_1_W_1;
+  auto lambda = alpha;
+  auto t_MRCA = mean_t - beta / alpha;
+
+  return {.root = R, .method = Rooting_method::regression,
+          .r2 = r2, .lambda = lambda, .t_MRCA = t_MRCA};
 }
 
 // Convert a rooted Utree to a Phylo_tree ready for MCMC.
@@ -1038,8 +1315,9 @@ auto build_initial_phylo_tree(
     utree = std::move(refined);
   }
 
-  auto rooting_info = regression_root_utree(utree, tip_descs, bitgen);
+  auto rooting_info = ols_regression_root_utree(utree, tip_descs, bitgen);
   rooting_hook(rooting_info);
+
   return utree_to_phylo_tree(utree, rooting_info, tip_descs, bitgen);
 }
 

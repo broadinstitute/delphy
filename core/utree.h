@@ -243,11 +243,19 @@ struct Rooting_info {
 // The focus location is undefined after this call.
 auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs) -> Rooting_info;
 
-// Root the Utree at the position that maximizes R^2 of root-to-tip regression against tip dates.
+// Root the Utree at the position that maximizes R^2 of root-to-tip OLS regression against tip dates.
 // Falls back to midpoint rooting if regression is not applicable (e.g., all tips have the same date).
 // Modifies the tree in place: inserts a root node.  The focus location is undefined after this call.
-auto regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
-                           absl::BitGenRef bitgen)
+auto ols_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
+                               absl::BitGenRef bitgen)
+    -> Rooting_info;
+
+// Root the Utree at the position that minimizes chi^2 of root-to-tip GLS regression against tip dates.
+// Uses the phylogenetic covariance structure (Sherman-Morrison updates) to properly weight tips.
+// Falls back to midpoint rooting if regression is not applicable (e.g., all tips have the same date).
+// Modifies the tree in place: inserts a root node.  The focus location is undefined after this call.
+auto gls_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
+                               absl::BitGenRef bitgen)
     -> Rooting_info;
 
 // Convert a rooted Utree to a Phylo_tree.
