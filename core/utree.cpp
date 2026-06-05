@@ -1,4 +1,5 @@
 #include "utree.h"
+#include "dates.h"
 
 #include <cmath>
 #include <queue>
@@ -562,12 +563,12 @@ auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs)
 
   if (N == 0) {
     return {.root = k_no_node, .method = Rooting_method::midpoint,
-            .r2 = 0.0, .lambda = lambda_fallback, .t_MRCA = 0.0};
+            .r2 = 0.0, .lambda = lambda_fallback, .t_MRCA = 0.0, .node_times = {}};
   }
   if (N == 1) {
     auto t_tip = static_cast<double>(tip_descs[0].t_min + tip_descs[0].t_max) / 2.0;
     return {.root = 0, .method = Rooting_method::midpoint,
-            .r2 = 0.0, .lambda = lambda_fallback, .t_MRCA = t_tip};
+            .r2 = 0.0, .lambda = lambda_fallback, .t_MRCA = t_tip, .node_times = {}};
   }
 
   // Step 1: Two-pass diameter algorithm
@@ -676,11 +677,12 @@ auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs)
     auto lambda = cov_mt / var_t;
     auto t_MRCA = mean_t - mean_m / lambda;
     return {.root = R, .method = Rooting_method::midpoint,
-            .r2 = r2, .lambda = lambda, .t_MRCA = t_MRCA};
+            .r2 = r2, .lambda = lambda, .t_MRCA = t_MRCA, .node_times = {}};
   }
 
   return {.root = R, .method = Rooting_method::midpoint,
-          .r2 = r2, .lambda = lambda_fallback, .t_MRCA = mean_t - mean_m / lambda_fallback};
+          .r2 = r2, .lambda = lambda_fallback, .t_MRCA = mean_t - mean_m / lambda_fallback,
+          .node_times = {}};
 }
 
 // Root the tree at the position that maximizes R^2 of a root-to-tip OLS regression of
@@ -867,7 +869,7 @@ auto ols_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_des
   auto t_MRCA = mean_t - mean_m / lambda;
 
   return {.root = R, .method = Rooting_method::regression,
-          .r2 = best_r2, .lambda = lambda, .t_MRCA = t_MRCA};
+          .r2 = best_r2, .lambda = lambda, .t_MRCA = t_MRCA, .node_times = {}};
 }
 
 // Root the tree at the position that minimizes chi^2 of a root-to-tip GLS (generalized
@@ -1134,7 +1136,306 @@ auto gls_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_des
   auto t_MRCA = mean_t - beta / alpha;
 
   return {.root = R, .method = Rooting_method::regression,
-          .r2 = r2, .lambda = lambda, .t_MRCA = t_MRCA};
+          .r2 = r2, .lambda = lambda, .t_MRCA = t_MRCA, .node_times = {}};
+}
+
+// Root the tree by maximizing the marginal likelihood of a Gaussian branch-length model.
+// See plans/2026-06-04-01-better-tree-init-round4tris-marginal-likelihood-rooting.md for full details.
+auto gaussian_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
+                         absl::BitGenRef /*bitgen*/)
+    -> Rooting_info {
+  auto N = tree.num_tips;
+  auto Nd = static_cast<double>(N);
+
+  if (N <= 2) { return midpoint_root_utree(tree, tip_descs); }
+
+  // Pass 0: compute mean_t and Var_t
+  auto sum_t = 0.0;
+  for (auto tip : utree_tips(tree)) {
+    sum_t += static_cast<double>(tip_descs[tip].t_min + tip_descs[tip].t_max) / 2.0;
+  }
+  auto mean_t = sum_t / Nd;
+
+  auto dt_of = [&](Node_index tip) -> double {
+    return static_cast<double>(tip_descs[tip].t_min + tip_descs[tip].t_max) / 2.0 - mean_t;
+  };
+
+  auto t_of = [&](Node_index tip) -> double {
+    return static_cast<double>(tip_descs[tip].t_min + tip_descs[tip].t_max) / 2.0;
+  };
+
+  auto sum_dt2 = 0.0;
+  for (auto tip : utree_tips(tree)) {
+    auto dt = dt_of(tip);
+    sum_dt2 += dt * dt;
+  }
+  auto var_t = sum_dt2 / Nd;
+  if (var_t <= 0.0) { return midpoint_root_utree(tree, tip_descs); }
+
+  // Per-arc Gaussian statistics for integrating out node times.
+  //
+  // For each directed arc P->X, we summarize the effect of all tip dates in the subtree
+  // beyond X (away from P) as a Gaussian well on X's time:
+  //
+  //   tau_tilde_{P->X} = "neutral" time for X from the subtree alone = A + B/mu
+  //   sigma^2_{P->X}   = variance of that neutral time             = C/mu^2
+  //   Delta_{P->X}     = residual cost from integrating out the subtree's inner-node times
+  //                                                                 = D + F*mu + G*mu^2
+  //
+  // The A-F decomposition makes the mu-dependence explicit (all sigma^2 scale as 1/mu^2,
+  // so precision weights are mu-independent).  At a candidate root, Delta_min = D - F^2/(4G)
+  // gives the residual cost at the optimal mu = -F/(2G).
+  struct Gaussian_stats {
+    double A = 0.0;
+    double B = 0.0;
+    double C = 0.0;
+    double D = 0.0;
+    double F = 0.0;
+    double G = 0.0;
+  };
+
+  // Shift: propagate subtree stats for child Y through a branch with d mutations to parent X.
+  //
+  //     X ---[d muts]--- Y ---(subtree)
+  //
+  // The branch X-Y has Gamma(d+1, mu) posterior, approximated as Gaussian with mean (d+1)/mu
+  // and variance (d+1)/mu^2.  The shifted stats describe the effect on X's time: the neutral
+  // time shifts earlier by (d+1)/mu (B decreases), and the variance grows (C increases).
+  auto shift = [](const Gaussian_stats& s, int d) -> Gaussian_stats {
+    auto dd = static_cast<double>(d) + 1.0;
+    return {
+      .A = s.A,
+      .B = s.B - dd,
+      .C = s.C + dd,
+      .D = s.D,
+      .F = s.F,
+      .G = s.G
+    };
+  };
+
+  // Combine: merge shifted stats from two children at node X into a single well for X's parent.
+  //
+  //     P --- X --- L  (left child, shifted stats = s_L)
+  //              |
+  //              +-- R  (right child, shifted stats = s_R)
+  //
+  // Each child's shifted stats impose a Gaussian well on tau_X.  Completion of the square
+  // merges these into a single well (precision-weighted average of neutral times), with
+  // residual costs accumulated into D, F, G.
+  auto combine = [](const Gaussian_stats& s_L, const Gaussian_stats& s_R) -> Gaussian_stats {
+    CHECK_GT(s_L.C, 0.0);
+    CHECK_GT(s_R.C, 0.0);
+    auto C = 1.0 / (1.0 / s_L.C + 1.0 / s_R.C);
+    auto w_L = C / s_L.C;
+    auto w_R = C / s_R.C;
+    auto A = w_L * s_L.A + w_R * s_R.A;
+    auto B = w_L * s_L.B + w_R * s_R.B;
+    auto dA_L = A - s_L.A;
+    auto dB_L = B - s_L.B;
+    auto dA_R = A - s_R.A;
+    auto dB_R = B - s_R.B;
+    return {
+      .A = A,
+      .B = B,
+      .C = C,
+      .D = (s_L.D + dB_L * dB_L / (2.0 * s_L.C)) + (s_R.D + dB_R * dB_R / (2.0 * s_R.C)),
+      .F = (s_L.F + dA_L * dB_L / s_L.C) + (s_R.F + dA_R * dB_R / s_R.C),
+      .G = (s_L.G + dA_L * dA_L / (2.0 * s_L.C)) + (s_R.G + dA_R * dA_R / (2.0 * s_R.C))
+    };
+  };
+
+  auto gaussian_stats = std::vector<Gaussian_stats>(std::ssize(tree.arcs));
+  auto max_node_time = std::vector<double>(std::ssize(tree.arcs));
+  
+  static constexpr auto min_branch_length = 0.1;  // days
+
+  // Pass 1: bottom-up (post-order) DFS -- compute stats for arcs pointing away from O
+  auto O = Node_index{0};
+  for (auto [arc_X_to_P, direction] : annotated_arc_euler_tour(tree, O)) {
+    if (direction == Arc_direction::leaving) {
+      // Leaving arc is X->P (backtracking toward O).  We've finished visiting X's subtree,
+      // so compute stats for the mate arc P->X (pointing away from O).
+      auto X = tree.origin(arc_X_to_P);
+      auto arc_P_to_X = tree.mate(arc_X_to_P);
+
+      if (tree.is_tip(X)) {
+        // Tip base case: delta-function at the tip date, no residual cost
+        gaussian_stats[arc_P_to_X] = {.A = dt_of(X), .B = 0, .C = 0, .D = 0, .F = 0, .G = 0};
+        max_node_time[arc_P_to_X] = t_of(X);
+      } else {
+        // Shift each child's stats through its branch, then combine.
+        // Inner nodes in a Utree have exactly 3 arcs; excluding arc_X_to_P leaves 2 children.
+        auto [a0, a1, a2] = tree.nodes[X].arcs;
+        CHECK(a0 != k_no_arc && a1 != k_no_arc && a2 != k_no_arc);
+        auto arc_L = (a0 != arc_X_to_P) ? a0 : a2;
+        auto arc_R = (a1 != arc_X_to_P) ? a1 : a2;
+        auto s_L = shift(gaussian_stats[arc_L], tree.count_arc_deltas(arc_L));
+        auto s_R = shift(gaussian_stats[arc_R], tree.count_arc_deltas(arc_R));
+        gaussian_stats[arc_P_to_X] = combine(s_L, s_R);
+        max_node_time[arc_P_to_X] = std::min(max_node_time[arc_L] - min_branch_length,
+                                              max_node_time[arc_R] - min_branch_length);
+      }
+    }
+  }
+
+  // Pass 2: top-down (pre-order) DFS -- compute stats for arcs pointing toward O
+  for (auto [arc_P_to_X, direction] : annotated_arc_euler_tour(tree, O)) {
+    if (direction == Arc_direction::entering) {
+      // Entering arc is P->X (going deeper).  Compute stats for mate X->P (toward O).
+      auto P = tree.origin(arc_P_to_X);
+      auto arc_X_to_P = tree.mate(arc_P_to_X);
+
+      if (tree.is_tip(P)) {
+        // P is a tip (only when P = O): delta-function at the tip date
+        gaussian_stats[arc_X_to_P] = {.A = dt_of(P), .B = 0, .C = 0, .D = 0, .F = 0, .G = 0};
+        max_node_time[arc_X_to_P] = t_of(P);
+      } else {
+        // Combine shifted stats of the two outgoing arcs from P other than P->X
+        auto [a0, a1, a2] = tree.nodes[P].arcs;
+        CHECK(a0 != k_no_arc && a1 != k_no_arc && a2 != k_no_arc);
+        auto arc_L = (a0 != arc_P_to_X) ? a0 : a2;
+        auto arc_R = (a1 != arc_P_to_X) ? a1 : a2;
+        auto s_L = shift(gaussian_stats[arc_L], tree.count_arc_deltas(arc_L));
+        auto s_R = shift(gaussian_stats[arc_R], tree.count_arc_deltas(arc_R));
+        gaussian_stats[arc_X_to_P] = combine(s_L, s_R);
+        max_node_time[arc_X_to_P] = std::min(max_node_time[arc_L] - min_branch_length,
+                                              max_node_time[arc_R] - min_branch_length);
+      }
+    }
+  }
+
+  // Pass 3: root evaluation -- minimize Delta_min over all edges and positions
+  auto best_delta = std::numeric_limits<double>::max();
+  auto best_arc = Arc_index{-1};
+  auto best_k = 0;
+
+  for (auto arc_A_to_B = Arc_index{0}; arc_A_to_B < std::ssize(tree.arcs); arc_A_to_B += 2) {
+    if (gaussian_stats[arc_A_to_B].C == 0.0 && gaussian_stats[tree.mate(arc_A_to_B)].C == 0.0) {
+      continue;  // free arc pair
+    }
+
+    auto arc_B_to_A = tree.mate(arc_A_to_B);
+    auto D_edge = tree.count_arc_deltas(arc_A_to_B);
+
+    for (auto k = 0; k <= D_edge; ++k) {
+      auto root_stats = combine(shift(gaussian_stats[arc_B_to_A], k),
+                                shift(gaussian_stats[arc_A_to_B], D_edge - k));
+
+      if (root_stats.F >= 0.0 || root_stats.G <= 0.0) { continue; }
+
+      auto delta_min = root_stats.D - root_stats.F * root_stats.F / (4.0 * root_stats.G);
+
+      if (delta_min < best_delta) {
+        best_delta = delta_min;
+        best_arc = arc_A_to_B;
+        best_k = k;
+      }
+    }
+  }
+
+  if (best_arc < 0) { return midpoint_root_utree(tree, tip_descs); }
+
+  // Recompute root_stats at the winning position
+  auto best_D = tree.count_arc_deltas(best_arc);
+  auto best_root_stats = combine(
+      shift(gaussian_stats[tree.mate(best_arc)], best_k),
+      shift(gaussian_stats[best_arc], best_D - best_k));
+
+  auto mu = -best_root_stats.F / (2.0 * best_root_stats.G);
+  auto t_MRCA = best_root_stats.A + best_root_stats.B / mu + mean_t;
+
+  // Clamp root time before split_edge (which frees best_arc).
+  // max_node_time[B->A] is the latest allowable time for A's subtree;
+  // max_node_time[A->B] is the latest allowable time for B's subtree.
+  auto max_root_from_A_side = max_node_time[tree.mate(best_arc)];
+  auto max_root_from_B_side = max_node_time[best_arc];
+  t_MRCA = std::min(t_MRCA, std::min(max_root_from_A_side - min_branch_length,
+                                      max_root_from_B_side - min_branch_length));
+
+  // Allocate root node and split the edge
+  auto R = tree.num_tips + tree.num_inner_nodes_so_far;
+  tree.num_inner_nodes_so_far += 1;
+
+  auto deltas_assigned = 0;
+  tree.split_edge(best_arc, R, [&](Seq_delta /*sd*/, Node_index A, Node_index B) -> Node_index {
+    auto side = (deltas_assigned < best_k) ? A : B;
+    ++deltas_assigned;
+    return side;
+  });
+
+  // Pass 4: Node timing (preorder from R)
+  auto node_times = std::vector<double>(tree.num_tips + tree.num_inner_nodes_so_far, 0.0);
+  node_times[R] = t_MRCA;
+
+  for (auto [arc, direction] : annotated_arc_euler_tour(tree, R)) {
+    if (direction == Arc_direction::entering) {
+      auto P = tree.origin(arc);
+      auto X = tree.target(arc);
+      auto d_PX = tree.count_arc_deltas(arc);
+
+      if (tree.is_tip(X)) {
+        node_times[X] = t_of(X);
+      } else {
+        // Weighted average of parent-direction and child-direction neutral times
+        auto w_P = 1.0 / (static_cast<double>(d_PX) + 1.0);
+        auto tau_from_P = node_times[P] + (static_cast<double>(d_PX) + 1.0) / mu;
+
+        auto w_sum = w_P;
+        auto tau_weighted = w_P * tau_from_P;
+
+        for (auto a : tree.nodes[X].arcs) {
+          if (a != k_no_arc && a != tree.mate(arc)) {
+            auto d_child = tree.count_arc_deltas(a);
+            auto shifted = shift(gaussian_stats[a], d_child);
+            auto w_child = 1.0 / shifted.C;
+            auto tau_child = shifted.A + shifted.B / mu + mean_t;
+            w_sum += w_child;
+            tau_weighted += w_child * tau_child;
+          }
+        }
+
+        auto tau_X = tau_weighted / w_sum;
+
+        // Clamp to ensure valid branch lengths
+        auto upper_bound = std::numeric_limits<double>::max();
+        for (auto a : tree.nodes[X].arcs) {
+          if (a != k_no_arc && a != tree.mate(arc)) {
+            upper_bound = std::min(upper_bound, max_node_time[a] - min_branch_length);
+          }
+        }
+        tau_X = std::clamp(tau_X, node_times[P] + min_branch_length, upper_bound);
+
+        node_times[X] = tau_X;
+      }
+    }
+  }
+
+  // R^2 computation: unweighted root-to-tip distances (same approach as GLS)
+  auto cur_dist = 0;
+  auto sum_m = 0.0, sum_m2 = 0.0, sum_m_dt = 0.0;
+  for (auto [arc, direction] : annotated_arc_euler_tour(tree, R)) {
+    auto arc_deltas = tree.count_arc_deltas(arc);
+    if (direction == Arc_direction::entering) {
+      cur_dist += arc_deltas;
+      if (tree.is_tip(tree.target(arc))) {
+        auto m = static_cast<double>(cur_dist);
+        auto dt = dt_of(tree.target(arc));
+        sum_m += m;
+        sum_m2 += m * m;
+        sum_m_dt += m * dt;
+      }
+    } else {
+      cur_dist -= arc_deltas;
+    }
+  }
+  auto mean_m = sum_m / Nd;
+  auto cov_mt = sum_m_dt / Nd;
+  auto var_m = sum_m2 / Nd - mean_m * mean_m;
+  auto r2 = (var_m > 0.0 && var_t > 0.0) ? (cov_mt * cov_mt) / (var_m * var_t) : 0.0;
+
+  return {.root = R, .method = Rooting_method::gaussian,
+          .r2 = r2, .lambda = mu, .t_MRCA = t_MRCA,
+          .node_times = std::move(node_times)};
 }
 
 // Convert a rooted Utree to a Phylo_tree ready for MCMC.
@@ -1229,7 +1530,9 @@ auto utree_to_phylo_tree(
       phylo_tree.at(P).children.push_back(X);
 
       // Time estimate
-      auto t_X_est = t_root + static_cast<double>(m_X) / lambda;
+      auto t_X_est = rooting_info.node_times.empty()
+          ? t_root + static_cast<double>(m_X) / lambda
+          : rooting_info.node_times[X];
 
       if (utree.is_tip(X)) {
         // Tip: copy metadata, clamp time to date bounds
@@ -1315,7 +1618,23 @@ auto build_initial_phylo_tree(
     utree = std::move(refined);
   }
 
-  auto rooting_info = ols_regression_root_utree(utree, tip_descs, bitgen);
+  // Compare all three rooting methods on the same divergence tree
+  {
+    auto utree_ols = utree;
+    auto ols_info = ols_regression_root_utree(utree_ols, tip_descs, bitgen);
+    std::cerr << absl::StreamFormat("  [compare] OLS:      R^2=%.4f, lambda=%.4g mut/day, t_MRCA=%s\n",
+                                    ols_info.r2, ols_info.lambda, to_iso_date(ols_info.t_MRCA));
+  }
+  {
+    auto utree_gls = utree;
+    auto gls_info = gls_regression_root_utree(utree_gls, tip_descs, bitgen);
+    std::cerr << absl::StreamFormat("  [compare] GLS:      R^2=%.4f, lambda=%.4g mut/day, t_MRCA=%s\n",
+                                    gls_info.r2, gls_info.lambda, to_iso_date(gls_info.t_MRCA));
+  }
+
+  auto rooting_info = gaussian_root_utree(utree, tip_descs, bitgen);
+  std::cerr << absl::StreamFormat("  [compare] Gaussian: R^2=%.4f, lambda=%.4g mut/day, t_MRCA=%s\n",
+                                  rooting_info.r2, rooting_info.lambda, to_iso_date(rooting_info.t_MRCA));
   rooting_hook(rooting_info);
 
   return utree_to_phylo_tree(utree, rooting_info, tip_descs, bitgen);

@@ -862,6 +862,88 @@ TEST(Utree_test, gls_regression_root_star_topology) {
   EXPECT_LT(rooting_info.t_MRCA, 10.0);
 }
 
+// --- gaussian_root_utree ---
+
+TEST(Utree_test, gaussian_root_three_tips_known_rate) {
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 100.0f, 100.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 200.0f, 200.0f, {{1, rA, rG}, {2, rA, rT}}),
+      make_dated_tip("tip2", 300.0f, 300.0f, {{3, rA, rC}, {4, rA, rG}, {5, rA, rT}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  auto rooting_info = gaussian_root_utree(tree, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  EXPECT_EQ(rooting_info.method, Rooting_method::gaussian);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
+  EXPECT_GT(rooting_info.lambda, 0.0);
+  EXPECT_LT(rooting_info.t_MRCA, 100.0);
+  EXPECT_FALSE(rooting_info.node_times.empty());
+}
+
+TEST(Utree_test, gaussian_root_same_dates_fallback) {
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 100.0f, 100.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 100.0f, 100.0f, {{1, rA, rG}}),
+      make_dated_tip("tip2", 100.0f, 100.0f, {{2, rA, rT}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+
+  auto rooting_info = gaussian_root_utree(tree, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  EXPECT_EQ(rooting_info.method, Rooting_method::midpoint);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
+  EXPECT_NEAR(rooting_info.lambda, 1.0 / 30.0, 1e-10);
+  EXPECT_TRUE(rooting_info.node_times.empty());
+}
+
+TEST(Utree_test, gaussian_root_two_tips_fallback) {
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 0.0f, 0.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 100.0f, 100.0f, {{1, rA, rG}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+
+  auto rooting_info = gaussian_root_utree(tree, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  EXPECT_EQ(rooting_info.method, Rooting_method::midpoint);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
+  EXPECT_GT(rooting_info.lambda, 0.0);
+  EXPECT_TRUE(rooting_info.node_times.empty());
+}
+
+TEST(Utree_test, gaussian_root_star_topology) {
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_dated_tip("tip0", 10.0f, 10.0f, {{0, rA, rC}}),
+      make_dated_tip("tip1", 20.0f, 20.0f, {{1, rA, rG}}),
+      make_dated_tip("tip2", 30.0f, 30.0f, {{2, rA, rT}}),
+      make_dated_tip("tip3", 40.0f, 40.0f, {{3, rA, rC}})
+  };
+  auto tree = build_guide_tree(ref, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  auto rooting_info = gaussian_root_utree(tree, tips, bitgen);
+  assert_utree_integrity(tree, true);
+
+  EXPECT_EQ(rooting_info.method, Rooting_method::gaussian);
+  EXPECT_GE(rooting_info.root, tree.num_tips);
+  EXPECT_GT(rooting_info.lambda, 0.0);
+  EXPECT_LT(rooting_info.t_MRCA, 10.0);
+  EXPECT_FALSE(rooting_info.node_times.empty());
+}
+
 // --- utree_to_phylo_tree ---
 
 TEST(Utree_test, utree_to_phylo_tree_three_tips) {

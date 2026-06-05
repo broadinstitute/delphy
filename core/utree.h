@@ -227,7 +227,7 @@ auto build_refined_tree(
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook = [](int,int){}) -> Utree;
 
-enum class Rooting_method { regression, midpoint };
+enum class Rooting_method { regression, gaussian, midpoint };
 
 struct Rooting_info {
   Node_index root;
@@ -235,6 +235,7 @@ struct Rooting_info {
   double r2;       // R^2 of root-to-tip regression (may be <= 0 if no clock signal)
   double lambda;   // overall mutations per day (not per-site)
   double t_MRCA;   // estimated root date (days since epoch)
+  std::vector<double> node_times;  // indexed by Node_index; non-empty only for gaussian rooting
 };
 
 // Root the Utree at the timed midpoint of a diametral path, then estimate
@@ -256,6 +257,15 @@ auto ols_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_des
 // Modifies the tree in place: inserts a root node.  The focus location is undefined after this call.
 auto gls_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
                                absl::BitGenRef bitgen)
+    -> Rooting_info;
+
+// Root the Utree by maximizing the marginal likelihood of a Gaussian branch-length model.
+// Jointly optimizes root position and mutation rate; also computes optimal inner-node times.
+// Falls back to midpoint rooting if no temporal signal is detected.
+// Modifies the tree in place: inserts a root node.  The focus location is undefined after this call.
+// See plans/2026-06-04-01-better-tree-init-round4tris-marginal-likelihood-rooting.md for details.
+auto gaussian_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
+                         absl::BitGenRef bitgen)
     -> Rooting_info;
 
 // Convert a rooted Utree to a Phylo_tree.

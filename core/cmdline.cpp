@@ -543,8 +543,14 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
           pct_progress_hook(absl::StrFormat("refine round %d", round).c_str(), tips_so_far, total_tips);
         },
         [&](const Rooting_info& rooting_info) {
-          auto method_str = (rooting_info.method == Rooting_method::regression)
-              ? "root-to-tip regression" : "midpoint";
+          auto method_str = [&] {
+            switch (rooting_info.method) {
+              case Rooting_method::regression: return "root-to-tip regression";
+              case Rooting_method::gaussian: return "Gaussian marginal likelihood";
+              case Rooting_method::midpoint: return "midpoint";
+              default: return "unknown";
+            }
+          }();
           std::cerr << absl::StreamFormat("- rooting: %s, R^2 = %.4f", method_str, rooting_info.r2)
                     << absl::StreamFormat(", lambda = %.4g mut/yr (%.2g * 10^-3 mut/site/yr)",
                                           rooting_info.lambda * 365.0,
