@@ -91,6 +91,7 @@ auto build_rough_initial_tree_from_maple(
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook,
     const std::function<void(int,int,int)>& refined_tree_progress_hook,
+    const std::function<void(int,int,int)>& spr_refine_progress_hook,
     const std::function<void(const Rooting_info&)>& rooting_hook)
     -> Phylo_tree {
 
@@ -111,7 +112,7 @@ auto build_rough_initial_tree_from_maple(
     case Init_method::mp_plus_timing:
       return build_initial_phylo_tree(
           std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen,
-          progress_hook, refined_tree_progress_hook, rooting_hook);
+          progress_hook, refined_tree_progress_hook, spr_refine_progress_hook, rooting_hook);
   }
   CHECK(false) << "Unknown init method";
 }
@@ -541,6 +542,15 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
             last_pct_reported = -1;
           }
           pct_progress_hook(absl::StrFormat("refine round %d", round).c_str(), tips_so_far, total_tips);
+        },
+        [&, spr_last_pct = -1](int attempts_so_far, int max_attempts, int cur_deltas) mutable {
+          auto pct = max_attempts > 0 ? (10 * attempts_so_far / max_attempts) * 10 : 0;
+          if (pct > spr_last_pct) {
+            spr_last_pct = pct;
+            std::cerr << absl::StreamFormat(
+                "- SPR refine: %d / %d attempts (%d%%), %d deltas\n",
+                attempts_so_far, max_attempts, pct, cur_deltas);
+          }
         },
         [&](const Rooting_info& rooting_info) {
           auto method_str = (rooting_info.method == Rooting_method::regression)

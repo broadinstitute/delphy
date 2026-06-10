@@ -32,6 +32,7 @@ auto build_rough_initial_tree_from_maple(
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook = [](int,int){},
     const std::function<void(int,int,int)>& refined_tree_progress_hook = [](int,int,int){},
+    const std::function<void(int,int,int)>& spr_refine_progress_hook = [](int,int,int){},
     const std::function<void(const Rooting_info&)>& rooting_hook = [](const Rooting_info&){})
     -> Phylo_tree;
 

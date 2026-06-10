@@ -16,11 +16,109 @@ auto Utree::reset_focus(Node_index F) -> void {
   }
 }
 
-// Utree_builder: incremental tree construction engine.
+auto Utree::detach_tip(Node_index X) -> Node_index {
+  CHECK(is_tip(X));
+  CHECK_EQ(degree(X), 1);
+  CHECK_NE(focus, X);
+  CHECK_GE(num_tips, 3);
+
+  // Find X's sole arc and its neighbor M
+  auto arc_XM = Arc_index{k_no_arc};
+  for (auto a : nodes[X].arcs) {
+    if (a != k_no_arc) { arc_XM = a; break; }
+  }
+  CHECK_NE(arc_XM, k_no_arc);
+  auto M = target(arc_XM);
+  auto arc_MX = mate(arc_XM);
+
+  // Remove arc_MX from M's arc slots
+  for (auto& a : nodes[M].arcs) {
+    if (a == arc_MX) { a = k_no_arc; break; }
+  }
+
+  // Clear X
+  for (auto& a : nodes[X].arcs) { a = k_no_arc; }
+  nodes[X].arc_to_focus = k_no_arc;
+
+  free_arc_pair(arc_XM);
+  return M;
+}
+
+auto Utree::merge_through(Node_index M) -> Arc_index {
+  CHECK_EQ(degree(M), 2);
+  CHECK_NE(focus, M);
+
+  // Find M's two arcs and their targets
+  auto arc_MA = Arc_index{k_no_arc};
+  auto arc_MB = Arc_index{k_no_arc};
+  for (auto a : nodes[M].arcs) {
+    if (a != k_no_arc) {
+      if (arc_MA == k_no_arc) { arc_MA = a; }
+      else { arc_MB = a; }
+    }
+  }
+  CHECK_NE(arc_MA, k_no_arc);
+  CHECK_NE(arc_MB, k_no_arc);
+  auto A = target(arc_MA);
+  auto B = target(arc_MB);
+
+  // Compose A->B deltas: A->M then M->B
+  auto A_to_B_deltas = arcs[mate(arc_MA)].deltas;  // A->M deltas
+  for (const auto& [site, delta] : arcs[arc_MB].deltas) {
+    push_back_site_deltas({site, delta.from, delta.to}, A_to_B_deltas);
+  }
+
+  // Build B->A deltas by reversing
+  auto B_to_A_deltas = Heap_site_deltas{};
+  for (const auto& [site, delta] : A_to_B_deltas) {
+    B_to_A_deltas[site] = {delta.to, delta.from};
+  }
+
+  // Allocate new A-B edge
+  auto arc_AB = alloc_arc_pair();
+  auto arc_BA = mate(arc_AB);
+  arcs[arc_AB].target = B;
+  arcs[arc_BA].target = A;
+  arcs[arc_AB].deltas = std::move(A_to_B_deltas);
+  arcs[arc_BA].deltas = std::move(B_to_A_deltas);
+
+  // Update A's and B's arc slots: replace old arcs pointing to M
+  auto arc_AM = find_arc(A, M);
+  auto arc_BM = find_arc(B, M);
+  CHECK_NE(arc_AM, k_no_arc);
+  CHECK_NE(arc_BM, k_no_arc);
+  for (auto& a : nodes[A].arcs) {
+    if (a == arc_AM) { a = arc_AB; break; }
+  }
+  for (auto& a : nodes[B].arcs) {
+    if (a == arc_BM) { a = arc_BA; break; }
+  }
+
+  // Update arc_to_focus: exactly one of A, B had arc_to_focus pointing through M
+  if (nodes[A].arc_to_focus == arc_AM) {
+    nodes[A].arc_to_focus = arc_AB;
+  }
+  if (nodes[B].arc_to_focus == arc_BM) {
+    nodes[B].arc_to_focus = arc_BA;
+  }
+
+  // Clear M and free old arc pairs
+  for (auto& a : nodes[M].arcs) { a = k_no_arc; }
+  nodes[M].arc_to_focus = k_no_arc;
+  free_arc_pair(arc_MA);
+  free_arc_pair(arc_MB);
+
+  return arc_AB;
+}
+
+// Utree_builder: greedy parsimony placement engine for tips on a Utree.
 //
-// Builds a Utree by inserting tips one at a time with greedy parsimony placement.
-// Each tip is attached approximately at the edge where it introduces the fewest new site
-// deltas, found via a priority-queue-driven branch-and-bound search.
+// Used in two modes:
+// 1. Incremental construction: build_guide_tree / build_refined_tree create a builder from
+//    a reference sequence and insert tips one at a time via add_tip.
+// 2. SPR refinement: spr_refine_tips creates a builder from an existing tree and uses
+//    init_focus_to_X_deltas, find_best_attachment_arc, and attach_tip_to_focal_arc directly
+//    to detach and reattach tips.
 //
 // The builder maintains a "focus node" whose sequence relative to the reference is tracked
 // in deltas_ref_to_focus.  When evaluating a candidate edge for attaching a new tip X, the
@@ -30,8 +128,7 @@ auto Utree::reset_focus(Node_index F) -> void {
 // A "focal arc" is an arc whose origin is the current focus node.  Several methods below
 // operate on focal arcs, which allows cheap cost evaluation without moving the focus.
 //
-// This class is an implementation detail — not exposed in the header.  build_guide_tree
-// (and future Round 3 methods) create a builder and call add_tip in their chosen order.
+// This class is an implementation detail — not exposed in the header.
 class Utree_builder {
  public:
   Utree_builder(Real_sequence ref_sequence,
@@ -46,6 +143,19 @@ class Utree_builder {
     tree_.ref_sequence = std::move(ref_sequence);
     L_ = static_cast<int>(std::ssize(tree_.ref_sequence));
     sqrt_6L_ = std::sqrt(6.0 * L_);
+  }
+
+  Utree_builder(Utree tree,
+                const std::vector<Tip_desc>& tip_descs,
+                absl::BitGenRef bitgen)
+      : tip_descs_{tip_descs}, bitgen_{bitgen}, tree_{std::move(tree)} {
+    tips_added_ = tree_.num_tips;
+    L_ = static_cast<int>(std::ssize(tree_.ref_sequence));
+    sqrt_6L_ = std::sqrt(6.0 * L_);
+  }
+
+  auto alloc_inner_node() -> Node_index {
+    return tree_.num_tips + tree_.num_inner_nodes_so_far++;
   }
 
   // Add tip X to the tree.  Tips can be added in any order, but each tip index
@@ -65,12 +175,12 @@ class Utree_builder {
     } else {
       update_globally_missing_sites(X);
       init_focus_to_X_deltas(X);
-      auto best_arc = find_best_attachment_arc(X);
+      auto [best_arc, best_cost] = find_best_attachment_arc(X);
       if (best_arc == k_no_arc) {
         attach_tip_directly_to_isolated_focus(X);
       } else {
         move_focus_updating_focus_to_X_deltas(tree_.origin(best_arc), X);
-        attach_tip_to_focal_arc(X, best_arc);
+        attach_tip_to_focal_arc(X, best_arc, alloc_inner_node());
       }
     }
     ++tips_added_;
@@ -87,7 +197,6 @@ class Utree_builder {
   // Reposition the tree's focus.  Only valid between add_tip calls.
   auto move_focus_to(Node_index target) -> void { tree_.move_focus_to(target); }
 
- private:
   static constexpr auto k_min_pruning_threshold = 2;
   static constexpr auto pq_cmp = std::greater<>{};
   using Pq_entry = std::pair<int, Arc_index>;
@@ -165,10 +274,10 @@ class Utree_builder {
   }
 
   // Branch-and-bound search for the edge where attaching tip X introduces the fewest new
-  // site deltas.  Moves the focus during the search.  Returns the best arc, or k_no_arc if
-  // the tree has no edges (tips_added_ == 1).
+  // site deltas.  Moves the focus during the search.  Returns {best arc, best cost}, or
+  // {k_no_arc, cost} if the tree has no edges (tips_added_ == 1).
   // Pre: focus_to_X_deltas_ has been initialized for tip X.
-  auto find_best_attachment_arc(int X) -> Arc_index {
+  auto find_best_attachment_arc(int X) -> std::pair<Arc_index, int> {
     // The search explores edges in order of increasing attachment cost (number of new M-X
     // deltas).  Since the priority queue is a min-heap and costs only increase as we move
     // away from the optimum, once the cheapest remaining entry exceeds best_cost + threshold,
@@ -225,10 +334,10 @@ class Utree_builder {
     }
 
     if (best_arcs_.empty()) {
-      return k_no_arc;
+      return {k_no_arc, best_cost};
     }
     auto idx = absl::Uniform<int>(bitgen_, 0, static_cast<int>(best_arcs_.size()));
-    return best_arcs_[idx];
+    return {best_arcs_[idx], best_cost};
   }
 
   // Attach tip X with a direct edge from the current focus (no edge splitting).
@@ -247,17 +356,15 @@ class Utree_builder {
   }
 
   // Attach tip X by splitting best_arc's edge, inserting a new inner node M, and connecting
-  // tip X to M.  Distributes the old edge's deltas between the two new edges to minimize
-  // mutations on the M-X edge.
+  // tip X to M.  M must be an unused node slot (degree 0, no arcs) -- this method calls
+  // split_edge internally to insert M into the edge.  Distributes the old edge's deltas
+  // between the two new edges to minimize mutations on the M-X edge.
   // Pre: focus_to_X_deltas_ is valid, best_arc is a focal arc (origin == focus).
-  // Post: tip X is wired into the tree, inner node count incremented.
-  auto attach_tip_to_focal_arc(int X, Arc_index best_arc) -> void {
+  // Post: tip X is wired into the tree.
+  auto attach_tip_to_focal_arc(int X, Arc_index best_arc, Node_index M) -> void {
     CHECK_NE(best_arc, k_no_arc);
     CHECK_EQ(tree_.origin(best_arc), tree_.focus);
     const auto& miss_X = tip_descs_[X].missations.intervals;
-
-    auto M = tree_.num_tips + tree_.num_inner_nodes_so_far;
-    tree_.num_inner_nodes_so_far += 1;
 
     // Build M-to-X deltas incrementally during split_edge: start from focus_to_X_deltas
     // and adjust for each delta placed on the A-M side
@@ -514,6 +621,124 @@ auto build_refined_tree(
         builder.add_tip(tip);
       });
   return builder.finish();
+}
+
+auto spr_refine_tips(
+    Utree& tree, const std::vector<Tip_desc>& tip_descs,
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int,int)>& progress_hook) -> void {
+
+  auto N = tree.num_tips;
+  if (N <= 2) { return; }
+
+  auto builder = Utree_builder{std::move(tree), tip_descs, bitgen};
+  auto& t = builder.tree_;  // `tree` moved into builder; `t` is shorthand for builder.tree_
+  auto max_attempts = 10 * N;
+  auto consecutive_non_improvements = 0;
+  auto cur_deltas = t.count_deltas();
+
+  for (auto attempt = 0; attempt < max_attempts; ++attempt) {
+    auto X = t.pick_random_tip(bitgen);
+
+    // Record old state around X:
+    //
+    //                +--arc_MA-- A ...
+    //                |
+    //   X --arc_XM-- M
+    //                |
+    //                +--arc_MB-- B ...
+    //
+    auto arc_XM = Arc_index{k_no_arc};
+    for (auto a : t.nodes[X].arcs) {
+      if (a != k_no_arc) { arc_XM = a; break; }
+    }
+    auto M = t.target(arc_XM);
+
+    auto arc_MA = Arc_index{k_no_arc};
+    auto arc_MB = Arc_index{k_no_arc};
+    for (auto a : t.nodes[M].arcs) {
+      if (a != k_no_arc && t.target(a) != X) {
+        if (arc_MA == k_no_arc) { arc_MA = a; }
+        else { arc_MB = a; }
+      }
+    }
+    auto A = t.target(arc_MA);
+    auto B = t.target(arc_MB);
+    auto d_XM = static_cast<int>(std::ssize(t.arcs[arc_XM].deltas));
+    auto d_MA = static_cast<int>(std::ssize(t.arcs[arc_MA].deltas));
+    auto d_MB = static_cast<int>(std::ssize(t.arcs[arc_MB].deltas));
+
+    // Detach X (remove X-M edge, M becomes degree-2)
+    if (t.focus == X) {
+      t.move_focus_to(M);
+    }
+    t.detach_tip(X);
+
+    // Move focus away from M if needed, then merge
+    if (t.focus == M) {
+      t.move_focus_to(A);
+    }
+    auto arc_AB = t.merge_through(M);
+    auto arc_BA = t.mate(arc_AB);
+
+    // merge_through composes A-M and M-B deltas.  If A or B is a tip, the
+    // composed edge can inherit deltas at sites missing at that tip (from the
+    // inner A-M or M-B edge).  Strip them: they carry no information.
+    for (auto node : {A, B}) {
+      if (t.is_tip(node)) {
+        const auto& miss = tip_descs[node].missations.intervals;
+        absl::erase_if(t.arcs[arc_AB].deltas, [&](const auto& entry) {
+          return miss.contains(entry.first);
+        });
+        absl::erase_if(t.arcs[arc_BA].deltas, [&](const auto& entry) {
+          return miss.contains(entry.first);
+        });
+      }
+    }
+
+    auto d_AB = static_cast<int>(std::ssize(t.arcs[arc_AB].deltas));
+    auto old_cost = d_XM + d_MA + d_MB - d_AB;  // net delta cost of X at old position
+
+    // Evaluate cost of reattaching at the original position (A-B edge).
+    // This may already improve on old_cost because merge_through can cancel mutations
+    // that were needlessly split across A-M and M-B.
+    t.move_focus_to(t.origin(arc_AB));
+    builder.init_focus_to_X_deltas(X);
+    auto best_arc = arc_AB;
+    auto best_cost = builder.eval_focal_arc(arc_AB);
+
+    // Search from a random start S, unless reattaching at A-B already improves on old position
+    if (best_cost >= old_cost) {
+      // X is disconnected from the tree, so we can't move focus to it
+      Node_index S;
+      do { S = t.pick_random_node(bitgen); } while (S == X);
+      builder.move_focus_updating_focus_to_X_deltas(S, X);
+      auto [found_arc, found_cost] = builder.find_best_attachment_arc(X);
+      if (found_cost < best_cost) {
+        best_arc = found_arc;
+        best_cost = found_cost;
+      }
+    }
+
+    // Reattach at best_arc
+    builder.move_focus_updating_focus_to_X_deltas(t.origin(best_arc), X);
+    builder.attach_tip_to_focal_arc(X, best_arc, M);
+    auto deltas_change = best_cost - old_cost;
+    cur_deltas += deltas_change;
+    if (deltas_change < 0) {
+      consecutive_non_improvements = 0;
+    } else {
+      ++consecutive_non_improvements;
+    }
+
+    if (consecutive_non_improvements >= N) {
+      break;
+    }
+
+    progress_hook(attempt + 1, max_attempts, cur_deltas);
+  }
+
+  tree = builder.finish();
 }
 
 // Helper: find the farthest node from `start` by total site delta count, via DFS.
@@ -1295,6 +1520,7 @@ auto build_initial_phylo_tree(
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& guide_tree_progress_hook,
     const std::function<void(int,int,int)>& refined_tree_progress_hook,
+    const std::function<void(int,int,int)>& spr_refine_progress_hook,
     const std::function<void(const Rooting_info&)>& rooting_hook) -> Phylo_tree {
 
   auto utree = build_guide_tree(std::move(ref_sequence), tip_descs, bitgen,
@@ -1314,6 +1540,8 @@ auto build_initial_phylo_tree(
     prev_deltas = refined_deltas;
     utree = std::move(refined);
   }
+
+  spr_refine_tips(utree, tip_descs, bitgen, spr_refine_progress_hook);
 
   auto rooting_info = ols_regression_root_utree(utree, tip_descs, bitgen);
   rooting_hook(rooting_info);

@@ -116,6 +116,15 @@ struct Utree {
     return static_cast<Node_index>(absl::Uniform<int>(bitgen, 0, num_tips));
   }
 
+  // Pick a random connected node (tip or inner), skipping degree-0 nodes
+  auto pick_random_node(absl::BitGenRef bitgen) const -> Node_index {
+    auto num_nodes = num_tips + num_inner_nodes_so_far;
+    Node_index node;
+    do { node = static_cast<Node_index>(absl::Uniform<int>(bitgen, 0, num_nodes)); }
+    while (degree(node) == 0);
+    return node;
+  }
+
   // Total site deltas across all edges (each undirected edge counted once)
   auto count_deltas() const -> int {
     auto total = 0;
@@ -175,6 +184,17 @@ struct Utree {
   // Unlike move_focus_to, this does NOT update deltas_ref_to_focus.
   auto reset_focus(Node_index F) -> void;
 
+  // Remove the edge between tip X and its neighbor M, leaving M as degree-2.
+  // Returns M.  The caller must move the focus away from M (if needed) and call
+  // merge_through(M) afterward.
+  // Pre: is_tip(X), degree(X) == 1, focus != X, num_tips >= 3.
+  auto detach_tip(Node_index X) -> Node_index;
+
+  // Merge the two edges incident to degree-2 inner node M into a single edge, removing M
+  // from the tree.  Inverse of split_edge.  Pre: degree(M) == 2, focus != M.
+  // Returns the new arc A->B.
+  auto merge_through(Node_index M) -> Arc_index;
+
   // Split edge (A,B) by inserting node M.  Replaces the single edge with two: (A,M) and (M,B).
   // `site_delta_side(Seq_delta delta, Node_index A, Node_index B) -> Node_index` decides which
   // side each site delta goes to: return A for the A-M side, or B for the M-B side.
@@ -227,6 +247,15 @@ auto build_refined_tree(
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook = [](int,int){}) -> Utree;
 
+// SPR refinement of tip placements.  For each random tip, detach it, search for a better
+// reattachment point starting from a random node, and accept or roll back.
+// progress_hook(attempts_so_far, max_attempts, cur_deltas): called after each attempt with
+// the current total delta count across all edges.
+auto spr_refine_tips(
+    Utree& tree, const std::vector<Tip_desc>& tip_descs,
+    absl::BitGenRef bitgen,
+    const std::function<void(int,int,int)>& progress_hook = [](int,int,int){}) -> void;
+
 enum class Rooting_method { regression, midpoint };
 
 struct Rooting_info {
@@ -270,6 +299,7 @@ auto build_initial_phylo_tree(
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& guide_tree_progress_hook = [](int,int){},
     const std::function<void(int,int,int)>& refined_tree_progress_hook = [](int,int,int){},
+    const std::function<void(int,int,int)>& spr_refine_progress_hook = [](int,int,int){},
     const std::function<void(const Rooting_info&)>& rooting_hook = [](const Rooting_info&){})
     -> Phylo_tree;
 

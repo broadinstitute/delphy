@@ -1076,4 +1076,240 @@ TEST(Utree_test, build_initial_phylo_tree_with_missing_data) {
   EXPECT_EQ(phylo_tree.at(0).name, "seq1");
 }
 
+// --- detach_tip ---
+
+TEST(Utree_test, detach_tip_3tip_tree) {
+  auto tree = make_3tip_tree();
+  // Focus at tip 0; detach tip 2 (leaf with no deltas)
+  auto M = tree.detach_tip(2);
+  EXPECT_EQ(M, 3);
+  EXPECT_EQ(tree.degree(2), 0);
+  EXPECT_EQ(tree.degree(3), 2);  // M lost one neighbor
+  // The other two edges (0-3 and 3-1) are intact
+  EXPECT_NE(tree.find_arc(0, 3), k_no_arc);
+  EXPECT_NE(tree.find_arc(3, 1), k_no_arc);
+}
+
+TEST(Utree_test, detach_tip_4tip_tree) {
+  // Build a 4-tip tree:
+  //   tip0(C...) --- inner4 --- tip1(.G..)
+  //                    |
+  //                  inner5
+  //                 /      |
+  //           tip2(.T..)  tip3(..A.)
+  auto tree = Utree::make_empty(4);
+  tree.ref_sequence = {rA, rA, rA, rA};
+  tree.num_inner_nodes_so_far = 2;
+
+  auto arc_0_4 = tree.add_arc(0, 4);
+  set_arc_deltas(tree, arc_0_4, {{0, {rC, rA}}});
+  auto arc_4_1 = tree.add_arc(4, 1);
+  set_arc_deltas(tree, arc_4_1, {{1, {rA, rG}}});
+  auto arc_4_5 = tree.add_arc(4, 5);
+  set_arc_deltas(tree, arc_4_5, {});
+  auto arc_5_2 = tree.add_arc(5, 2);
+  set_arc_deltas(tree, arc_5_2, {{2, {rA, rT}}});
+  auto arc_5_3 = tree.add_arc(5, 3);
+  set_arc_deltas(tree, arc_5_3, {{3, {rA, rA}}});  // no-op delta, but let's use a real one
+  set_arc_deltas(tree, arc_5_3, {{3, {rA, rG}}});
+
+  tree.reset_focus(0);
+  tree.deltas_ref_to_focus[0] = {rA, rC};
+
+  // Detach tip 2
+  auto M = tree.detach_tip(2);
+  EXPECT_EQ(M, 5);
+  EXPECT_EQ(tree.degree(2), 0);
+  EXPECT_EQ(tree.degree(5), 2);
+  // Rest of the tree is intact
+  EXPECT_NE(tree.find_arc(0, 4), k_no_arc);
+  EXPECT_NE(tree.find_arc(4, 1), k_no_arc);
+  EXPECT_NE(tree.find_arc(4, 5), k_no_arc);
+  EXPECT_NE(tree.find_arc(5, 3), k_no_arc);
+  EXPECT_EQ(tree.find_arc(5, 2), k_no_arc);  // removed
+}
+
+// --- merge_through ---
+
+TEST(Utree_test, merge_through_3tip_tree) {
+  auto tree = make_3tip_tree();
+
+  // Detach tip 2, then merge through inner node 3
+  tree.detach_tip(2);
+  EXPECT_EQ(tree.degree(3), 2);
+
+  // Focus at tip 0; move away from 3 so merge_through precondition is met
+  // (focus is already at 0, which is fine)
+  auto arc_AB = tree.merge_through(3);
+
+  // After merge: direct edge between tip 0 and tip 1
+  // Composed deltas: 0->3 has {0: C->A}, 3->1 has {1: A->G}
+  // No cancellation, so 0->1 should have {0: C->A, 1: A->G}
+  EXPECT_EQ(tree.degree(3), 0);
+  EXPECT_EQ(tree.degree(0), 1);
+  EXPECT_EQ(tree.degree(1), 1);
+  EXPECT_EQ(tree.count_arc_deltas(arc_AB), 2);
+}
+
+TEST(Utree_test, merge_through_cancelling_deltas) {
+  // Build 3-tip tree where A-M and M-B have cancelling deltas at the same site
+  auto tree = Utree::make_empty(3);
+  tree.ref_sequence = {rA, rA, rA, rA};
+  tree.num_inner_nodes_so_far = 1;
+
+  // tip0 -- inner3 -- tip1, with tip2 attached to inner3
+  // Site 0: tip0 has C, inner3 has T (via 0->3: C->T), tip1 has C (via 3->1: T->C)
+  // After merge: 0->1 should cancel at site 0 (C->T->C = identity)
+  auto arc_0_3 = tree.add_arc(0, 3);
+  set_arc_deltas(tree, arc_0_3, {{0, {rC, rT}}});
+  auto arc_3_1 = tree.add_arc(3, 1);
+  set_arc_deltas(tree, arc_3_1, {{0, {rT, rC}}});
+  tree.add_arc(3, 2);
+
+  tree.reset_focus(0);
+  tree.deltas_ref_to_focus[0] = {rA, rC};
+
+  tree.detach_tip(2);
+  auto arc_AB = tree.merge_through(3);
+
+  // Deltas should cancel at site 0
+  EXPECT_EQ(tree.count_arc_deltas(arc_AB), 0);
+}
+
+TEST(Utree_test, merge_through_focus_on_B_side) {
+  auto tree = make_3tip_tree();
+  // Move focus to tip 1 (B side of inner node 3)
+  tree.move_focus_to(1);
+
+  tree.detach_tip(2);
+  auto arc_AB = tree.merge_through(3);
+
+  EXPECT_EQ(tree.count_arc_deltas(arc_AB), 2);
+}
+
+// --- spr_refine_tips ---
+
+TEST(Utree_test, spr_refine_tips_integrity) {
+  // Build a tree via the normal pipeline, then verify SPR refinement preserves integrity
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{0, rA, rC}, {1, rA, rG}}),
+      make_tip({{0, rA, rC}, {2, rA, rT}}),
+      make_tip({{3, rA, rG}, {4, rA, rT}}),
+      make_tip({{5, rA, rC}, {6, rA, rG}}),
+      make_tip({{5, rA, rC}, {7, rA, rT}})
+  };
+
+  auto guide = build_guide_tree(ref, tips, bitgen);
+  auto refined = build_refined_tree(guide, tips, bitgen);
+
+  spr_refine_tips(refined, tips, bitgen);
+
+  assert_utree_integrity(refined, true);
+  assert_utree_matches_tip_descs(refined, tips, true);
+}
+
+TEST(Utree_test, spr_refine_tips_reduces_deltas) {
+  // Build a deliberately suboptimal tree: 4 tips where one is misplaced.
+  // Tips 0 and 1 share a mutation (site 0: A->C), tips 2 and 3 share another (site 1: A->G).
+  // Optimal topology: (0,1) and (2,3) as sister pairs.
+  // We'll build a tree with (0,2) and (1,3) as sisters instead.
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{0, rA, rC}}),             // tip 0: C at site 0
+      make_tip({{0, rA, rC}}),             // tip 1: C at site 0
+      make_tip({{1, rA, rG}}),             // tip 2: G at site 1
+      make_tip({{1, rA, rG}})              // tip 3: G at site 1
+  };
+
+  // Build suboptimal tree: (0,2) as sisters, (1,3) as sisters
+  //   tip0 --- inner4 --- tip2
+  //              |
+  //            inner5
+  //           /      |
+  //         tip1    tip3
+  auto tree = Utree::make_empty(4);
+  tree.ref_sequence = ref;
+  tree.num_inner_nodes_so_far = 2;
+
+  auto arc_0_4 = tree.add_arc(0, 4);
+  set_arc_deltas(tree, arc_0_4, {{0, {rC, rA}}});
+  auto arc_4_2 = tree.add_arc(4, 2);
+  set_arc_deltas(tree, arc_4_2, {{1, {rA, rG}}});
+  tree.add_arc(4, 5);
+  auto arc_5_1 = tree.add_arc(5, 1);
+  set_arc_deltas(tree, arc_5_1, {{0, {rA, rC}}});
+  auto arc_5_3 = tree.add_arc(5, 3);
+  set_arc_deltas(tree, arc_5_3, {{1, {rA, rG}}});
+
+  tree.reset_focus(0);
+  tree.deltas_ref_to_focus[0] = {rA, rC};
+  tree.globally_missing_sites.clear();
+
+  auto deltas_before = tree.count_deltas();
+
+  spr_refine_tips(tree, tips, bitgen);
+
+  assert_utree_integrity(tree, true);
+  assert_utree_matches_tip_descs(tree, tips, true);
+  EXPECT_LT(tree.count_deltas(), deltas_before);
+}
+
+TEST(Utree_test, spr_refine_tips_monotonic) {
+  // A second pass should not make things worse
+  auto ref = Real_sequence{rA, rA, rA, rA, rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{0, rA, rC}, {1, rA, rG}}),
+      make_tip({{0, rA, rC}, {2, rA, rT}}),
+      make_tip({{3, rA, rG}, {4, rA, rT}}),
+      make_tip({{5, rA, rC}, {6, rA, rG}})
+  };
+
+  auto guide = build_guide_tree(ref, tips, bitgen);
+  auto refined = build_refined_tree(guide, tips, bitgen);
+
+  spr_refine_tips(refined, tips, bitgen);
+  auto deltas_after_first = refined.count_deltas();
+
+  spr_refine_tips(refined, tips, bitgen);
+  auto deltas_after_second = refined.count_deltas();
+
+  EXPECT_LE(deltas_after_second, deltas_after_first);
+}
+
+TEST(Utree_test, spr_refine_tips_small_trees) {
+  auto ref = Real_sequence{rA, rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+
+  // N=2: should return immediately
+  {
+    auto tips = std::vector<Tip_desc>{
+        make_tip({{0, rA, rC}}),
+        make_tip({{1, rA, rG}})
+    };
+    auto tree = build_guide_tree(ref, tips, bitgen);
+    auto deltas_before = tree.count_deltas();
+    spr_refine_tips(tree, tips, bitgen);
+    EXPECT_EQ(tree.count_deltas(), deltas_before);
+  }
+
+  // N=3: only one unrooted topology, so no improvement possible
+  {
+    auto tips = std::vector<Tip_desc>{
+        make_tip({{0, rA, rC}}),
+        make_tip({{1, rA, rG}}),
+        make_tip({{2, rA, rT}})
+    };
+    auto tree = build_guide_tree(ref, tips, bitgen);
+    auto deltas_before = tree.count_deltas();
+    spr_refine_tips(tree, tips, bitgen);
+    EXPECT_EQ(tree.count_deltas(), deltas_before);
+    assert_utree_integrity(tree, true);
+    assert_utree_matches_tip_descs(tree, tips, true);
+  }
+}
+
 }  // namespace delphy
