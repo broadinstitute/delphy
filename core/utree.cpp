@@ -78,7 +78,11 @@ class Utree_builder {
   }
 
   // Return the finished tree, transferring ownership.
-  auto finish() -> Utree { return std::move(tree_); }
+  auto finish() -> Utree {
+    assert_utree_integrity(tree_, true);
+    assert_utree_matches_tip_descs(tree_, tip_descs_, true);
+    return std::move(tree_);
+  }
 
   // Reposition the tree's focus.  Only valid between add_tip calls.
   auto move_focus_to(Node_index target) -> void { tree_.move_focus_to(target); }
@@ -263,11 +267,7 @@ class Utree_builder {
       // Distribute each delta to minimize new mutations on the M-X edge.
       // A side (M gets B's state) vs B side (M gets A's state).
       if (miss_X.contains(sd.site) || tree_.globally_missing_sites.contains(sd.site)) {
-        auto side = std::bernoulli_distribution{0.5}(bitgen_) ? A : B;
-        if (side == A) {
-          pop_front_site_deltas({sd.site, sd.from, sd.to}, M_to_X_deltas_);
-        }
-        return side;
+        return std::bernoulli_distribution{0.5}(bitgen_) ? A : B;
       }
       auto it = focus_to_X_deltas_.find(sd.site);
       if (it != focus_to_X_deltas_.end() && it->second.to == sd.to) {
@@ -1560,6 +1560,11 @@ auto assert_utree_matches_tip_descs(
     if (direction == Arc_direction::entering) {
       auto node = tree.target(arc);
       if (node < N) {
+        const auto& miss = tip_descs[node].missations.intervals;
+        for (const auto& [site, delta] : tree.arcs[arc].deltas) {
+          CHECK(not miss.contains(site))
+              << "Tip " << node << ": delta at missing site " << site;
+        }
         check_tip(node);
       }
     }

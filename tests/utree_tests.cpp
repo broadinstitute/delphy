@@ -574,23 +574,6 @@ TEST(Utree_test, assert_matches_tip_descs_passes) {
   assert_utree_matches_tip_descs(tree, tips, /*force=*/true);
 }
 
-TEST(Utree_test, assert_matches_tip_descs_with_missing_data) {
-  // tip0(A..) ---(0:A->C, 1:A->G)--- tip1(C.., missing site 1)
-  auto tree = Utree::make_empty(2);
-  tree.ref_sequence = {rA, rA, rA};
-  tree.globally_missing_sites.clear();
-
-  auto arc_01 = tree.add_arc(0, 1);
-  set_arc_deltas(tree, arc_01, {{0, {rA, rC}}, {1, {rA, rG}}});
-  tree.reset_focus(0);
-
-  auto tips = std::vector<Tip_desc>{
-      make_tip({}),                        // tip 0: same as ref
-      make_tip({{0, rA, rC}}, {{{1, 2}}})  // tip 1: C at site 0, missing site 1
-  };
-  assert_utree_matches_tip_descs(tree, tips, /*force=*/true);
-}
-
 #ifndef __EMSCRIPTEN__  // We want tests to be compiled to exercise clang, but EXPECT_DEATH doesn't exist in Emscripten
 TEST(Utree_test, assert_matches_catches_wrong_tip) {
   auto tree = make_3tip_tree();
