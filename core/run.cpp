@@ -1037,9 +1037,9 @@ auto Run::hky_kappa_move() -> void {
   // Adapting priors & moves from Gire et al 2014 BEAST file
   // - kappa has a log-normal prior, so log(kappa) has mean 1 and stddev 1.25
   // - kappa move scaled by a uniform factor from 0.75 to 1/0.75
-  //    alpha(o -> node) = 1 / (o/0.75 - o*0.75)
-  //    alpha(node -> o) = 1 / (node/0.75 - node*0.75)
-  //    => alpha(node->o) / alpha(o->node) = o / node
+  //    alpha(o -> n) = 1 / (o/0.75 - o*0.75)
+  //    alpha(n -> o) = 1 / (n/0.75 - n*0.75)
+  //    => alpha(n->o) / alpha(o->n) = o / n
   //
   // For concreteness, we assume the HKY models across all partitions are linked,
   // though the infrastructure is somewhat there already to allow for unlinked models
