@@ -11,7 +11,7 @@ Pre-built binaries are available as tarballs attached to [GitHub Releases](https
 - `delphy-macos-arm64.tar.gz` — macOS ARM64 (Apple Silicon)
 - `delphy-wasm.tar.gz` — WebAssembly bundle
 
-The Linux and macOS tarballs contain the `delphy` and `delphy_mcc` tools.  The WebAssembly tarball contains a WASM bundle that implements the core of Delphy (see [`delphy-web`](https://github.com/fathominfo/delphy-web) for the Delphy Web interface built atop this bundle, usually deployed at https://delphy.fathom.info).
+The Linux and macOS tarballs contain the `delphy` and `delphy_mcc` tools.  The WebAssembly tarball contains a WASM bundle that implements the core of Delphy (see [`delphy-web`](https://github.com/fathominfo/delphy-web) for the Delphy Web interface built atop this bundle, usually deployed at https://delphy.bio).
 
 To install, download and extract the tarball for your platform:
 ```
@@ -164,7 +164,7 @@ and obtain a version string like the following:
 Delphy Version 0.996 (build 2022, commit 33c06a8)
 ```
 
-If that works, you can try to run a short inference to verify that everything is working.  We have prepared [several benchmarks](https://github.com/broadinstitute/delphy-2024-paper-data), any of which can be used for a test run after compilation.  In particular, the [SARS-CoV-2 benchmark there](https://github.com/broadinstitute/delphy-2024-paper-data/tree/main/sars-cov-2-lemieux/delphy_inputs/ma_sars_cov_2.fasta) is what is used in the `delphy-web` demo (also available [here](https://delphy.fathom.info/ma_sars_cov_2.fasta)).  The following command will execute a (too short) MCMC run using this data:
+If that works, you can try to run a short inference to verify that everything is working.  We have prepared [several benchmarks](https://github.com/broadinstitute/delphy-2024-paper-data), any of which can be used for a test run after compilation.  In particular, the [SARS-CoV-2 benchmark there](https://github.com/broadinstitute/delphy-2024-paper-data/tree/main/sars-cov-2-lemieux/delphy_inputs/ma_sars_cov_2.fasta) is what is used in the `delphy-web` demo (also available [here](https://delphy.bio/ma_sars_cov_2.fasta)).  The following command will execute a (too short) MCMC run using this data:
 ```
 ./build/release/delphy --v0-in-fasta ma_sars_cov_2.fasta \
    --v0-steps 10000000 \
