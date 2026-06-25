@@ -42,7 +42,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 2
@@ -79,7 +79,7 @@ jobs:
           brew install cmake
 
       - name: Cache pip
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: |
             ~/.cache/pip
@@ -87,7 +87,7 @@ jobs:
           key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
 
       - name: Cache Conan
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.conan2
           key: ${{ runner.os }}-${{ matrix.arch }}-conan-${{ hashFiles('conanfile.txt') }}-v2
@@ -165,7 +165,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 2
@@ -181,13 +181,13 @@ jobs:
           sudo apt-get install -y build-essential cmake
 
       - name: Cache pip
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
 
       - name: Cache Conan
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.conan2
           key: ${{ runner.os }}-wasm-conan-${{ hashFiles('conanfile.txt', 'wasm.profile') }}-v2
@@ -236,7 +236,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           submodules: recursive
           fetch-depth: 2
@@ -252,13 +252,13 @@ jobs:
           sudo apt-get install -y build-essential cmake lcov
 
       - name: Cache pip
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.cache/pip
           key: ${{ runner.os }}-pip-conan-${{ env.CONAN_VERSION }}
 
       - name: Cache Conan
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ~/.conan2
           key: ${{ runner.os }}-x86_64-conan-coverage-${{ hashFiles('conanfile.txt') }}-v2
@@ -316,7 +316,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
 
       - name: Download Linux x86_64 artifacts
         uses: actions/download-artifact@v8
