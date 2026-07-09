@@ -1253,12 +1253,23 @@ auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs)
 // subtree statistics populated by two DFS passes.
 // See plans/2026-05-18-01-better-tree-init-round4-regression-rooting.md for full details.
 auto ols_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
-                               absl::BitGenRef bitgen)
+                               absl::BitGenRef bitgen,
+                               const std::function<void(int,int,int,int,int)>& progress_hook)
     -> Rooting_info {
   auto N = tree.num_tips;
   auto Nd = static_cast<double>(N);
 
   if (N <= 2) { return midpoint_root_utree(tree, tip_descs); }
+
+  // Progress reporting: 3 passes (see Rooting_substage).  Emit at pass start (nodes=0),
+  // every ~1% of nodes, and at pass end (nodes=total), throttled to ~100 updates/pass.
+  static constexpr auto k_num_substages = 3;
+  auto num_nodes = tree.num_tips + tree.num_inner_nodes_so_far;
+  auto num_edges = num_nodes - 1;
+  auto emit_every = std::max(1, num_nodes / 100);
+  auto emit_progress = [&](Rooting_substage id, int substage, int nodes_done, int total) {
+    progress_hook(static_cast<int>(id), substage, k_num_substages, nodes_done, total);
+  };
 
   // Pass 0: compute mean_t and Var_t
   auto sum_t = 0.0;
@@ -1318,6 +1329,8 @@ auto ols_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_des
 
   // Pass 1: bottom-up (post-order) DFS — compute stats for arcs pointing away from F
   auto F = Node_index{0};
+  emit_progress(Rooting_substage::bottom_up_timing, 1, 0, num_nodes);
+  auto p1_done = 0;
   for (auto [arc_X_to_P, direction] : annotated_arc_euler_tour(tree, F)) {
     if (direction == Arc_direction::leaving) {
       // Leaving arc is X->P (backtracking toward F).  We've finished visiting X's subtree,
@@ -1338,10 +1351,16 @@ auto ols_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_des
         }
         ols_stats[arc_P_to_X] = combined;
       }
+      if (++p1_done % emit_every == 0) {
+        emit_progress(Rooting_substage::bottom_up_timing, 1, p1_done, num_nodes);
+      }
     }
   }
+  emit_progress(Rooting_substage::bottom_up_timing, 1, num_nodes, num_nodes);
 
   // Pass 2: top-down (pre-order) DFS — compute stats for arcs pointing toward F
+  emit_progress(Rooting_substage::top_down_timing, 2, 0, num_nodes);
+  auto p2_done = 0;
   for (auto [arc_P_to_X, direction] : annotated_arc_euler_tour(tree, F)) {
     if (direction == Arc_direction::entering) {
       // Entering arc is P->X (going deeper).  Compute stats for mate X->P (toward F).
@@ -1361,16 +1380,25 @@ auto ols_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_des
         }
         ols_stats[arc_X_to_P] = combined;
       }
+      if (++p2_done % emit_every == 0) {
+        emit_progress(Rooting_substage::top_down_timing, 2, p2_done, num_nodes);
+      }
     }
   }
+  emit_progress(Rooting_substage::top_down_timing, 2, num_nodes, num_nodes);
 
   // Pass 3: root evaluation — maximize R^2 over all edges and positions
   auto best_r2 = -1.0;
   auto best_candidates = std::vector<std::pair<Arc_index, int>>{};  // (arc A->B, position k)
 
+  emit_progress(Rooting_substage::root_candidate_eval, 3, 0, num_edges);
+  auto p3_done = 0;
   for (auto arc_A_to_B = Arc_index{0}; arc_A_to_B < std::ssize(tree.arcs); arc_A_to_B += 2) {
     if (ols_stats[arc_A_to_B].n == 0 && ols_stats[tree.mate(arc_A_to_B)].n == 0) {
       continue;  // free arc pair
+    }
+    if (++p3_done % emit_every == 0) {
+      emit_progress(Rooting_substage::root_candidate_eval, 3, p3_done, num_edges);
     }
 
     auto arc_B_to_A = tree.mate(arc_A_to_B);
@@ -1400,6 +1428,7 @@ auto ols_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_des
       }
     }
   }
+  emit_progress(Rooting_substage::root_candidate_eval, 3, num_edges, num_edges);
 
   if (best_candidates.empty()) { return midpoint_root_utree(tree, tip_descs); }
 
@@ -1860,6 +1889,7 @@ auto build_initial_phylo_tree(
     const std::function<void(int,int)>& guide_tree_progress_hook,
     const std::function<void(int,int,int)>& refined_tree_progress_hook,
     const std::function<void(int,int,int)>& spr_refine_progress_hook,
+    const std::function<void(int,int,int,int,int)>& rooting_progress_hook,
     const std::function<void(const Rooting_info&)>& rooting_hook) -> Phylo_tree {
 
   auto utree = build_guide_tree(std::move(ref_sequence), tip_descs, bitgen,
@@ -1882,7 +1912,7 @@ auto build_initial_phylo_tree(
 
   spr_refine(utree, tip_descs, bitgen, spr_refine_progress_hook);
 
-  auto rooting_info = ols_regression_root_utree(utree, tip_descs, bitgen);
+  auto rooting_info = ols_regression_root_utree(utree, tip_descs, bitgen, rooting_progress_hook);
   rooting_hook(rooting_info);
 
   return utree_to_phylo_tree(utree, rooting_info, tip_descs, bitgen);

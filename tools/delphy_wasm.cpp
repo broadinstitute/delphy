@@ -105,17 +105,25 @@ auto delphy_get_commit_string(Delphy_context& /*ctx*/) -> const char* {
   return k_delphy_commit_string.c_str();;
 }
 
+// The web UI cannot choose an init method, so pin it here.  To revert to the previous
+// behaviour, set this to Init_method::old_usher_like (the refined-tree, SPR-refine, and
+// rooting progress hooks below simply never fire for old_usher_like).
+static constexpr auto k_web_init_method = Init_method::mp_plus_timing;
+
 // In principle, the JS side can take any usable input format like a FASTA file and set up
 // an initial tree.  But it's easier to expose the C++ implementations for input formats
 // that we use for the command-line version.  We don't stream file contents: if a file is
 // too large to hold in memory, too bad.
 //
-// The parsing proceeds through three stages:
+// The parsing proceeds through several stages.  For FASTA:
 // 1. Reading FASTA file
 // 2. Analyzing sequences (diffing them from consensus, mapping gaps, simplifying ambiguities)
-// 3. Building the initial tree, one tip at a time
+// 3. Building a guide tree, one tip at a time
+// 4. Building refined guide trees (multiple rounds of re-adding all tips)
+// 5. SPR refinement of the tree
+// 6. Rooting and timing
 //
-// The `stage_progress_hook` is called a number {1,2,3} when entering each stage
+// The `stage_progress_hook` is called with the stage number {1..6} when entering each stage
 // (completion is notified by calling `callback_id`, which will usually cause an
 // associated JS Promise to complete).
 //
@@ -125,8 +133,13 @@ auto delphy_get_commit_string(Delphy_context& /*ctx*/) -> const char* {
 // Every time a sequence is analyzed, the hook `analysis_progress_hook` is called with the
 // number of sequences analyzed so far and the total number of sequences.
 //
-// Every time a tip is added to the initial tree, the hook `initial_build_progress_hook`
-// is called with the number of tips added so far and the total number of tips.
+// The three "build" stages (3-5) each have their own progress hook:
+// * `guide_tree_progress_hook(tips_so_far, total_tips)`
+// * `refined_tree_progress_hook(round, tips_so_far, total_tips)`
+// * `spr_refine_progress_hook(attempt, max_attempts, cur_muts)`
+// The rooting stage (6) reports via `rooting_progress_hook(substage_id, substage,
+// num_substages, nodes_in_substage, total_in_substage)`, where substage_id comes from the
+// core's Rooting_substage enum; the UI maps ids to labels.
 //
 // Warnings throughout result in a callback to the `warning_hook`, with a sequence ID (or
 // an empty string if not a sequence-specific warning), a detail code
@@ -176,7 +189,10 @@ auto delphy_parse_fasta_into_initial_tree_async(
     int stage_progress_hook_id,         // (stage: int) -> void
     int read_progress_hook_id,          // (seqs_so_far: int, bytes_so_far: size_t, total_bytes: size_t) -> void
     int analysis_progress_hook_id,      // (seqs_so_far: int, total_seqs: int) -> void
-    int initial_build_progress_hook_id, // (tips_so_far: int, total_tips: int) -> void
+    int guide_tree_progress_hook_id,    // (tips_so_far: int, total_tips: int) -> void
+    int refined_tree_progress_hook_id,  // (round: int, tips_so_far: int, total_tips: int) -> void
+    int spr_refine_progress_hook_id,    // (attempt: int, max_attempts: int, cur_muts: int) -> void
+    int rooting_progress_hook_id,       // (substage_id, substage, num_substages, nodes, total): 5x int -> void
     int warning_hook_id,                // (seq_id: const char*, warning_code: int, detail: object) -> void
     //                                         (called synchronously)
     int callback_id)   // Signature: (PhyloTree*) -> void (success), or (msg: const char*) -> void (failure)
@@ -187,7 +203,10 @@ auto delphy_parse_fasta_into_initial_tree_async(
                          stage_progress_hook_id,
                          read_progress_hook_id,
                          analysis_progress_hook_id,
-                         initial_build_progress_hook_id,
+                         guide_tree_progress_hook_id,
+                         refined_tree_progress_hook_id,
+                         spr_refine_progress_hook_id,
+                         rooting_progress_hook_id,
                          warning_hook_id,
                          callback_id, subbitgen_seed](int /*thread_id*/) {
     try {
@@ -205,28 +224,61 @@ auto delphy_parse_fasta_into_initial_tree_async(
       // Stage 2: Analyse it (= transform it into a MAPLE file)
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 2);}, stage_progress_hook_id);
       auto maple_file = fasta_to_maple(
-          in_fasta, 
+          in_fasta,
           [analysis_progress_hook_id](int seqs_so_far, int total_seqs) {
             MAIN_THREAD_ASYNC_EM_ASM(
                 {delphyRunHook($0, $1, $2);},
                 analysis_progress_hook_id, seqs_so_far, total_seqs);
           },
           Sequence_warning_hook_bridge{warning_hook_id});
-      
-      // Stage 3: Initial tree build file
-      MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 3);}, stage_progress_hook_id);
-      auto init_method = Init_method::old_usher_like;
+
+      // Stages 3-6: build the initial tree (guide tree, refined trees, SPR refinement,
+      // rooting).  Each build sub-stage fires the coarse stage hook once, on its first
+      // progress callback (best-effort: a skipped sub-stage simply doesn't fire).
       auto bitgen = std::mt19937{subbitgen_seed};
+      auto L = std::ssize(maple_file.ref_sequence);  // captured before maple_file is moved
       auto tree = new Phylo_tree{
         build_rough_initial_tree_from_maple(
-            std::move(maple_file), init_method, bitgen,
-            [initial_build_progress_hook_id](int tips_so_far, int total_tips) {
-              MAIN_THREAD_ASYNC_EM_ASM(
-                  {delphyRunHook($0, $1, $2);},
-                  initial_build_progress_hook_id, tips_so_far, total_tips);
+            std::move(maple_file), k_web_init_method, bitgen,
+            [stage_progress_hook_id, guide_tree_progress_hook_id, fired = false]
+            (int tips_so_far, int total_tips) mutable {
+              if (!fired) { fired = true;
+                MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 3);}, stage_progress_hook_id); }
+              MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2);},
+                  guide_tree_progress_hook_id, tips_so_far, total_tips);
+            },
+            [stage_progress_hook_id, refined_tree_progress_hook_id, fired = false]
+            (int round, int tips_so_far, int total_tips) mutable {
+              if (!fired) { fired = true;
+                MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 4);}, stage_progress_hook_id); }
+              MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2, $3);},
+                  refined_tree_progress_hook_id, round, tips_so_far, total_tips);
+            },
+            [stage_progress_hook_id, spr_refine_progress_hook_id, fired = false]
+            (int attempt, int max_attempts, int cur_muts) mutable {
+              if (!fired) { fired = true;
+                MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 5);}, stage_progress_hook_id); }
+              MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2, $3);},
+                  spr_refine_progress_hook_id, attempt, max_attempts, cur_muts);
+            },
+            [stage_progress_hook_id, rooting_progress_hook_id, fired = false]
+            (int substage_id, int substage, int num_substages, int nodes, int total) mutable {
+              if (!fired) { fired = true;
+                MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 6);}, stage_progress_hook_id); }
+              MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2, $3, $4, $5);},
+                  rooting_progress_hook_id, substage_id, substage, num_substages, nodes, total);
+            },
+            [L](const Rooting_info& rooting_info) {  // completion: log diagnostics (cerr -> JS console)
+              auto method_str = (rooting_info.method == Rooting_method::regression)
+                  ? "root-to-tip regression" : "midpoint";
+              std::cerr << absl::StreamFormat("- rooting: %s, R^2 = %.4f", method_str, rooting_info.r2)
+                        << absl::StreamFormat(", lambda = %.4g mut/yr (%.2g * 10^-3 mut/site/yr)",
+                                              rooting_info.lambda * 365.0,
+                                              rooting_info.lambda * 365.0 / L * 1000)
+                        << absl::StreamFormat(", t_MRCA = %s\n", to_iso_date(rooting_info.t_MRCA));
             })
       };
-      
+
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunCallback($0, $1);}, callback_id, tree);
     } catch (std::exception& e) {
       // Sync!  e.what() may be destroyed as soon as this hook call ends 
@@ -235,20 +287,24 @@ auto delphy_parse_fasta_into_initial_tree_async(
   });
 }
 
-// For MAPLE files, the parsing proceeds through two stages (the analysis stage of FASTA
-// file loading is essentially a FASTA -> MAPLE conversion):
+// For MAPLE files, the parsing skips the FASTA analysis stage (reading a MAPLE file is
+// essentially a FASTA -> MAPLE conversion already), so the stages are:
 // 1. Reading MAPLE file
-// 2. Building the initial tree, one tip at a time
+// 2. Building a guide tree, one tip at a time
+// 3. Building refined guide trees (multiple rounds of re-adding all tips)
+// 4. SPR refinement of the tree
+// 5. Rooting and timing
 //
-// The `stage_progress_hook` is called a number {1,2,3} when entering each stage
+// The `stage_progress_hook` is called with the stage number {1..5} when entering each stage
 // (completion is notified by calling `callback_id`, which will usually cause an
 // associated JS Promise to complete).
 //
 // Every time a sequence is read from the original input file, the hook
 // `read_progress_hook` is called with the number of sequences read so far.
 //
-// Every time a tip is added to the initial tree, the hook `initial_build_progress_hook`
-// is called with the number of tips added so far and the total number of tips.
+// The build hooks (`guide_tree_progress_hook`, `refined_tree_progress_hook`,
+// `spr_refine_progress_hook`, `rooting_progress_hook`) mirror those documented for the FASTA
+// entry point above.
 //
 // Warnings throughout result in a callback to the `warning_hook`, with a sequence ID (or
 // an empty string if not a sequence-specific warning), a detail code
@@ -262,7 +318,10 @@ auto delphy_parse_maple_into_initial_tree_async(
     size_t num_maple_bytes,
     int stage_progress_hook_id,         // (stage: int) -> void
     int read_progress_hook_id,          // (seqs_so_far: int, bytes_so_far: size_t, total_bytes: size_t) -> void
-    int initial_build_progress_hook_id, // (tips_so_far: int, total_tips: int) -> void
+    int guide_tree_progress_hook_id,    // (tips_so_far: int, total_tips: int) -> void
+    int refined_tree_progress_hook_id,  // (round: int, tips_so_far: int, total_tips: int) -> void
+    int spr_refine_progress_hook_id,    // (attempt: int, max_attempts: int, cur_muts: int) -> void
+    int rooting_progress_hook_id,       // (substage_id, substage, num_substages, nodes, total): 5x int -> void
     int warning_hook_id,                // (seq_id: const char*, warning_code: int, detail: object) -> void
     //                                         (called synchronously)
     int callback_id)   // Signature: (PhyloTree*) -> void (success), or (msg: const char*) -> void (failure)
@@ -272,7 +331,10 @@ auto delphy_parse_maple_into_initial_tree_async(
   ctx.thread_pool_.push([maple_bytes, num_maple_bytes,
                          stage_progress_hook_id,
                          read_progress_hook_id,
-                         initial_build_progress_hook_id,
+                         guide_tree_progress_hook_id,
+                         refined_tree_progress_hook_id,
+                         spr_refine_progress_hook_id,
+                         rooting_progress_hook_id,
                          warning_hook_id,
                          callback_id, subbitgen_seed](int /*thread_id*/) {
     try {
@@ -287,20 +349,53 @@ auto delphy_parse_maple_into_initial_tree_async(
           },
           Sequence_warning_hook_bridge{warning_hook_id});
 
-      // Stage 2: Initial tree build file
-      MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 2);}, stage_progress_hook_id);
-      auto init_method = Init_method::old_usher_like;
+      // Stages 2-5: build the initial tree (guide tree, refined trees, SPR refinement,
+      // rooting).  Each build sub-stage fires the coarse stage hook once, on its first
+      // progress callback (best-effort: a skipped sub-stage simply doesn't fire).
       auto bitgen = std::mt19937{subbitgen_seed};
+      auto L = std::ssize(in_maple.ref_sequence);  // captured before in_maple is moved
       auto tree = new Phylo_tree{
         build_rough_initial_tree_from_maple(
-            std::move(in_maple), init_method, bitgen,
-            [initial_build_progress_hook_id](int tips_so_far, int total_tips) {
-              MAIN_THREAD_ASYNC_EM_ASM(
-                  {delphyRunHook($0, $1, $2);},
-                  initial_build_progress_hook_id, tips_so_far, total_tips);
+            std::move(in_maple), k_web_init_method, bitgen,
+            [stage_progress_hook_id, guide_tree_progress_hook_id, fired = false]
+            (int tips_so_far, int total_tips) mutable {
+              if (!fired) { fired = true;
+                MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 2);}, stage_progress_hook_id); }
+              MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2);},
+                  guide_tree_progress_hook_id, tips_so_far, total_tips);
+            },
+            [stage_progress_hook_id, refined_tree_progress_hook_id, fired = false]
+            (int round, int tips_so_far, int total_tips) mutable {
+              if (!fired) { fired = true;
+                MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 3);}, stage_progress_hook_id); }
+              MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2, $3);},
+                  refined_tree_progress_hook_id, round, tips_so_far, total_tips);
+            },
+            [stage_progress_hook_id, spr_refine_progress_hook_id, fired = false]
+            (int attempt, int max_attempts, int cur_muts) mutable {
+              if (!fired) { fired = true;
+                MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 4);}, stage_progress_hook_id); }
+              MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2, $3);},
+                  spr_refine_progress_hook_id, attempt, max_attempts, cur_muts);
+            },
+            [stage_progress_hook_id, rooting_progress_hook_id, fired = false]
+            (int substage_id, int substage, int num_substages, int nodes, int total) mutable {
+              if (!fired) { fired = true;
+                MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, 5);}, stage_progress_hook_id); }
+              MAIN_THREAD_ASYNC_EM_ASM({delphyRunHook($0, $1, $2, $3, $4, $5);},
+                  rooting_progress_hook_id, substage_id, substage, num_substages, nodes, total);
+            },
+            [L](const Rooting_info& rooting_info) {  // completion: log diagnostics (cerr -> JS console)
+              auto method_str = (rooting_info.method == Rooting_method::regression)
+                  ? "root-to-tip regression" : "midpoint";
+              std::cerr << absl::StreamFormat("- rooting: %s, R^2 = %.4f", method_str, rooting_info.r2)
+                        << absl::StreamFormat(", lambda = %.4g mut/yr (%.2g * 10^-3 mut/site/yr)",
+                                              rooting_info.lambda * 365.0,
+                                              rooting_info.lambda * 365.0 / L * 1000)
+                        << absl::StreamFormat(", t_MRCA = %s\n", to_iso_date(rooting_info.t_MRCA));
             })
       };
-      
+
       MAIN_THREAD_ASYNC_EM_ASM({delphyRunCallback($0, $1);}, callback_id, tree);
     } catch (std::exception& e) {
       // Sync!  e.what() may be destroyed as soon as this hook call ends 

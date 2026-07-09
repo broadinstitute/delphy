@@ -92,6 +92,7 @@ auto build_rough_initial_tree_from_maple(
     const std::function<void(int,int)>& progress_hook,
     const std::function<void(int,int,int)>& refined_tree_progress_hook,
     const std::function<void(int,int,int)>& spr_refine_progress_hook,
+    const std::function<void(int,int,int,int,int)>& rooting_progress_hook,
     const std::function<void(const Rooting_info&)>& rooting_hook)
     -> Phylo_tree {
 
@@ -112,9 +113,11 @@ auto build_rough_initial_tree_from_maple(
     case Init_method::mp_plus_timing:
       return build_initial_phylo_tree(
           std::move(in_maple.ref_sequence), std::move(in_maple.tip_descs), bitgen,
-          progress_hook, refined_tree_progress_hook, spr_refine_progress_hook, rooting_hook);
+          progress_hook, refined_tree_progress_hook, spr_refine_progress_hook,
+          rooting_progress_hook, rooting_hook);
   }
   CHECK(false) << "Unknown init method";
+  return Phylo_tree{};  // unreachable; silences -Werror=return-type
 }
 
 // Mean of a Laplace(mu, s) distribution truncated to [a, b].
@@ -175,7 +178,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
        cxxopts::value<bool>()->default_value("false"))
       ("v0-in-fasta", "input FASTA file", cxxopts::value<std::string>())
       ("v0-in-maple", "input MAPLE file", cxxopts::value<std::string>())
-      ("v0-init", "Tree initialization method: random, old-usher-like, mp-plus-timing (default: old-usher-like)",
+      ("v0-init", "Tree initialization method: random, old-usher-like, mp-plus-timing (default: mp-plus-timing)",
        cxxopts::value<std::string>())
       ("v0-init-heuristic", "[deprecated, use --v0-init old-usher-like]",
        cxxopts::value<bool>())
@@ -431,7 +434,7 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       std::cerr << "ERROR: The options --v0-init, --v0-init-heuristic, and --v0-init-random are mutually exclusive.  Pick one.\n";
       std::exit(EXIT_FAILURE);
     }
-    auto init_method = Init_method::old_usher_like;
+    auto init_method = Init_method::mp_plus_timing;
     if (opts.count("v0-init") > 0) {
       auto init_str = opts["v0-init"].as<std::string>();
       if (init_str == "random") {
@@ -447,6 +450,8 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
       }
     } else if (opts.count("v0-init-random") > 0) {
       init_method = Init_method::random;
+    } else if (opts.count("v0-init-heuristic") > 0) {
+      init_method = Init_method::old_usher_like;
     }
 
     auto tree = Phylo_tree{};
@@ -550,6 +555,13 @@ auto process_args(int argc, char** argv) -> Processed_cmd_line {
             std::cerr << absl::StreamFormat(
                 "- SPR refine: %d / %d attempts (%d%%), %d deltas\n",
                 attempts_so_far, max_attempts, pct, cur_deltas);
+          }
+        },
+        [&, root_last_done = 0](int /*substage_id*/, int substage, int num_substages,
+                                int nodes, int total) mutable {
+          if (nodes >= total && substage != root_last_done) {
+            root_last_done = substage;
+            std::cerr << absl::StreamFormat("- rooting pass %d / %d done\n", substage, num_substages);
           }
         },
         [&](const Rooting_info& rooting_info) {
