@@ -1129,6 +1129,40 @@ TEST(Utree_test, detach_tip_4tip_tree) {
   EXPECT_EQ(tree.find_arc(5, 2), k_no_arc);  // removed
 }
 
+// --- remove_edge ---
+
+TEST(Utree_test, remove_edge_4tip_tree) {
+  // 4-tip tree: (0,1) under inner4, (2,3) under inner5, joined by the 4-5 edge.  Cut 4-5.
+  auto tree = Utree::make_empty(4);
+  tree.ref_sequence = {rA, rA, rA, rA};
+  tree.num_inner_nodes_so_far = 2;
+
+  auto arc_0_4 = tree.add_arc(0, 4);
+  set_arc_deltas(tree, arc_0_4, {{0, {rC, rA}}});
+  tree.add_arc(4, 1);
+  tree.add_arc(4, 5);
+  tree.add_arc(5, 2);
+  tree.add_arc(5, 3);
+  tree.reset_focus(0);
+  tree.deltas_ref_to_focus[0] = {rA, rC};
+
+  EXPECT_EQ(tree.degree(4), 3);
+  EXPECT_EQ(tree.degree(5), 3);
+
+  tree.remove_edge(4, 5);
+
+  // Both endpoints drop by one degree; the arc pair is gone in both directions.
+  EXPECT_EQ(tree.degree(4), 2);
+  EXPECT_EQ(tree.degree(5), 2);
+  EXPECT_EQ(tree.find_arc(4, 5), k_no_arc);
+  EXPECT_EQ(tree.find_arc(5, 4), k_no_arc);
+  // The remaining edges are intact.
+  EXPECT_NE(tree.find_arc(0, 4), k_no_arc);
+  EXPECT_NE(tree.find_arc(4, 1), k_no_arc);
+  EXPECT_NE(tree.find_arc(5, 2), k_no_arc);
+  EXPECT_NE(tree.find_arc(5, 3), k_no_arc);
+}
+
 // --- merge_through ---
 
 TEST(Utree_test, merge_through_3tip_tree) {
@@ -1187,9 +1221,9 @@ TEST(Utree_test, merge_through_focus_on_B_side) {
   EXPECT_EQ(tree.count_arc_deltas(arc_AB), 2);
 }
 
-// --- spr_refine_tips ---
+// --- spr_refine ---
 
-TEST(Utree_test, spr_refine_tips_integrity) {
+TEST(Utree_test, spr_refine_integrity) {
   // Build a tree via the normal pipeline, then verify SPR refinement preserves integrity
   auto ref = Real_sequence{rA, rA, rA, rA, rA, rA, rA, rA};
   auto bitgen = std::mt19937{42};
@@ -1204,13 +1238,13 @@ TEST(Utree_test, spr_refine_tips_integrity) {
   auto guide = build_guide_tree(ref, tips, bitgen);
   auto refined = build_refined_tree(guide, tips, bitgen);
 
-  spr_refine_tips(refined, tips, bitgen);
+  spr_refine(refined, tips, bitgen);
 
   assert_utree_integrity(refined, true);
   assert_utree_matches_tip_descs(refined, tips, true);
 }
 
-TEST(Utree_test, spr_refine_tips_reduces_deltas) {
+TEST(Utree_test, spr_refine_reduces_deltas) {
   // Build a deliberately suboptimal tree: 4 tips where one is misplaced.
   // Tips 0 and 1 share a mutation (site 0: A->C), tips 2 and 3 share another (site 1: A->G).
   // Optimal topology: (0,1) and (2,3) as sister pairs.
@@ -1250,14 +1284,14 @@ TEST(Utree_test, spr_refine_tips_reduces_deltas) {
 
   auto deltas_before = tree.count_deltas();
 
-  spr_refine_tips(tree, tips, bitgen);
+  spr_refine(tree, tips, bitgen);
 
   assert_utree_integrity(tree, true);
   assert_utree_matches_tip_descs(tree, tips, true);
   EXPECT_LT(tree.count_deltas(), deltas_before);
 }
 
-TEST(Utree_test, spr_refine_tips_monotonic) {
+TEST(Utree_test, spr_refine_monotonic) {
   // A second pass should not make things worse
   auto ref = Real_sequence{rA, rA, rA, rA, rA, rA, rA, rA};
   auto bitgen = std::mt19937{42};
@@ -1271,16 +1305,16 @@ TEST(Utree_test, spr_refine_tips_monotonic) {
   auto guide = build_guide_tree(ref, tips, bitgen);
   auto refined = build_refined_tree(guide, tips, bitgen);
 
-  spr_refine_tips(refined, tips, bitgen);
+  spr_refine(refined, tips, bitgen);
   auto deltas_after_first = refined.count_deltas();
 
-  spr_refine_tips(refined, tips, bitgen);
+  spr_refine(refined, tips, bitgen);
   auto deltas_after_second = refined.count_deltas();
 
   EXPECT_LE(deltas_after_second, deltas_after_first);
 }
 
-TEST(Utree_test, spr_refine_tips_small_trees) {
+TEST(Utree_test, spr_refine_small_trees) {
   auto ref = Real_sequence{rA, rA, rA, rA};
   auto bitgen = std::mt19937{42};
 
@@ -1292,7 +1326,7 @@ TEST(Utree_test, spr_refine_tips_small_trees) {
     };
     auto tree = build_guide_tree(ref, tips, bitgen);
     auto deltas_before = tree.count_deltas();
-    spr_refine_tips(tree, tips, bitgen);
+    spr_refine(tree, tips, bitgen);
     EXPECT_EQ(tree.count_deltas(), deltas_before);
   }
 
@@ -1305,8 +1339,193 @@ TEST(Utree_test, spr_refine_tips_small_trees) {
     };
     auto tree = build_guide_tree(ref, tips, bitgen);
     auto deltas_before = tree.count_deltas();
-    spr_refine_tips(tree, tips, bitgen);
+    spr_refine(tree, tips, bitgen);
     EXPECT_EQ(tree.count_deltas(), deltas_before);
+    assert_utree_integrity(tree, true);
+    assert_utree_matches_tip_descs(tree, tips, true);
+  }
+}
+
+TEST(Utree_test, spr_refine_relocates_subtree) {
+  // Six tips form three natural cherries by shared markers:
+  //   (0,1): site0 C,  (2,3): site1 G,  (4,5): site2 T.
+  // Build a suboptimal caterpillar that separates tips 4 and 5 (tip4 under inner7, tip5
+  // under inner8), forcing site2 to mutate twice (homoplasy).  spr_refine should regroup
+  // them and lower the total delta count.
+  //
+  //   0,1 -- 6 -- 7 -- 8 -- 9 -- 2,3       tip4 hangs on 7, tip5 on 8
+  auto ref = Real_sequence{rA, rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{0, rA, rC}}),
+      make_tip({{0, rA, rC}}),
+      make_tip({{1, rA, rG}}),
+      make_tip({{1, rA, rG}}),
+      make_tip({{2, rA, rT}}),
+      make_tip({{2, rA, rT}})
+  };
+
+  auto tree = Utree::make_empty(6);
+  tree.ref_sequence = ref;
+  tree.num_inner_nodes_so_far = 4;   // inner nodes 6, 7, 8, 9
+
+  tree.add_arc(0, 6);
+  tree.add_arc(1, 6);
+  auto arc_6_7 = tree.add_arc(6, 7);
+  set_arc_deltas(tree, arc_6_7, {{0, {rC, rA}}});   // node6 (C..) -> node7 (A..)
+  auto arc_7_4 = tree.add_arc(7, 4);
+  set_arc_deltas(tree, arc_7_4, {{2, {rA, rT}}});
+  tree.add_arc(7, 8);
+  auto arc_8_5 = tree.add_arc(8, 5);
+  set_arc_deltas(tree, arc_8_5, {{2, {rA, rT}}});
+  auto arc_8_9 = tree.add_arc(8, 9);
+  set_arc_deltas(tree, arc_8_9, {{1, {rA, rG}}});   // node8 (.A.) -> node9 (.G.)
+  tree.add_arc(9, 2);
+  tree.add_arc(9, 3);
+
+  tree.reset_focus(0);
+  tree.deltas_ref_to_focus[0] = {rA, rC};   // focus tip0 has C at site0
+
+  // Validate the hand-built tree before refining.
+  assert_utree_integrity(tree, true);
+  assert_utree_matches_tip_descs(tree, tips, true);
+  auto deltas_before = tree.count_deltas();
+  EXPECT_EQ(deltas_before, 4);   // site2 counted twice (7-4 and 8-5)
+
+  // Several passes: the per-call abort (N consecutive non-improvements) can stop a single
+  // pass early on such a small tree before the lone improving move is sampled.
+  for (auto pass = 0; pass < 5; ++pass) {
+    spr_refine(tree, tips, bitgen);
+  }
+
+  assert_utree_integrity(tree, true);
+  assert_utree_matches_tip_descs(tree, tips, true);
+  EXPECT_EQ(tree.count_deltas(), 3);   // (4,5) regrouped: each marker mutates once
+}
+
+TEST(Utree_test, spr_refine_ambiguous_subtree_site) {
+  // A subtree X whose two children disagree at a site has an *ambiguous* Fitch set there
+  // ({d, e}).  This exercises the ambiguous path in init_fitch_X_for_subtree / attach_subtree
+  // that the cherry-only tests above never reach.  Tree:
+  //   D(site0 C) -- X -- M -- P(site1 T)
+  //                 |    |
+  //          E(site0 G)  Q(site1 C)
+  // X's children D, E differ at site0 -> Fitch_X(site0) = {C, G}.  Edge X-M is internal
+  // (both degree 3), so spr_refine attempts subtree moves across it.
+  auto ref = Real_sequence{rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{0, rA, rC}}),   // 0 = D
+      make_tip({{0, rA, rG}}),   // 1 = E
+      make_tip({{1, rA, rT}}),   // 2 = P
+      make_tip({{1, rA, rC}})    // 3 = Q
+  };
+
+  auto tree = Utree::make_empty(4);
+  tree.ref_sequence = ref;
+  tree.num_inner_nodes_so_far = 2;   // X = 4, M = 5
+
+  tree.add_arc(4, 0);                                // X(C,A) -- D(C,A): no delta
+  auto arc_4_1 = tree.add_arc(4, 1);
+  set_arc_deltas(tree, arc_4_1, {{0, {rC, rG}}});    // X(C,.) -- E(G,.)
+  auto arc_4_5 = tree.add_arc(4, 5);
+  set_arc_deltas(tree, arc_4_5, {{0, {rC, rA}}});    // X(C,.) -- M(A,.)
+  auto arc_5_2 = tree.add_arc(5, 2);
+  set_arc_deltas(tree, arc_5_2, {{1, {rA, rT}}});    // M(.,A) -- P(.,T)
+  auto arc_5_3 = tree.add_arc(5, 3);
+  set_arc_deltas(tree, arc_5_3, {{1, {rA, rC}}});    // M(.,A) -- Q(.,C)
+
+  tree.reset_focus(0);
+  tree.deltas_ref_to_focus[0] = {rA, rC};   // focus tip0 (D) has C at site0
+
+  assert_utree_integrity(tree, true);
+  assert_utree_matches_tip_descs(tree, tips, true);
+
+  // Many passes so the internal edge X-M is picked and the subtree path runs; each pass must
+  // leave a valid tree that still matches the tip sequences.
+  for (auto pass = 0; pass < 20; ++pass) {
+    spr_refine(tree, tips, bitgen);
+    assert_utree_integrity(tree, true);
+    assert_utree_matches_tip_descs(tree, tips, true);
+  }
+}
+
+TEST(Utree_test, spr_refine_random_stress) {
+  // Larger randomized trees (many tips, several mutations each, some missing intervals) to
+  // exercise deep subtrees with ambiguous and missing sites -- closer to real data.
+  auto bitgen = std::mt19937{7};
+  auto letters = std::array<Real_seq_letter, 4>{rA, rC, rG, rT};
+  const auto L = 30;
+  const auto N = 40;
+  auto ref = Real_sequence(L, rA);
+
+  auto tips = std::vector<Tip_desc>{};
+  for (auto i = 0; i < N; ++i) {
+    auto missing = Interval_set<>{};
+    if (absl::Bernoulli(bitgen, 0.3)) {
+      auto start = absl::Uniform<int>(bitgen, 0, L - 2);
+      auto len = absl::Uniform<int>(bitgen, 1, 4);
+      missing.insert({start, std::min(start + len, L)});
+    }
+    auto seq_deltas = std::vector<Seq_delta>{};
+    for (auto s = 0; s < L; ++s) {                       // one mutation per site at most
+      if (not missing.contains(s) && absl::Bernoulli(bitgen, 0.1)) {
+        seq_deltas.push_back({s, rA, letters[absl::Uniform<int>(bitgen, 1, 4)]});
+      }
+    }
+    tips.push_back(make_tip(seq_deltas, missing));
+  }
+
+  auto guide = build_guide_tree(ref, tips, bitgen);
+  auto refined = build_refined_tree(guide, tips, bitgen);
+  assert_utree_integrity(refined, true);
+  assert_utree_matches_tip_descs(refined, tips, true);
+
+  for (auto pass = 0; pass < 10; ++pass) {
+    spr_refine(refined, tips, bitgen);
+    assert_utree_integrity(refined, true);
+    assert_utree_matches_tip_descs(refined, tips, true);
+  }
+}
+
+TEST(Utree_test, spr_refine_missing_data_subtree) {
+  // Subtree X has a child D that is a tip *missing* site0, while its other child E has data
+  // there (E: site0 G) -- AND X's own state at site0 (C) differs from E's, so merge_through(X)
+  // produces a real arc_DE delta at the D-missing site.  Exercises the missing-data collapse
+  // / strip interaction in the subtree detach/reattach.  (site1 is also ambiguous: D=T, E=A.)
+  //   D(site0 missing; site1 T) -- X(C,A) -- M(A,A) -- P(site1 C)
+  //                                 |          |
+  //                        E(site0 G)          Q(ref)
+  auto ref = Real_sequence{rA, rA};
+  auto bitgen = std::mt19937{42};
+  auto tips = std::vector<Tip_desc>{
+      make_tip({{1, rA, rT}}, Interval_set<>{{0, 1}}),  // 0 = D: site0 missing, site1 T
+      make_tip({{0, rA, rG}}),                          // 1 = E: site0 G
+      make_tip({{1, rA, rC}}),                          // 2 = P: site1 C
+      make_tip({})                                      // 3 = Q: reference
+  };
+
+  auto tree = Utree::make_empty(4);
+  tree.ref_sequence = ref;
+  tree.num_inner_nodes_so_far = 2;   // X = 4, M = 5
+
+  auto arc_4_0 = tree.add_arc(4, 0);
+  set_arc_deltas(tree, arc_4_0, {{1, {rA, rT}}});    // X(C,A) -- D(.,T); no delta at missing site0
+  auto arc_4_1 = tree.add_arc(4, 1);
+  set_arc_deltas(tree, arc_4_1, {{0, {rC, rG}}});    // X(C,.) -- E(G,.)
+  auto arc_4_5 = tree.add_arc(4, 5);
+  set_arc_deltas(tree, arc_4_5, {{0, {rC, rA}}});    // X(C,.) -- M(A,.)
+  auto arc_5_2 = tree.add_arc(5, 2);
+  set_arc_deltas(tree, arc_5_2, {{1, {rA, rC}}});    // M(.,A) -- P(.,C)
+  tree.add_arc(5, 3);                                // M -- Q(ref): no delta
+
+  tree.reset_focus(3);   // focus tip3 (Q) == reference, so deltas_ref_to_focus is empty
+
+  assert_utree_integrity(tree, true);
+  assert_utree_matches_tip_descs(tree, tips, true);
+
+  for (auto pass = 0; pass < 20; ++pass) {
+    spr_refine(tree, tips, bitgen);
     assert_utree_integrity(tree, true);
     assert_utree_matches_tip_descs(tree, tips, true);
   }

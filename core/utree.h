@@ -191,9 +191,16 @@ struct Utree {
   auto detach_tip(Node_index X) -> Node_index;
 
   // Merge the two edges incident to degree-2 inner node M into a single edge, removing M
-  // from the tree.  Inverse of split_edge.  Pre: degree(M) == 2, focus != M.
-  // Returns the new arc A->B.
+  // from the tree.  Inverse of split_edge.  Pre: degree(M) == 2, focus != M, M is not a
+  // sink (arc_to_focus != k_no_arc).  Returns the new arc A->B.
   auto merge_through(Node_index M) -> Arc_index;
+
+  // Remove the edge (arc pair) between nodes u and v, clearing the matching slot in each
+  // node's arcs and freeing the pair.  Both endpoints drop by one degree.  If an endpoint's
+  // arc_to_focus pointed through the removed arc, it is cleared to k_no_arc (making that
+  // node a temporary sink); otherwise arc_to_focus is left unchanged.
+  // Pre: an edge exists between u and v.
+  auto remove_edge(Node_index u, Node_index v) -> void;
 
   // Split edge (A,B) by inserting node M.  Replaces the single edge with two: (A,M) and (M,B).
   // `site_delta_side(Seq_delta delta, Node_index A, Node_index B) -> Node_index` decides which
@@ -247,11 +254,11 @@ auto build_refined_tree(
     absl::BitGenRef bitgen,
     const std::function<void(int,int)>& progress_hook = [](int,int){}) -> Utree;
 
-// SPR refinement of tip placements.  For each random tip, detach it, search for a better
-// reattachment point starting from a random node, and accept or roll back.
+// Unified SPR refinement of tip and subtree placements.  Repeatedly choose a random edge M-X,
+// detach the X side, search for a better reattachment edge on the M side, and reattach.
 // progress_hook(attempts_so_far, max_attempts, cur_deltas): called after each attempt with
 // the current total delta count across all edges.
-auto spr_refine_tips(
+auto spr_refine(
     Utree& tree, const std::vector<Tip_desc>& tip_descs,
     absl::BitGenRef bitgen,
     const std::function<void(int,int,int)>& progress_hook = [](int,int,int){}) -> void;
@@ -350,6 +357,17 @@ inline auto arc_euler_tour(const Utree& tree, Node_index source)
 inline auto utree_tips(const Utree& tree) {
   return std::views::iota(Node_index{0}, static_cast<Node_index>(tree.num_tips));
 }
+
+// (debug) Render the Utree as a Newick string, temporarily rooted at `root` (default: the
+// focus).  Tips are labeled "t<i>", inner nodes "i<i>"; each branch is annotated in
+// extended Newick style [&m=...] with its mutations (e.g. C3G,A7T) in the parent->child
+// direction.
+auto utree_to_newick(const Utree& tree, Node_index root = k_no_node) -> std::string;
+
+// (debug) Render the Utree as an indented ASCII-art tree, temporarily rooted at `root`
+// (default: the focus).  Each line shows a node and, in [...], the mutations on its branch
+// from its parent.  Meant for eyeballing topology + mutations at a glance.
+auto utree_render(const Utree& tree, Node_index root = k_no_node) -> std::string;
 
 // CHECK-fails on any structural inconsistency in the tree (node degrees, arc wiring,
 // arc_to_focus pointers, free list, path consistency of deltas).
