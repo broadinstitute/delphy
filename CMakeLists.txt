@@ -30,6 +30,16 @@ target_compile_options(
   -Werror                            # Treat all warnings as errors
 )
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)  # Sane stack traces
+
+# boost::container::flat_map (used pervasively via Interval_set / Missation_map) type-puns
+# between std::pair and its internal pair representation, which technically violates strict
+# aliasing.  Under -fstrict-aliasing (GCC's default at -O2+), GCC 13 on aarch64 miscompiles a
+# flat_map move (transfers size/capacity but drops the data pointer), producing a null-data /
+# size-1 container that crashes on the next copy.  This showed up as a deterministic SIGSEGV in
+# the arm64 CI (Utree_test.spr_refine_random_stress); it is invisible on x86 and under ASan/-O0.
+# Like the Linux kernel and many boost.container-heavy projects, we disable strict aliasing.
+add_compile_options(-fno-strict-aliasing)
+
 if(NOT DEFINED EMSCRIPTEN)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     add_compile_options(
