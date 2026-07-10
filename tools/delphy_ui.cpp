@@ -524,9 +524,62 @@ static auto render_pop_curve() -> void {
     auto gamma = std::log(N_c[c]);
 
     auto y = y_min + y_scale * gamma;
-    
+
     draw_line(x_for(a), y,
               x_for(b), y);
+  }
+
+  // Overlay k(t): the number of active lineages through time in the live MCMC tree.
+  // Each non-root branch covers [parent.t, node.t], contributing +1 to k over that span.  We
+  // build a step function by placing a +1 event where each branch starts and a -1 event where it
+  // ends, sweep left-to-right accumulating k, and plot log(k) on the same axis as gamma=log(N).
+  // The whole curve is shifted vertically so that its peak (log(max_k)) lines up with the peak of
+  // the population curve (max gamma), letting us compare the *shape* of k(t) against N(t)
+  // regardless of their differing units.  Aligning peak-to-peak (rather than to N(t) at the time
+  // k peaks) avoids sensitivity to the stochastic timing of the k(t) maximum.
+  const auto& tree = ui_run->tree();
+  auto events = std::vector<std::pair<double, int>>{};  // (time, +1 branch start / -1 branch end)
+  for (const auto& node : index_order_traversal(tree)) {
+    if (node != tree.root) {
+      events.push_back({tree.at_parent_of(node).t, +1});
+      events.push_back({tree.at(node).t, -1});
+    }
+  }
+  if (not events.empty()) {
+    std::ranges::sort(events, [](const auto& a, const auto& b) { return a.first < b.first; });
+
+    // First pass: find the peak k
+    auto max_k = 0;
+    {
+      auto k = 0;
+      for (const auto& [t, delta] : events) {
+        k += delta;
+        max_k = std::max(max_k, k);
+      }
+    }
+
+    // Shift log(k) so its peak lines up with the peak of the population curve, max gamma=log(N)
+    auto peak_gamma = std::log(std::ranges::max(N_c));
+    auto offset = peak_gamma - std::log(static_cast<double>(max_k));
+    auto y_for_k = [&](int k) { return y_min + y_scale * (std::log(static_cast<double>(k)) + offset); };
+
+    // Second pass: draw the staircase
+    color_3d(1.0, 0.5, 0.0);  // k(t) staircase in orange
+    auto k = 0;
+    auto prev_t = events.front().first;
+    for (const auto& [t, delta] : events) {
+      if (k >= 1) {
+        draw_line(x_for(prev_t), y_for_k(k), x_for(t), y_for_k(k));  // horizontal run at current k
+      }
+      auto new_k = k + delta;
+      if (k >= 1 && new_k >= 1) {
+        draw_line(x_for(t), y_for_k(k), x_for(t), y_for_k(new_k));   // vertical jump by delta
+      }
+      k = new_k;
+      prev_t = t;
+    }
+
+    draw_text(absl::StrFormat("k_max = %d", max_k).c_str(), 10, 40);
   }
 }
 
