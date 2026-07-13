@@ -265,6 +265,15 @@ auto spr_refine(
 
 enum class Rooting_method { regression, midpoint };
 
+// Stable identifiers for the passes of a rooting/timing algorithm.  The UI maps these to
+// human-readable labels on its side, so no UI strings cross the core/JS boundary.  Add new
+// ids here (never renumber existing ones) if a future rooter has different passes.
+enum class Rooting_substage : int {
+  bottom_up_timing = 1,       // Pass 1: bottom-up (post-order) subtree-stats DFS
+  top_down_timing = 2,        // Pass 2: top-down (pre-order) subtree-stats DFS
+  root_candidate_eval = 3,    // Pass 3: per-edge root-position R^2 evaluation
+};
+
 struct Rooting_info {
   Node_index root;
   Rooting_method method;
@@ -282,8 +291,12 @@ auto midpoint_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs) ->
 // Root the Utree at the position that maximizes R^2 of root-to-tip OLS regression against tip dates.
 // Falls back to midpoint rooting if regression is not applicable (e.g., all tips have the same date).
 // Modifies the tree in place: inserts a root node.  The focus location is undefined after this call.
+// The progress_hook reports (substage_id, substage, num_substages, nodes_in_substage,
+// total_in_substage); substage_id values come from Rooting_substage.
 auto ols_regression_root_utree(Utree& tree, const std::vector<Tip_desc>& tip_descs,
-                               absl::BitGenRef bitgen)
+                               absl::BitGenRef bitgen,
+                               const std::function<void(int,int,int,int,int)>& progress_hook
+                                   = [](int,int,int,int,int){})
     -> Rooting_info;
 
 // Root the Utree at the position that minimizes chi^2 of root-to-tip GLS regression against tip dates.
@@ -307,6 +320,7 @@ auto build_initial_phylo_tree(
     const std::function<void(int,int)>& guide_tree_progress_hook = [](int,int){},
     const std::function<void(int,int,int)>& refined_tree_progress_hook = [](int,int,int){},
     const std::function<void(int,int,int)>& spr_refine_progress_hook = [](int,int,int){},
+    const std::function<void(int,int,int,int,int)>& rooting_progress_hook = [](int,int,int,int,int){},
     const std::function<void(const Rooting_info&)>& rooting_hook = [](const Rooting_info&){})
     -> Phylo_tree;
 

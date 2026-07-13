@@ -10,9 +10,9 @@ cmake_minimum_required(VERSION 3.17.5)
 # 4. Commit these changes to CMakeLists.txt and push (git push)
 # 5. Tag Git commit (git tag ${VERSION} && git push origin ${VERSION})
 # 6. Compile & distribute the release artifacts
-project(delphy VERSION 1.3.4)
-set(BUILD_NUMBER 2054)
-set(BUILD_PREV_GIT_HASH adefd96)
+project(delphy VERSION 1.4.0)
+set(BUILD_NUMBER 2055)
+set(BUILD_PREV_GIT_HASH 47d5cc0)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED YES)
@@ -30,6 +30,16 @@ target_compile_options(
   -Werror                            # Treat all warnings as errors
 )
 add_compile_options(-fno-omit-frame-pointer -mno-omit-leaf-frame-pointer)  # Sane stack traces
+
+# boost::container::flat_map (used pervasively via Interval_set / Missation_map) type-puns
+# between std::pair and its internal pair representation, which technically violates strict
+# aliasing.  Under -fstrict-aliasing (GCC's default at -O2+), GCC 13 on aarch64 miscompiles a
+# flat_map move (transfers size/capacity but drops the data pointer), producing a null-data /
+# size-1 container that crashes on the next copy.  This showed up as a deterministic SIGSEGV in
+# the arm64 CI (Utree_test.spr_refine_random_stress); it is invisible on x86 and under ASan/-O0.
+# Like the Linux kernel and many boost.container-heavy projects, we disable strict aliasing.
+add_compile_options(-fno-strict-aliasing)
+
 if(NOT DEFINED EMSCRIPTEN)
   if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     add_compile_options(
