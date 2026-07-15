@@ -1877,8 +1877,14 @@ auto utree_to_phylo_tree(
   fix_up_missations(phylo_tree);
   randomize_mutation_times(phylo_tree, bitgen);
   rereference_to_root_sequence(phylo_tree);
+
+  // Paranoid correctness checks (disabled in WASM builds to avoid needless slowdows for
+  // most end-users; the tradeoff is we'll only detect silent data corruption owing to
+  // bugs in the above pipeline in the CLI)
+#ifndef __EMSCRIPTEN__
   assert_phylo_tree_integrity(phylo_tree, true);
   assert_phylo_tree_matches_tip_descs(phylo_tree, utree.ref_sequence, tip_descs, true);
+#endif
 
   return phylo_tree;
 }
