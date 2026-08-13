@@ -86,14 +86,14 @@ jobs:
           ignore-policy: '.trivy-ignore-policy.rego'
 
       - name: Upload vulnerability/secret results to GitHub Security
-        uses: github/codeql-action/upload-sarif@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
+        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         if: always()
         with:
           sarif_file: 'trivy-fs-results.sarif'
           category: 'trivy-filesystem-vuln'
 
       - name: Upload misconfiguration results to GitHub Security
-        uses: github/codeql-action/upload-sarif@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
+        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         if: always()
         with:
           sarif_file: 'trivy-misconfig-results.sarif'
@@ -130,7 +130,7 @@ jobs:
           ignore-policy: '.trivy-ignore-policy.rego'
 
       - name: Upload container scan results to GitHub Security
-        uses: github/codeql-action/upload-sarif@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
+        uses: github/codeql-action/upload-sarif@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         if: always()
         with:
           sarif_file: 'trivy-image-results.sarif'
