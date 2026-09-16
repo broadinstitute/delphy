@@ -25,7 +25,7 @@ patent application, instead dedicating the relevant IP to the public domain.
 References
 ----------
 
-* Preprint - [Delphy: scalable, near-real-time Bayesian phylogenetics for outbreaks](https://www.biorxiv.org/content/10.1101/2025.03.25.645253v1).  See [here](https://github.com/broadinstitute/delphy-2025-paper-data) for accompanying data and scripts.
+* [Varilly, P., Schifferli, M., Yang, K. et al. Scalable near-real-time Bayesian phylogenetics for outbreaks with Delphy. _Nature_ (2026). https://doi.org/10.1038/s41586-026-11012-6](https://doi.org/10.1038/s41586-026-11012-6).  See [here](https://github.com/broadinstitute/delphy-2026-paper-data) for data and scripts accompanying the paper.
 
 * [Whitepaper with overview of key ideas and accuracy+speed benchmarks](delphywp.pdf)
 
