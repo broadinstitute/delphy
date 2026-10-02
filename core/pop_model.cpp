@@ -5,6 +5,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <stdexcept>
 
 namespace delphy {
 
@@ -559,17 +560,34 @@ auto Skygrid_pop_model::interval_containing_t(double t) const -> int {
   }
 }
 
-auto render_population_curve(const Pop_model& pop_model, double t_start, double t_end, int num_t_cells) -> Staircase {
-  auto result = Staircase{t_start, t_end, num_t_cells};
-  
-  for (auto cell = 0; cell != result.num_cells(); ++cell) {
-    auto t_lo = cell_lbound(result, cell);
-    auto t_hi = cell_ubound(result, cell);
-    
-    result.at_cell(cell) = pop_model.pop_integral(t_lo, t_hi) / result.cell_size();
-  }
+auto render_population_curve(
+    const Pop_model& pop_model,
+    double t_start,
+    double t_end,
+    int num_t_cells,
+    std::span<double> out_values)
+    -> void {
 
-  return result;
+  if (not (t_start < t_end)) {
+    throw std::invalid_argument(absl::StrFormat(
+        "Invalid probe times: need t_start < t_end, but t_start=%g and t_end=%g", t_start, t_end));
+  }
+  if (num_t_cells <= 0) {
+    throw std::invalid_argument(absl::StrFormat("Number of probe cells should be positive, not %d", num_t_cells));
+  }
+  if (std::ssize(out_values) != num_t_cells) {
+    throw std::invalid_argument(absl::StrFormat(
+        "Invalid size of `out_values`: expected %d elements, but it has %d", num_t_cells, std::ssize(out_values)));
+  }
+  
+  auto dt = (t_end - t_start) / num_t_cells;
+  
+  for (auto i = 0; i != num_t_cells; ++i) {
+    auto t_lo = t_start + i*dt;
+    auto t_hi = t_start + (i+1)*dt;
+    
+    out_values[i] = pop_model.pop_integral(t_lo, t_hi) / dt;
+  }
 }
 
 }  // namespace delphy

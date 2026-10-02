@@ -3,6 +3,8 @@
 
 #include "site_states_tree_prober.h"
 
+#include "generic_tree_prober.h"
+
 namespace delphy {
 
 inline constexpr auto rA = Real_seq_letter::A;
@@ -18,8 +20,12 @@ TEST(Site_states_tree_prober_test, invalid_site) {
   auto pop = 0.2;   // N_e * rho
   auto pop_model = Const_pop_model{pop};
   
+  auto num_t_cells = 10;
+  auto probe_times = make_uniform_probe_times(0.0, 1.0, num_t_cells);
+  auto raw_results = std::vector<double>(k_num_real_seq_letters * num_t_cells, std::numeric_limits<double>::quiet_NaN());
+  
   for (const auto& site : {-1, 5}) {
-    EXPECT_THROW((probe_site_states_on_tree(tree, pop_model, site, 0.0, 1.0, 10)), std::out_of_range);
+    EXPECT_THROW((probe_site_states_on_tree(tree, pop_model, site, probe_times, raw_results)), std::out_of_range);
   }
 }
 
@@ -31,8 +37,12 @@ TEST(Site_states_tree_prober_test, invalid_timelines) {
   
   auto pop = 0.2;   // N_e * rho
   auto pop_model = Const_pop_model{pop};
+  
+  auto probe_times = {0.5, 0.0, -0.5};
+  auto num_t_cells = std::ssize(probe_times);
+  auto raw_results = std::vector<double>(k_num_real_seq_letters * num_t_cells, std::numeric_limits<double>::quiet_NaN());
 
-  EXPECT_THROW((probe_site_states_on_tree(tree, pop_model, 1, 0.5, -0.5, 10)), std::invalid_argument);
+  EXPECT_THROW((probe_site_states_on_tree(tree, pop_model, 1, probe_times, raw_results)), std::invalid_argument);
 }
 
 TEST(Site_states_tree_prober_test, trivial) {
@@ -43,16 +53,19 @@ TEST(Site_states_tree_prober_test, trivial) {
   auto pop = 0.2;   // N_e * rho
   auto pop_model = Const_pop_model{pop};
 
-  auto t_start = 0.0;
-  auto t_end = 1e-5;
-  auto num_cells = 1;
+  auto probe_times = {0.0};
+  auto num_cells = static_cast<int>(std::ssize(probe_times));
 
   auto site = Site_index{0};
-  auto results = probe_site_states_on_tree(tree, pop_model, site, t_start, t_end, num_cells);
+  
+  auto raw_results = std::vector<double>(k_num_real_seq_letters * num_cells, std::numeric_limits<double>::quiet_NaN());
+  
+  probe_site_states_on_tree(tree, pop_model, site, probe_times, raw_results);
+  auto results = estd::View_2d{raw_results, k_num_real_seq_letters, num_cells};
 
   // If the time domain is empty, results should just reflect the state of the root sequence at that site
-  EXPECT_THAT(results[index_of(rA)].at(t_start), testing::DoubleNear(1.0, 1e-6));
-  EXPECT_THAT(results[index_of(rC)].at(t_start), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(results(index_of(rA), 0), testing::DoubleNear(1.0, 1e-6));
+  EXPECT_THAT(results(index_of(rC), 0), testing::DoubleNear(0.0, 1e-6));
 }
 
 static auto site_states_tree_prober_test_body(const Pop_model& pop_model) -> void {
@@ -116,16 +129,19 @@ static auto site_states_tree_prober_test_body(const Pop_model& pop_model) -> voi
   auto t_end = 3.0;
   auto t_step = 0.2;
   auto num_t_cells = static_cast<int>(std::round((t_end - t_start) / t_step));
+  auto probe_times = make_uniform_probe_times(t_start, t_end, num_t_cells);
 
   // Do it!
   auto site = Site_index{0};
-  auto results = probe_site_states_on_tree(tree, pop_model, site, t_start, t_end, num_t_cells);
+  auto raw_results = std::vector<double>(k_num_real_seq_letters * num_t_cells, std::numeric_limits<double>::quiet_NaN());
+  probe_site_states_on_tree(tree, pop_model, site, probe_times, raw_results);
+  auto results = estd::View_2d{raw_results, k_num_real_seq_letters, num_t_cells};
 
   // Check that everything is sensible
   for (auto cell = 0; cell != num_t_cells; ++cell) {
     auto tot_p = 0.0;
     for (const auto& state : k_all_real_seq_letters) {
-      auto p = results[index_of(state)].at_cell(cell);
+      auto p = results(index_of(state), cell);
       EXPECT_THAT(p, testing::Ge(-1e6));
       EXPECT_THAT(p, testing::Le(1+1e6));
       tot_p += p;
@@ -134,13 +150,13 @@ static auto site_states_tree_prober_test_body(const Pop_model& pop_model) -> voi
   }
   
   // Visual check
-  //for (auto state : k_all_real_seq_letters) {
+  // for (auto state : k_all_real_seq_letters) {
   //  std::cout << to_char(state) << ": ";
   //  for (auto cell = 0; cell != num_t_cells; ++cell) {
-  //    std::cout << absl::StreamFormat("%.1f, ", results[index_of(state)].at_cell(cell));
+  //    std::cout << absl::StreamFormat("%.1f, ", results(index_of(state), cell));
   //  }
   //  std::cout << "\n";
-  //}
+  // }
 }
 
 TEST(Site_states_tree_prober_test, typical_const_pop_model) {

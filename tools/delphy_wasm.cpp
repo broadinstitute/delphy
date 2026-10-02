@@ -1787,12 +1787,12 @@ auto delphy_pop_model_render_population_curve(
   }
 }
 
-// For a given base tree and associated population model parameters, simulates where a random
-// probe sample at time t would coalesce into the tree and what its state at a given site would thus be.
-// The time t is sampled uniformly at num_t_cells values covering (t_start, t_end] (note that the first
-// sample is some time after t_start).
-//
-// There's a bug in the calculation for now that requires t_start to be earlier than the time of the root node.
+// For a given base tree and associated population model parameters, simulates where a
+// random probe sample at time t would coalesce into the tree and what its state at a
+// given site would thus be.  The time t is sampled uniformly at num_t_cells values
+// covering (t_start, t_end] (note that the first sample is some time after t_start).
+// There is no requirement that the earliest and latest probe times encompass the whole
+// tree (e.g., you can "zoom in" to a specific small time range).
 //
 // out_values should point to an array of 4 * num_t_cells doubles.  The entry out_values[s * num_t_cells + i]
 // corresponds to the probability of observing state s (A = 0, C = 1, G = 2, T = 3) at time t = t_i, where
@@ -1825,13 +1825,12 @@ auto delphy_pop_model_probe_site_states_on_tree(
   }
 }
 
-// For a given base tree and associated population model parameters, simulates where a random
-// probe sample at time t would coalesce into the tree and which among a set of marked nodes
-// would thus be its closest ancestor.
-// The time t is sampled uniformly at num_t_cells values covering (t_start, t_end] (note that the first
-// sample is some time after t_start).
-//
-// There's a bug in the calculation for now that requires t_start to be earlier than the time of the root node.
+// For a given base tree and associated population model parameters, simulates where a
+// random probe sample at time t would coalesce into the tree and which among a set of
+// marked nodes would thus be its closest ancestor.  The time t is sampled uniformly at
+// num_t_cells values covering (t_start, t_end] (note that the first sample is some time
+// after t_start).  There is no requirement that the earliest and latest probe times
+// encompass the whole tree (e.g., you can "zoom in" to a specific small time range).
 //
 // marked_ancestors should point to an array of num_marked_ancestors int32_t's.  Each element is
 // a node in the given tree that should be considered "marked".  An node can be k_no_node (-1)
@@ -1865,6 +1864,43 @@ auto delphy_pop_model_probe_ancestors_on_tree(
   try {
     api_probe_ancestors_on_tree(tree, pop_model, marked_ancestors, num_marked_ancestors,
                                 t_start, t_end, num_t_cells, out_values);
+  } catch (std::exception& e) {
+    std::cerr << e.what() << std::endl;
+  }
+}
+
+// For a given base tree and associated population model parameters, calculates the
+// probability that a random probe sample at time t would coalesce into the tree at a
+// specific branch (if `include_indirect_descendants` is `true`, it's the probability
+// that the probe sample coalesces at _or below_ a specific branch).
+//
+// Probe sample times are given explicitly and should be sorted past-to-future.  There is
+// no requirement that the earliest and latest probe times encompass the whole tree (e.g.,
+// you can "zoom in" to a specific small time range).
+//
+// `out_values` should point to an array of `num_nodes * num_probe_times` doubles.  The entry
+// `out_values[j * num_probe_times + i]` corresponds to the probability that a probe at time
+// `probe_times[i]` attaches to the tree at the branch ending in node `j`.  Note that the
+// root branch (`j == tree.root`) extends all the way to -infty, so every probe eventually
+// attaches to the tree _somewhere_.
+//
+// IMPORTANT: the size of `out_values` should be `sizeof(double) * num_t_cells * num_nodes`,
+// where `num_nodes == delphy_phylo_tree_get_size(tree)`.
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_pop_model_probe_whole_tree(
+    Delphy_context& /*ctx*/,
+    const Phylo_tree& tree,
+    const Pop_model& pop_model,
+    const double* probe_times,
+    int32_t num_probe_times,
+    bool include_indirect_descendants,
+    double* out_values)
+    -> void {
+  
+  using namespace delphy;
+  try {
+    api_probe_whole_tree(tree, pop_model, probe_times, num_probe_times, include_indirect_descendants, out_values);
   } catch (std::exception& e) {
     std::cerr << e.what() << std::endl;
   }

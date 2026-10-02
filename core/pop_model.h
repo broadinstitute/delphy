@@ -2,10 +2,10 @@
 #define DELPHY_POP_MODEL_H_
 
 #include <ostream>
+#include <span>
+#include <vector>
 
 #include <absl/strings/str_format.h>
-
-#include "staircase.h"
 
 namespace delphy {
 
@@ -233,8 +233,15 @@ class Skygrid_pop_model : public Pop_model {
 // Utilities
 // ---------
 
-// Each cell spanning [t, t+Delta) records 1/Delta int_t^{t+Delta} dt' N(t')
-auto render_population_curve(const Pop_model& pop_model, double t_start, double t_end, int num_t_cells) -> Staircase;
+// Each cell spanning [t_i, t_i + Delta) records 1/Delta int_{t_i}^{t_i + Delta} dt' N(t')
+// in `out_values[i]`, where `t_i = t_start + i*dt` and `dt = (t_end - t_start) / num_t_cells`.
+auto render_population_curve(
+    const Pop_model& pop_model,
+    double t_start,
+    double t_end,
+    int num_t_cells,
+    std::span<double> out_values)
+    -> void;
 
 }  // namespace delphy
 

@@ -5,8 +5,10 @@
 #include "run.h"
 #include "sequence.h"
 #include "dates.h"
+#include "generic_tree_prober.h"
 #include "site_states_tree_prober.h"
 #include "ancestral_tree_prober.h"
+#include "whole_tree_prober.h"
 #include "phylo_tree_calc.h"
 
 namespace delphy {
@@ -430,15 +432,17 @@ auto api_probe_site_states_on_tree(
     int32_t num_t_cells,
     double* out_values)
     -> void {
-  
-  auto results = probe_site_states_on_tree(tree, pop_model, site, t_start, t_end, num_t_cells);
 
-  for (auto s : k_all_real_seq_letters) {
-    auto si = index_of(s);
-    for (auto cell = 0; cell != num_t_cells; ++cell) {
-      out_values[si * num_t_cells + cell] = results[si].at_cell(cell);
-    }
+  auto L = tree.num_sites();
+  if (site < 0 || site >= L) {
+    throw std::out_of_range(absl::StrFormat(
+        "Site %d is outside the valid range [1, %d]", site+1, L));
   }
+
+  auto probe_times = make_uniform_probe_times(t_start, t_end, num_t_cells);
+  auto out_values_span = std::span{out_values, static_cast<size_t>(k_num_real_seq_letters * num_t_cells)};
+  
+  probe_site_states_on_tree(tree, pop_model, site, probe_times, out_values_span);
 }
 
 auto api_probe_ancestors_on_tree(
@@ -456,16 +460,32 @@ auto api_probe_ancestors_on_tree(
     throw std::invalid_argument(absl::StrFormat(
         "Number of marked ancestor cannot be negative (got %d)", num_marked_ancestors));
   }
-
+  
   auto marked_ancestors_span = std::span{marked_ancestors, static_cast<size_t>(num_marked_ancestors)};
-  auto results = probe_ancestors_on_tree(tree, pop_model, marked_ancestors_span, t_start, t_end, num_t_cells);
+  auto probe_times = make_uniform_probe_times(t_start, t_end, num_t_cells);
+  auto out_values_span = std::span{out_values, static_cast<size_t>((num_marked_ancestors+1) * num_t_cells)};
+  
+  probe_ancestors_on_tree(tree, pop_model, marked_ancestors_span, probe_times, out_values_span);
+}
 
-  auto k = num_marked_ancestors;
-  for (auto i = 0; i != (k+1); ++i) {
-    for (auto cell = 0; cell != num_t_cells; ++cell) {
-      out_values[i * num_t_cells + cell] = results[i].at_cell(cell);
-    }
+auto api_probe_whole_tree(
+    const Phylo_tree& tree,
+    const Pop_model& pop_model,
+    const double* probe_times,
+    int32_t num_probe_times,
+    bool include_indirect_descendants,
+    double* out_values)
+    -> void {
+  
+  if (num_probe_times < 0) {
+    throw std::invalid_argument(absl::StrFormat(
+        "Number of probe times must be positive (got %d)", num_probe_times));
   }
+  
+  auto probe_times_span = std::span{probe_times, static_cast<size_t>(num_probe_times)};
+  auto out_values_span = std::span{out_values, static_cast<size_t>(num_probe_times) * tree.size()};
+  
+  probe_whole_tree(tree, pop_model, probe_times_span, include_indirect_descendants, out_values_span);
 }
 
 auto api_render_population_curve(
@@ -476,11 +496,17 @@ auto api_render_population_curve(
     double* out_values)
     -> void {
   
-  auto results = render_population_curve(pop_model, t_start, t_end, num_t_cells);
-
-  for (auto cell = 0; cell != num_t_cells; ++cell) {
-    out_values[cell] = results.at_cell(cell);
+  if (not (t_start < t_end)) {
+    throw std::invalid_argument(absl::StrFormat(
+        "Invalid probe times: need t_start < t_end, but t_start=%g and t_end=%g", t_start, t_end));
   }
+  if (num_t_cells <= 0) {
+    throw std::invalid_argument(absl::StrFormat("Number of probe cells should be positive, not %d", num_t_cells));
+  }
+  
+  auto out_values_span = std::span{out_values, static_cast<std::size_t>(num_t_cells)};
+  
+  render_population_curve(pop_model, t_start, t_end, num_t_cells, out_values_span);
 }
 
 auto api_export_mcc_tree(const Mcc_tree& tree, bool inner_nodes_defined_as_mrcas_of_tips) -> std::string {

@@ -832,10 +832,12 @@ TEST(Pop_model_test, extraneous_NaN_in_Skygrid) {
 
 TEST(Pop_model_test, render_population_curve_const_pop_model) {
   auto pop_model = Const_pop_model{20.0};
+  auto num_t_cells = 10;
+  auto results = std::vector(num_t_cells, 0.0);
 
-  auto result = render_population_curve(pop_model, 0.0, 10.0, 10);
+  render_population_curve(pop_model, 0.0, 10.0, num_t_cells, results);
 
-  EXPECT_THAT(result, testing::Each(testing::Eq(20.0)));
+  EXPECT_THAT(results, testing::Each(testing::Eq(20.0)));
 }
 
 TEST(Pop_model_test, render_population_curve_exp_pop_model) {
@@ -844,15 +846,20 @@ TEST(Pop_model_test, render_population_curve_exp_pop_model) {
   auto g = 2.0;
 
   auto pop_model = Exp_pop_model{t0, n0, g, 0.0};
+  auto t_start = 0.0;
+  auto t_end = 10.0;
+  auto num_t_cells = 10;
+  auto dt = (t_end - t_start) / num_t_cells;
+  auto results = std::vector(num_t_cells, 0.0);
 
-  auto result = render_population_curve(pop_model, 0.0, 10.0, 10);
+  render_population_curve(pop_model, t_start, t_end, num_t_cells, results);
 
   // int_t^(t+Delta) dt' N(t') = n0/g (exp(g(t+Delta)) - exp(g t))
   //                           = N(t) * (1/g) * (exp(g Delta) - 1)
-  for (auto cell = 0; cell != result.num_cells(); ++cell) {
-    auto t = cell_lbound(result, cell);
-    auto expected = pop_model.pop_at_time(t) * (1/g) * (std::exp(g * result.cell_size()) - 1.0);
-    EXPECT_THAT(result.at_cell(cell), testing::DoubleNear(expected, 1e-6));
+  for (auto i = 0; i != num_t_cells; ++i) {
+    auto t = t_start + i*dt;
+    auto expected = pop_model.pop_at_time(t) * (1/g) * (std::exp(g * dt) - 1.0);
+    EXPECT_THAT(results[i], testing::DoubleNear(expected, 1e-6));
   }
 }
 

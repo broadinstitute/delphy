@@ -43,6 +43,15 @@ auto api_probe_ancestors_on_tree(
     double* out_values)
     -> void;
 
+auto api_probe_whole_tree(
+    const Phylo_tree& tree,
+    const Pop_model& pop_model,
+    const double* probe_times,
+    int32_t num_probe_times,
+    bool include_indirect_descendants,
+    double* out_values)
+    -> void;
+
 auto api_render_population_curve(
     const Pop_model& pop_model,
     double t_start,

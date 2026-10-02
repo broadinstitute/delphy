@@ -10,6 +10,7 @@ add_library(delphy_core
   delphy_output.cpp
   evo_hky.cpp
   evo_model.cpp
+  generic_tree_prober.cpp
   incremental_mcc_tree.cpp
   io.cpp
   mcc_tree.cpp
@@ -25,12 +26,12 @@ add_library(delphy_core
   site_states_tree_prober.cpp
   spr_move.cpp
   spr_study.cpp
-  staircase.cpp
   subrun.cpp
   tree_editing.cpp
   tree_partitioning.cpp
   utree.cpp
   very_scalable_coalescent.cpp
+  whole_tree_prober.cpp
   )
 
 target_link_libraries(delphy_core

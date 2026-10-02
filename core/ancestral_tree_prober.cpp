@@ -1,37 +1,35 @@
 #include "ancestral_tree_prober.h"
 
+#include <limits>
+#include <span>
+#include <stdexcept>
+#include <utility>
+#include <vector>
+
+#include <absl/strings/str_format.h>
+
+#include "generic_tree_prober.h"
+
 namespace delphy {
 
 // In this file, "CMA" = "closest marked ancestor"
 
-static auto probe_ancestors_on_tree_helper(const Phylo_tree& tree,
-                                           Node_index node,
-                                           std::span<const Node_index> marked_ancestors,
-                                           int cma_index,
-                                           Staircase_family& branch_counts_by_cma) -> void {
-  // Accumulate counts for branch from parent to node
-  if (node != tree.root && cma_index >= 0) {
-    add_boxcar(branch_counts_by_cma[cma_index], tree.at_parent_of(node).t, tree.at(node).t, 1.0);
-  }
-  
-  // If `node` is a marked ancestor, adjust cma_index for children
-  auto it = std::ranges::find(marked_ancestors, node);
-  if (it != marked_ancestors.end()) {
-    cma_index = static_cast<int>(std::distance(marked_ancestors.begin(), it));
-  }
-  
-  // Recurse through children
-  for (const auto& child : tree.at(node).children) {
-    probe_ancestors_on_tree_helper(tree, child, marked_ancestors, cma_index, branch_counts_by_cma);
-  }
-}
+auto probe_ancestors_on_tree(
+    const Phylo_tree& tree,
+    const Pop_model& pop_model,
+    std::span<const Node_index> marked_ancestors,
+    std::span<const double> probe_times,
+    std::span<double> out_values)
+    -> void {
 
-auto probe_ancestors_on_tree(const Phylo_tree& tree,
-                             const Pop_model& pop_model,
-                             std::span<const Node_index> marked_ancestors,
-                             double t_start,
-                             double t_end,
-                             int num_t_cells) -> Staircase_family {
+  if (tree.root == k_no_node) {
+    // If we ever wanted to properly handle this pathological case, either the logic of
+    // generating bundle events would have to change to always add the -infty event unconditionally,
+    // or we'd have to special-case the output for this.  However, there's no universe where
+    // calling probe_ancestors_on_tree on an empty tree makes any sense...
+    throw std::invalid_argument("tree lacking a root?");
+  }
+
   for (const auto& node : marked_ancestors) {
     // Including k_no_node in marked_ancestors is useful in case
     // we're iterating over all base trees in an MCC, and a particular
@@ -45,34 +43,50 @@ auto probe_ancestors_on_tree(const Phylo_tree& tree,
   }
 
   auto k = static_cast<int>(std::ssize(marked_ancestors));
-  
-  // Initial probabilities are all 0.0 if t_start <= t_root
-  // If t_start > t_root, we add cells at the beginning until we reach past the root time,
-  // but mark those for ignoring (there's a much better way to do this properly, but
-  // this crude scheme will do for now)
-  auto real_t_start = t_start;
-  auto cells_to_skip = 0;
-  if (tree.root != k_no_node && t_start > tree.at_root().t) {
-    auto cell_size = (t_end - t_start) / num_t_cells;
-    while (real_t_start > tree.at_root().t) {
-      real_t_start -= cell_size;
-      ++num_t_cells;
-      ++cells_to_skip;
+
+  // The following makes it O(1) to find the CMA index of a particular marked node
+  auto cma_index_of = Node_map<int>{};
+  for (auto i = 0; i != k; ++i) {
+    cma_index_of.try_emplace(marked_ancestors[i], i);  // Silently resolves duplicate marked ancestors to the lowest cma_index
+  }
+
+  // Traverse tree and record bundle events to associate bundle `i` with CMA `i`.
+  // Bundle `k` is everything above all CMAs
+  auto bundle_events = std::vector<Bundle_event>{};
+  auto cma_stack = std::vector<std::pair<int, Node_index>>{};
+  cma_stack.push_back({k, k_no_node});
+  for (const auto& [node, children_so_far] : traversal(tree)) {
+    if (children_so_far == 0) {
+      // Enter `node`.
+      // At this point, top of `cma_stack` reflects the state at `parent`.
+      auto parent = tree.at(node).parent;
+
+      // Account for the `parent` -> `node` branch
+      auto [cur_bundle, _] = cma_stack.back();
+      auto t_parent = (node == tree.root) ? -std::numeric_limits<double>::infinity() : tree.at(parent).t;
+      bundle_events.push_back({ .t = t_parent, .adding = true, .target_bundle = cur_bundle });
+      bundle_events.push_back({ .t = tree.at(node).t, .adding = false, .target_bundle = cur_bundle });
+
+      // Now moving downstream of node.  If it's a marked ancestor, push current bundle and switch to a new bundle
+      if (auto it = cma_index_of.find(node); it != cma_index_of.end()) {
+        auto new_bundle = it->second;
+        cma_stack.push_back({new_bundle, node});
+      }
+    }
+
+    if (children_so_far == std::ssize(tree.at(node).children)) {
+      // Exiting `node`.
+      // At this point, top of `cma_stack` reflects the state at `node`.
+      auto [_, bundle_start_node] = cma_stack.back();
+      if (bundle_start_node == node) {
+        // Done with this bundle
+        cma_stack.pop_back();
+      }
     }
   }
-  
-  auto p_initial = std::vector<double>(k+1, 0.0);
-  p_initial[k] = 1.0;
-  
-  // Accumulate counts of branches where CMA is `i`
-  auto branch_counts_by_cma = Staircase_family{k+1, real_t_start, t_end, num_t_cells};
-  if (tree.root != k_no_node) {
-    probe_ancestors_on_tree_helper(tree, tree.root, marked_ancestors, k, branch_counts_by_cma);
-  }
-  
-  auto prober = Tree_prober{branch_counts_by_cma, cells_to_skip, pop_model, std::move(p_initial)};
-  
-  return prober.p();
+
+  // Run the tree probe
+  generic_probe_tree(bundle_events, k+1, pop_model, probe_times, out_values);
 }
 
 }  // namespace delphy

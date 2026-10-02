@@ -4,8 +4,11 @@
 #include <algorithm>
 #include <charconv>
 #include <numeric>
+#include <ranges>
+#include <span>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 
 #include "absl/strings/str_format.h"
 
@@ -38,6 +41,36 @@ auto to_vec(R&& range) {
 }
 
 }  // namespace ranges
+
+// Simple helper class for viewing a 2D array that's been flattened into a row-major-order 1D array as a 2D array again
+// (stand-in for C++23's std::mdspan)
+template<typename T>
+struct View_2d {
+  std::span<T> data;
+  int rows;
+  int cols;
+
+  View_2d(std::span<T> data_in, int rows_in, int cols_in)
+      : data{data_in}, rows{rows_in}, cols{cols_in} {
+    if (std::ssize(data) != rows * cols) {
+      throw std::invalid_argument(absl::StrFormat(
+          "View_2d: data has %d elements, but should have %d x %d = %d",
+          std::ssize(data), rows, cols, rows * cols));
+    }
+  }
+
+  auto operator()(int i, int j) const -> T& {
+    return data[i * cols + j];  // element
+  }
+
+  auto operator()(int i) const -> std::span<T> {
+    return data.subspan(i * cols, cols);  // a full row
+  }
+};
+
+// Deduce element type from a contiguous range, e.g., `View_2d{vec, rows, cols}`
+template<std::ranges::contiguous_range R>
+View_2d(R&&, int, int) -> View_2d<std::remove_reference_t<std::ranges::range_reference_t<R>>>;
 
 // overloaded template for std::variant (from https://en.cppreference.com/w/cpp/utility/variant/visit)
 template<class... Ts>

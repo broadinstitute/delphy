@@ -7,6 +7,7 @@ add_executable(tests
   coalescent_tests.cpp
   dates_tests.cpp
   distributions_tests.cpp
+  generic_tree_prober_tests.cpp
   interval_set_tests.cpp
   io_tests.cpp
   missation_map_tests.cpp
@@ -24,13 +25,12 @@ add_executable(tests
   spr_move_tests.cpp
   spr_study_tests.cpp
   deterministic_abseil_containers_tests.cpp
-  staircase_tests.cpp
   tests_main.cpp
   tree_editing_tests.cpp
-  tree_prober_tests.cpp
   tree_tests.cpp
   utree_tests.cpp
   very_scalable_coalescent_tests.cpp
+  whole_tree_prober_tests.cpp
   )
 
 target_link_libraries(tests

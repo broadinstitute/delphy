@@ -3,6 +3,9 @@
 
 #include "ancestral_tree_prober.h"
 
+#include "estd.h"
+#include "generic_tree_prober.h"
+
 namespace delphy {
 
 inline constexpr auto rA = Real_seq_letter::A;
@@ -87,13 +90,21 @@ class Ancestral_tree_prober_test : public testing::Test {
 };
 
 TEST_F(Ancestral_tree_prober_test, invalid_marked_node) {
-  EXPECT_THROW((probe_ancestors_on_tree(tree, const_pop_model, std::vector{tree.size()+10}, -1.0, 3.0, 20)),
+  auto marked_ancestors = std::vector<Node_index>{static_cast<Node_index>(tree.size()+10)};
+  auto num_t_cells = 20;
+  auto probe_times = make_uniform_probe_times(-1.0, 3.0, num_t_cells);
+  auto raw_results = std::vector<double>((std::ssize(marked_ancestors)+1) * num_t_cells, std::numeric_limits<double>::quiet_NaN());
+  EXPECT_THROW((probe_ancestors_on_tree(tree, const_pop_model, marked_ancestors, probe_times, raw_results)),
                std::out_of_range);
 }
-  
+
 
 TEST_F(Ancestral_tree_prober_test, invalid_timelines) {
-  EXPECT_THROW((probe_ancestors_on_tree(tree, const_pop_model, std::vector{r}, -3.5, -4.5, 10)),
+  auto marked_ancestors = std::vector<Node_index>{r};
+  auto probe_times = {-3.5, -4.0, -4.5};
+  auto num_t_cells = std::ssize(probe_times);
+  auto raw_results = std::vector<double>((std::ssize(marked_ancestors)+1) * num_t_cells, std::numeric_limits<double>::quiet_NaN());
+  EXPECT_THROW((probe_ancestors_on_tree(tree, const_pop_model, marked_ancestors, probe_times, raw_results)),
                std::invalid_argument);
 }
 
@@ -102,28 +113,34 @@ TEST_F(Ancestral_tree_prober_test, empty) {
   auto t_end = 3.0;
   auto t_step = 0.2;
   auto num_t_cells = static_cast<int>(std::round((t_end - t_start) / t_step));
+  auto probe_times = make_uniform_probe_times(t_start, t_end, num_t_cells);
 
   auto marked_ancestors = std::vector<Node_index>{};
-  auto results = probe_ancestors_on_tree(tree, const_pop_model, marked_ancestors, t_start, t_end, num_t_cells);
+  auto num_rows = static_cast<int>(std::ssize(marked_ancestors)) + 1;
+  auto raw_results = std::vector<double>(num_rows * num_t_cells, std::numeric_limits<double>::quiet_NaN());
+  probe_ancestors_on_tree(tree, const_pop_model, marked_ancestors, probe_times, raw_results);
+  auto results = estd::View_2d{raw_results, num_rows, num_t_cells};
 
   // If no nodes are marked, then no marked ancestors are ever ancestral to the probe
-  EXPECT_THAT(results.num_members(), testing::Eq(1));
-  EXPECT_THAT(results[0], testing::Each(testing::Ge(1.0 - 1e-6)));
+  EXPECT_THAT(results(0), testing::Each(testing::Ge(1.0 - 1e-6)));
 }
 
 TEST_F(Ancestral_tree_prober_test, trivial) {
-  auto t_start = -2.0;
-  auto t_end = -1.9;
-  auto num_cells = 1;
+  auto probe_times = {-1.9};
+  auto num_t_cells = static_cast<int>(std::ssize(probe_times));
 
-  ASSERT_THAT(t_end, testing::Lt(tree.at(r).t));
-  
+  ASSERT_THAT(*(probe_times.end() - 1), testing::Lt(tree.at(r).t));
+
   auto marked_ancestors = std::vector<Node_index>{r, a};
-  auto results = probe_ancestors_on_tree(tree, const_pop_model, marked_ancestors, t_start, t_end, num_cells);
+  auto num_rows = static_cast<int>(std::ssize(marked_ancestors)) + 1;
+  auto raw_results = std::vector<double>(num_rows * num_t_cells, std::numeric_limits<double>::quiet_NaN());
+  probe_ancestors_on_tree(tree, const_pop_model, marked_ancestors, probe_times, raw_results);
+  auto results = estd::View_2d{raw_results, num_rows, num_t_cells};
 
   // If the probe sample is taken before the root's time, no marked ancestor can be ancestral to it
-  EXPECT_THAT(results[0].at(t_start), testing::DoubleNear(0.0, 1e-6));
-  EXPECT_THAT(results[1].at(t_start), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(results(0, 0), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(results(1, 0), testing::DoubleNear(0.0, 1e-6));
+  EXPECT_THAT(results(2, 0), testing::DoubleNear(1.0, 1e-6));
 }
 
 TEST_F(Ancestral_tree_prober_test, typical) {
@@ -135,35 +152,37 @@ TEST_F(Ancestral_tree_prober_test, typical) {
     auto t_end = 3.0;
     auto t_step = 0.2;
     auto num_t_cells = static_cast<int>(std::round((t_end - t_start) / t_step));
+    auto probe_times = make_uniform_probe_times(t_start, t_end, num_t_cells);
     
     // Do it!
     auto marked_ancestors = std::vector<Node_index>{x};
-    auto results = probe_ancestors_on_tree(tree, pop_model, marked_ancestors, t_start, t_end, num_t_cells);
-    
-    // Check that everything is sensible
+    auto num_rows = static_cast<int>(std::ssize(marked_ancestors)) + 1;
+    auto raw_results = std::vector<double>(num_rows * num_t_cells, std::numeric_limits<double>::quiet_NaN());
+    probe_ancestors_on_tree(tree, pop_model, marked_ancestors, probe_times, raw_results);
+    auto results = estd::View_2d{raw_results, num_rows, num_t_cells};
+
+    // Check that everything is sensible (including the "none" row, all probabilities add up to 1)
     for (auto cell = 0; cell != num_t_cells; ++cell) {
       auto tot_p = 0.0;
-      for (auto i = 0; i != std::ssize(marked_ancestors); ++i) {
-        auto p = results[i].at_cell(cell);
-        EXPECT_THAT(p, testing::Ge(-1e6));
-        EXPECT_THAT(p, testing::Le(1+1e6));
+      for (auto i = 0; i != num_rows; ++i) {
+        auto p = results(i, cell);
+        EXPECT_THAT(p, testing::Ge(-1e-6));
+        EXPECT_THAT(p, testing::Le(1+1e-6));
         tot_p += p;
       }
-      EXPECT_THAT(tot_p, testing::DoubleNear(1.0, 1e6));
+      EXPECT_THAT(tot_p, testing::DoubleNear(1.0, 1e-6));
     }
     
     // Visual check
     // std::cout << absl::StreamFormat("Population model: %s\n", absl::FormatStreamed(pop_model));
-    // auto k = std::ssize(marked_ancestors);
-    // for (auto i = 0; i != (k+1); ++i) {
-    //   if (i < k) {
-    //     auto A = marked_ancestors[i];
-    //     std::cout << tree.at(a).name() << ": ";
+    // for (auto i = 0; i != num_rows; ++i) {
+    //   if (i < std::ssize(marked_ancestors)) {
+    //     std::cout << tree.at(marked_ancestors[i]).name << ": ";
     //   } else {
     //     std::cout << "-: ";
     //   }
     //   for (auto cell = 0; cell != num_t_cells; ++cell) {
-    //     std::cout << absl::StreamFormat("%.1f, ", results[i].at_cell(cell));
+    //     std::cout << absl::StreamFormat("%.1f, ", results(i, cell));
     //   }
     //   std::cout << "\n";
     // }
@@ -175,12 +194,50 @@ TEST_F(Ancestral_tree_prober_test, skipped_ancestor) {
   auto t_end = 3.0;
   auto t_step = 0.2;
   auto num_t_cells = static_cast<int>(std::round((t_end - t_start) / t_step));
+  auto probe_times = make_uniform_probe_times(t_start, t_end, num_t_cells);
   
   auto marked_ancestors = std::vector<Node_index>{k_no_node, x, k_no_node};
-  auto results = probe_ancestors_on_tree(tree, const_pop_model, marked_ancestors, t_start, t_end, num_t_cells);
+  auto num_rows = static_cast<int>(std::ssize(marked_ancestors)) + 1;
+  auto raw_results = std::vector<double>(num_rows * num_t_cells, std::numeric_limits<double>::quiet_NaN());
   
-  EXPECT_THAT(results[0], testing::Each(testing::Eq(0.0)));
-  EXPECT_THAT(results[2], testing::Each(testing::Eq(0.0)));
+  probe_ancestors_on_tree(tree, const_pop_model, marked_ancestors, probe_times, raw_results);
+  
+  auto results = estd::View_2d{raw_results, num_rows, num_t_cells};
+
+  EXPECT_THAT(results(0), testing::Each(testing::Eq(0.0)));
+  EXPECT_THAT(results(2), testing::Each(testing::Eq(0.0)));
+}
+
+TEST_F(Ancestral_tree_prober_test, t_start_after_root) {
+  // Probing from after the root should give the same results as the corresponding tail of
+  // a probe that starts before the root
+  auto t_step = 0.2;
+  auto t_end = 3.0;
+  auto marked_ancestors = std::vector<Node_index>{x, a};
+  auto num_rows = static_cast<int>(std::ssize(marked_ancestors)) + 1;
+
+  auto full_t_start = -1.2;
+  auto full_num_t_cells = static_cast<int>(std::round((t_end - full_t_start) / t_step));
+  auto raw_full_results = std::vector<double>(num_rows * full_num_t_cells, std::numeric_limits<double>::quiet_NaN());
+  auto full_probe_times = make_uniform_probe_times(full_t_start, t_end, full_num_t_cells);
+  probe_ancestors_on_tree(tree, const_pop_model, marked_ancestors, full_probe_times, raw_full_results);
+  auto full_results = estd::View_2d{raw_full_results, num_rows, full_num_t_cells};
+
+  auto late_t_start = 0.0;
+  auto late_num_t_cells = static_cast<int>(std::round((t_end - late_t_start) / t_step));
+  ASSERT_THAT(late_t_start, testing::Gt(tree.at(r).t));
+  auto late_probe_times = make_uniform_probe_times(late_t_start, t_end, late_num_t_cells);
+  auto raw_late_results = std::vector<double>(num_rows * late_num_t_cells, std::numeric_limits<double>::quiet_NaN());
+  probe_ancestors_on_tree(tree, const_pop_model, marked_ancestors, late_probe_times, raw_late_results);
+  auto late_results = estd::View_2d{raw_late_results, num_rows, late_num_t_cells};
+
+  auto offset = full_num_t_cells - late_num_t_cells;
+  for (auto i = 0; i != num_rows; ++i) {
+    for (auto cell = 0; cell != late_num_t_cells; ++cell) {
+      EXPECT_THAT(late_results(i, cell), testing::DoubleNear(full_results(i, cell + offset), 1e-6))
+          << "i = " << i << ", cell = " << cell;
+    }
+  }
 }
 
 }  // namespace delphy
