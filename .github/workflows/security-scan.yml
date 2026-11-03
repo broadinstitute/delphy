@@ -27,7 +27,7 @@ permissions:
   contents: read
 
 env:
-  CONAN_VERSION: '2.8.1'
+  CONAN_VERSION: '2.34.0'
 
 jobs:
   # Primary scan: filesystem for dependency CVEs, secrets, and misconfigurations

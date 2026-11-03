@@ -71,7 +71,7 @@ delphy/
 ### Prerequisites
 - CMake 3.17.5+ (Ubuntu 22.04 needs manual upgrade - see INSTALL.md)
 - Python 3 with venv
-- Conan 2.8.1
+- Conan 2.34.0
 - GCC or Clang with C++20 support
 
 ### Quick Build
@@ -80,7 +80,7 @@ delphy/
 # First-time setup
 python3 -m venv delphy-venv
 source delphy-venv/bin/activate
-pip3 install 'conan==2.8.1'
+pip3 install 'conan==2.34.0'
 conan profile detect
 git submodule update --init
 
