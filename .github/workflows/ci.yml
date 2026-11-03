@@ -286,8 +286,8 @@ jobs:
 
       - name: Generate coverage report
         run: |
-          lcov --capture --directory build/coverage --output-file coverage.info --ignore-errors mismatch
-          lcov --remove coverage.info '/usr/*' '*/third-party/*' '*/tests/*' '*/_deps/*' --output-file coverage.info --ignore-errors unused
+          lcov --capture --directory build/coverage --output-file coverage.info --ignore-errors mismatch,inconsistent
+          lcov --remove coverage.info '/usr/*' '*/third-party/*' '*/tests/*' '*/_deps/*' --output-file coverage.info --ignore-errors unused,inconsistent
           lcov --list coverage.info
 
       - name: Upload to Codecov
