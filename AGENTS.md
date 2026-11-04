@@ -69,7 +69,7 @@ delphy/
 ## Build System
 
 ### Prerequisites
-- CMake 3.17.5+ (Ubuntu 22.04 needs manual upgrade - see INSTALL.md)
+- CMake 3.24+
 - Python 3 with venv
 - Conan 2.34.0
 - GCC or Clang with C++20 support
@@ -115,8 +115,8 @@ GitHub Actions CI runs on every push and PR. See [.github/workflows/ci.yml](.git
 
 1. **Build & Test** - Builds on 3 platforms in parallel:
    - `ubuntu-latest` (x86_64) - static linking
-   - `ubuntu-24.04-arm` (ARM64) - static linking
-   - `macos-14` (ARM64) - dynamic linking
+   - `ubuntu-26.04-arm` (ARM64) - static linking (GitHub has no `ubuntu-latest-arm` alias; bump this label when `ubuntu-latest` moves to a new Ubuntu release)
+   - `macos-latest` (ARM64) - dynamic linking, targeting macOS 14.0+
 
 2. **Code Coverage** - Runs separately with `--coverage` flags, uploads to Codecov
 

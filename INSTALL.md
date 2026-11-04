@@ -53,10 +53,11 @@ The remainder of this document describes how to build Delphy from source.
 # Compatibility
 
 These build instructions were last tested on
+- Ubuntu 26.04 x86_64 (on a fresh AWS c7a.2xlarge instance, after running `apt update && apt upgrade` and restarting)
 - Ubuntu 24.04 x86_64 (on a fresh AWS c7a.2xlarge instance, after running `apt update && apt upgrade` and restarting)
-- Ubuntu 22.04 x86_64 (on a fresh AWS c7a.2xlarge instance, after running `apt update && apt upgrade` and restarting)
-- macos Sequoia 15.6.1 x86-64 (on a fresh AWS mac1.metal instance)
-- macos Sequoia 15.6.1 ARM (on a fresh AWS mac2.metal instance)
+- macos Golden Gate 27.0 ARM (on a fresh AWS mac2-m2.metal instance)
+
+Neither Intel Macs nor Ubuntu 22.04 or earlier are tested anymore.  Our continuous integration builds on `ubuntu-latest` (x86_64 and ARM) on Linux and on `macos-latest` (ARM) on macOS, with macOS binaries targeting macOS 14.0 or later.
 
 # Dependencies
 
@@ -65,14 +66,6 @@ First, install build dependencies.
 ### On Ubuntu:
 ```
 sudo apt install cmake python3-venv g++  # Ubuntu (will bring on many other build dependencies)
-```
-On Ubuntu 22.04, the distribution's cmake version is too old.  Use a more recent version as follows:
-```
-mkdir -p ~/tools
-cd ~/tools/
-wget https://github.com/Kitware/CMake/releases/download/v3.31.9/cmake-3.31.9-linux-x86_64.tar.gz
-tar -xvf cmake-3.31.9-linux-x86_64.tar.gz
-export "PATH=${HOME}/tools/cmake-3.31.9-linux-x86_64/bin:${PATH}"
 ```
 
 ### On Mac
