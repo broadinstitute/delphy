@@ -32,9 +32,6 @@ namespace delphy {
 // indirect access via a tree, e.g., to get the parent node of node i, write `tree.at(i).parent()`.
 using Node_index = int;
 
-// We refer to branches by their endpoint nodes.  Hence, branch `i` joins node `tree.at(i).parent()` to `i`.
-using Branch_index = Node_index;
-
 // Sentinel value for a blank reference to a node (like `nullptr`)
 inline constexpr Node_index k_no_node = -1;
 
@@ -48,6 +45,19 @@ using Node_map = absl::flat_hash_map<Node_index, T>;
 
 // Stores a set of nodes in a tree, represented by their index
 using Node_set = absl::flat_hash_set<Node_index>;
+
+// We refer to branches by their endpoint nodes.  Hence, branch `i` joins node `tree.at(i).parent()` to `i`.
+// We can then associate information to branches in the same way as we do to nodes
+using Branch_index = Node_index;
+inline constexpr Branch_index k_no_branch = -1;
+
+template<typename T, typename Alloc = std::allocator<T>>
+using Branch_vector = Node_vector<T, Alloc>;
+
+template<typename T>
+using Branch_map = Node_map<T>;
+
+using Branch_set = Node_set;
 
 // Nodes are the basic building block for trees.  Node<C> encodes topological info for navigating trees,
 // using the container C for the child indices.  Concrete node classes derive from Node<C>.

@@ -21,6 +21,7 @@
 #include "mcc_tree.h"
 #include "beasty_input.h"
 #include "beasty_output.h"
+#include "poplar.h"
 
 // We use the delphy namespace instead of entering it so that the symbols below are
 // patently placed in the global namespace, but the symbols in the delphy namespace are
@@ -1529,6 +1530,261 @@ auto delphy_mcc_tree_export(
     -> std::string* {
   return new std::string{api_export_mcc_tree(tree, inner_nodes_defined_as_mrcas_of_tips)};
 }
+
+
+// Blob tree
+// =========
+//
+// A `Blob_sequence` (see `delphy_query_blob_sequence`) is self-contained: it can be used after the `Blob_tree` it
+// was queried from has been deleted.  Conversely, a `Blob_tree` doesn't need the `Phylo_tree` it was derived from to
+// be kept alive to query blob sequences.
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_derive_blob_tree(
+    Delphy_context& /*ctx*/,
+    const Phylo_tree& phylo_tree)
+    -> Blob_tree* {
+  return new Blob_tree{derive_blob_tree(phylo_tree)};
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_delete(Delphy_context& /*ctx*/, Blob_tree* blob_tree) -> void {
+  delete blob_tree;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_size(Delphy_context& /*ctx*/, const Blob_tree& blob_tree) -> Blob_index {
+  return blob_tree.size();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_root(Delphy_context& /*ctx*/, const Blob_tree& blob_tree) -> Blob_index {
+  return blob_tree.root;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_parent_of(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob)
+    -> Blob_index {
+  return blob_tree.at(blob).parent;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_num_children_of(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob)
+    -> int {
+  return std::ssize(blob_tree.at(blob).children);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_nth_child_of(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob,
+    int n)
+    -> Blob_index {
+  return blob_tree.at(blob).children.at(n);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_fingerprint_of(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob)
+    -> uint64_t {
+  static_assert(std::is_same_v<Blob_fingerprint, uint64_t>, "If Blob_fingerprint is not uint64_t, delphy_blob_tree_get_fingerprint_of needs to change, as do probably the JS-side of the WASM interfaces");
+  return blob_tree.at(blob).fingerprint;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_seed_node_of(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob)
+    -> Node_index {
+  return blob_tree.at(blob).seed_node;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_seed_branch_of(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob)
+    -> Branch_index {
+  return blob_tree.at(blob).seed_branch;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_num_tree_nodes_behind(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob)
+    -> int {
+  return std::ssize(blob_tree.at(blob).nodes);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_nth_tree_node_behind(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob,
+    int n)
+    -> Node_index {
+  return blob_tree.at(blob).nodes.at(n);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_num_tree_branches_behind(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob)
+    -> int {
+  return std::ssize(blob_tree.at(blob).branches);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_get_nth_tree_branch_behind(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob,
+    int n)
+    -> Branch_index {
+  return blob_tree.at(blob).branches.at(n);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_node_2_blob(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Node_index node)
+    -> Blob_index {
+  return blob_tree.node_2_blob.at(node);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_tree_branch_2_blob(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Branch_index branch)
+    -> Blob_index {
+  return blob_tree.branch_2_blob.at(branch);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_query_blob_sequence(
+    Delphy_context& /*ctx*/,
+    const Blob_tree& blob_tree,
+    Blob_index blob)
+    -> Blob_sequence* {
+  return new Blob_sequence{query_blob_sequence(blob_tree, blob)};
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_sequence_delete(Delphy_context& /*ctx*/, Blob_sequence* blob_sequence) -> void {
+  delete blob_sequence;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_sequence_get_num_mutations(
+    Delphy_context& /*ctx*/,
+    const Blob_sequence& blob_sequence)
+    -> int {
+  return std::ssize(blob_sequence.mutations);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_sequence_get_nth_mutation_site(
+    Delphy_context& /*ctx*/,
+    const Blob_sequence& blob_sequence,
+    int n)
+    -> Site_index {
+  return blob_sequence.mutations.at(n).site;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_sequence_get_nth_mutation_from_state(
+    Delphy_context& /*ctx*/,
+    const Blob_sequence& blob_sequence,
+    int n)
+    -> Real_seq_letter {
+  return blob_sequence.mutations.at(n).from_state;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_sequence_get_nth_mutation_to_state(
+    Delphy_context& /*ctx*/,
+    const Blob_sequence& blob_sequence,
+    int n)
+    -> Real_seq_letter {
+  return blob_sequence.mutations.at(n).to_state;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_sequence_get_num_ambiguities(
+    Delphy_context& /*ctx*/,
+    const Blob_sequence& blob_sequence)
+    -> int {
+  return std::ssize(blob_sequence.ambiguities);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_sequence_get_nth_ambiguity_site(
+    Delphy_context& /*ctx*/,
+    const Blob_sequence& blob_sequence,
+    int n)
+    -> Site_index {
+  return blob_sequence.ambiguities.at(n).site;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_sequence_get_nth_ambiguity_state1(
+    Delphy_context& /*ctx*/,
+    const Blob_sequence& blob_sequence,
+    int n)
+    -> Real_seq_letter {
+  return blob_sequence.ambiguities.at(n).state1;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_sequence_get_nth_ambiguity_state2(
+    Delphy_context& /*ctx*/,
+    const Blob_sequence& blob_sequence,
+    int n)
+    -> Real_seq_letter {
+  return blob_sequence.ambiguities.at(n).state2;
+}
+
+
 
 
 // Population model

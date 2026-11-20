@@ -18,6 +18,7 @@ add_library(delphy_core
   phylo_tree.cpp
   phylo_tree_calc.cpp
   pop_model.cpp
+  poplar.cpp
   run.cpp
   scalable_coalescent.cpp
   scratch_space.cpp

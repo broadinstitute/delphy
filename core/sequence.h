@@ -8,6 +8,7 @@
 #include <vector>
 #include <random>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/random/bit_gen_ref.h"
 #include "absl/random/distributions.h"
@@ -238,6 +239,9 @@ using Real_sequence = std::vector<Real_seq_letter>;
 using Site_index = int;
 template<typename T>
 using Site_vector = std::vector<T>;
+
+template<typename T>
+using Site_map = absl::flat_hash_map<Site_index, T>;
 
 // Seq_matrix<T> is a matrix with elements of type T where row and column indices are A, C, G or T.
 // Examples include mutation rate matrices, mutation count matrices and evolution matrices.
