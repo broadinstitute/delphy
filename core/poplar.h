@@ -2,6 +2,7 @@
 #define DELPHY_POPLAR_H_
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <ostream>
 #include <utility>
@@ -376,6 +377,14 @@ auto annotate_branches_with_extents(
 // as its `from_state`.
 using Blob_index = Node_index;
 inline constexpr auto k_no_blob = k_no_node;
+
+// Associate information to blobs in the same way as we do to nodes and branches
+template<typename T, typename Alloc = std::allocator<T>>
+using Blob_vector = Node_vector<T, Alloc>;
+
+template<typename T>
+using Blob_map = Node_map<T>;
+
 struct Blob_site_delta {
   Site_index site;
   Seq_letter from_state;  // State at the parent blob (for the root blob: the reference sequence's state)

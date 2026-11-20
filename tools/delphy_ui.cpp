@@ -1,5 +1,6 @@
 #include <chrono>
 #include <iostream>
+#include <tuple>
 
 #include "absl/log/initialize.h"
 #include "SDL.h"
@@ -9,6 +10,7 @@
 #include "incremental_mcc_tree.h"
 #include "io.h"
 #include "phylo_tree_calc.h"
+#include "poplar.h"
 #include "beasty_input.h"
 #include "beasty_output.h"
 #include "dates.h"
@@ -49,6 +51,11 @@ static Mcc_tree old_mcc_tree;
 static Mcc_tree mcc_tree;
 static bool mcc_nodes_are_mrcas = false;
 static bool ladderize_tree = true;
+
+// Set by anything that could change what is on screen (key presses, progress of the MCMC, window events that
+// invalidate the picture), and cleared after every render.  Anything that changes the picture outside of those
+// paths must set it, or the screen will not be redrawn.
+static bool ui_dirty = true;
 
 static Processed_cmd_line *cmd = nullptr;
 static Beasty_log_output *ui_log_output = nullptr;
@@ -107,6 +114,18 @@ auto fill_rect(double x1, double y1, double x2, double y2) -> void {
   SDL_RenderFillRect(sdl_renderer, &r);
 }
 
+// Filled circle centered at (x, y) in internal coordinates, with a radius in pixels so it stays round regardless of
+// the (usually different) horizontal and vertical scales
+auto fill_circle(double x, double y, double radius_in_px) -> void {
+  auto cx = px(x);
+  auto cy = py(y);
+  auto r = static_cast<int>(std::round(radius_in_px));
+  for (auto row = -r; row <= r; ++row) {
+    auto half_width = static_cast<int>(std::round(std::sqrt(static_cast<double>(r * r - row * row))));
+    SDL_RenderDrawLine(sdl_renderer, cx - half_width, cy + row, cx + half_width, cy + row);
+  }
+}
+
 auto draw_text(const char* text, int x_in_px, int y_in_px) -> void {
   if (ttf_font == nullptr) { return; }
 
@@ -136,6 +155,24 @@ auto draw_text(const char* text, int x_in_px, int y_in_px) -> void {
   
   SDL_RenderCopy(sdl_renderer, texture, NULL, &r);
 }
+
+// Temporarily restrict drawing to panel `index` (0-based) out of `num_panels` equal-width vertical strips
+// of the window
+struct Panel_scope {
+  float saved_ox;
+  float saved_dx;
+
+  Panel_scope(int index, int num_panels) : saved_ox{ox}, saved_dx{dx} {
+    dx /= static_cast<float>(num_panels);
+    ox += static_cast<float>(index) * dx;
+  }
+  ~Panel_scope() {
+    ox = saved_ox;
+    dx = saved_dx;
+  }
+  Panel_scope(const Panel_scope&) = delete;
+  auto operator=(const Panel_scope&) -> Panel_scope& = delete;
+};
 
 static auto rescale_axes() {
   const auto& tree = ui_run->tree();
@@ -230,10 +267,6 @@ static auto x_for(double t) -> double {
 
 static auto render_tree() -> void {
   auto& tree = ui_run->tree();
-
-  // Temporarily use only left half of screen
-  dx *= 0.5;
-  defer { dx *= 2.0; };
 
   color_3d(0.0, 0.0, 0.0);  // black lines
 
@@ -362,14 +395,6 @@ static auto render_tree() -> void {
 
 
 static auto render_mcc() -> void {
-  // Temporarily use only right half of screen
-  ox += 0.5*dx;
-  dx *= 0.5;
-  defer {
-    dx *= 2.0;
-    ox -= 0.5*dx;
-  };
-
   canonicalize_tree(mcc_tree);
   auto node_ys = position_tree_nodes(mcc_tree);
 
@@ -461,10 +486,6 @@ static auto render_mcc() -> void {
 }
 
 static auto render_pop_curve() -> void {
-  // Temporarily use only left half of screen
-  dx *= 0.5;
-  defer { dx *= 2.0; };
-
   rescale_axes();
 
   auto gamma_max = 12.0;
@@ -569,6 +590,193 @@ static auto render_pop_curve() -> void {
   }
 }
 
+// Blob tree panel
+// ===============
+//
+// The blob tree (see poplar.h) of the current posterior tree is derived by `refresh_blob_view()` whenever that tree
+// changes, and everything needed to draw it is cached in `blob_view`, so rendering never has to look at the live tree.
+//
+// Nothing about the layout depends on the tips contained in the blobs: tips can migrate from one blob to another
+// between consecutive blob trees, which would make the picture jump around for no good reason.  The layout depends
+// only on the structure of the blob tree and on blob fingerprints.
+
+struct Blob_render_info {
+  double t_lo = 0.0;              // Time at which the blob starts, derived from its member nodes and branches
+  int depth = 0;                  // Depth in the blob tree, relative to the blob containing the reference tip
+  int num_descendant_blobs = 0;   // Blobs strictly below this one in the blob tree (used for ladderizing)
+  double y = 0.0;                 // Vertical position
+  std::array<double, 3> color{};  // Derived from the blob's fingerprint
+};
+
+struct Blob_view {
+  Blob_tree blob_tree;            // Children of each blob are sorted for display
+  Blob_vector<Blob_render_info> info;
+  int num_leaf_blobs = 0;
+};
+
+// What the x axis of the blob panel means:
+//  - time: each blob is drawn at the time it starts, aligned with the other panels
+//  - depth: each blob is drawn at its depth in the blob tree, with equally spaced depths (the classic cladogram view)
+enum class Blob_x_axis { time, depth };
+
+static Blob_view blob_view;
+static bool show_blob_tree = true;
+static auto blob_x_axis = Blob_x_axis::time;
+
+// Depths in the blob tree are measured relative to the blob containing a fixed reference tip (the first tip in the
+// input), which therefore always has depth 0.  (Measuring depths from the root blob instead would make every depth
+// fluctuate whenever the root blob does.)  The root blob then has a negative depth, and both it and the maximum
+// depth of the blob tree still fluctuate from one posterior tree to the next, which would make the depth axis
+// breathe distractingly.  Instead, the depth axis spans the lowest and highest depths observed so far (low and high
+// watermarks), which are reset whenever the time scale is rescaled (see the 's' key).
+static int blob_depth_low_watermark = 0;
+static int blob_depth_high_watermark = 0;
+
+static auto blob_leaf_spacing() -> double {
+  return (blob_view.num_leaf_blobs > 1) ? 0.9 / (blob_view.num_leaf_blobs - 1) : 0.0;
+}
+
+static auto refresh_blob_view() -> void {
+  if (not show_blob_tree) { return; }
+
+  const auto& tree = ui_run->tree();
+
+  blob_view = Blob_view{};
+  blob_view.blob_tree = derive_blob_tree(tree);
+  auto& blob_tree = blob_view.blob_tree;
+  assert_tree_integrity(blob_tree);
+
+  auto& info = blob_view.info;
+  info.assign(std::ssize(blob_tree), Blob_render_info{});
+
+  // Start time and color of each blob.  A blob starts at the earliest time of the nodes and branches behind it.
+  // A child blob starts where its parent's region ends, so it never starts before its parent.
+  for (const auto& blob : index_order_traversal(blob_tree)) {
+    const auto& b = blob_tree.at(blob);
+    auto& blob_info = info[blob];
+
+    blob_info.t_lo = std::numeric_limits<double>::max();
+    for (const auto& node : b.nodes) {
+      blob_info.t_lo = std::min(blob_info.t_lo, tree.at(node).t);
+    }
+    for (const auto& branch : b.branches) {
+      blob_info.t_lo = std::min(blob_info.t_lo, tree.at_parent_of(branch).t);
+    }
+
+    // Fingerprints are good hashes, so any 3 of their bytes make a good color (keeping away from white)
+    auto channel = [fp = b.fingerprint](int shift) {
+      return 0.15 + 0.70 * static_cast<double>((fp >> shift) & 0xFF) / 255.0;
+    };
+    blob_info.color = {channel(0), channel(8), channel(16)};
+  }
+
+  // Depth in the blob tree: first from the root blob, then shifted so that the blob containing the reference tip
+  // (the first tip in the input) has depth 0, and finally update the low and high watermarks of depths observed
+  for (const auto& blob : pre_order_traversal(blob_tree)) {
+    info[blob].depth = (blob == blob_tree.root) ? 0 : info[blob_tree.at(blob).parent].depth + 1;
+  }
+
+  auto reference_tip = k_no_node;
+  for (const auto& node : index_order_traversal(tree)) {  // Index order => same order as the input
+    if (tree.at(node).is_tip()) {
+      reference_tip = node;
+      break;
+    }
+  }
+  CHECK_NE(reference_tip, k_no_node);
+  auto reference_depth = info[blob_tree.node_2_blob[reference_tip]].depth;
+
+  for (const auto& blob : index_order_traversal(blob_tree)) {
+    info[blob].depth -= reference_depth;
+    blob_depth_low_watermark = std::min(blob_depth_low_watermark, info[blob].depth);
+    blob_depth_high_watermark = std::max(blob_depth_high_watermark, info[blob].depth);
+  }
+
+  // Number of descendant blobs, and number of leaf blobs
+  for (const auto& blob : post_order_traversal(blob_tree)) {
+    const auto& children = blob_tree.at(blob).children;
+    auto num_descendant_blobs = 0;
+    for (const auto& child : children) {
+      num_descendant_blobs += 1 + info[child].num_descendant_blobs;
+    }
+    info[blob].num_descendant_blobs = num_descendant_blobs;
+    if (children.empty()) {
+      ++blob_view.num_leaf_blobs;
+    }
+  }
+
+  // Ladderize: smaller subtrees first.  Break ties using the blob fingerprints (arbitrary but stable across
+  // different blob trees), and, for sibling blobs with equal fingerprints, blob indices (arbitrary, but
+  // deterministic within a blob tree)
+  for (const auto& blob : index_order_traversal(blob_tree)) {
+    std::ranges::sort(blob_tree.at(blob).children, [&](Blob_index a, Blob_index b) {
+      return
+          std::tuple{info[a].num_descendant_blobs, blob_tree.at(a).fingerprint, a} <
+          std::tuple{info[b].num_descendant_blobs, blob_tree.at(b).fingerprint, b};
+    });
+  }
+
+  // Vertical positions: leaf blobs are evenly spaced, inner blobs sit at the mean of their children
+  auto next_y = (blob_view.num_leaf_blobs > 1) ? 0.05 : 0.5;
+  for (const auto& blob : post_order_traversal(blob_tree)) {
+    const auto& children = blob_tree.at(blob).children;
+    if (children.empty()) {
+      info[blob].y = next_y;
+      next_y += blob_leaf_spacing();
+    } else {
+      auto sum_y = 0.0;
+      for (const auto& child : children) {
+        sum_y += info[child].y;
+      }
+      info[blob].y = sum_y / static_cast<double>(std::ssize(children));
+    }
+  }
+}
+
+// Horizontal position of a blob in the panel
+static auto blob_x(const Blob_render_info& blob_info) -> double {
+  if (blob_x_axis == Blob_x_axis::time) {
+    return x_for(blob_info.t_lo);
+  } else {
+    // Depths from the low to the high watermark are equally spaced, with room for one more column at the right
+    return
+        0.05 + 0.90 * (blob_info.depth - blob_depth_low_watermark) /
+        (blob_depth_high_watermark - blob_depth_low_watermark + 1);
+  }
+}
+
+static auto render_blob_tree() -> void {
+  if (std::ssize(blob_view.blob_tree) == 0) { return; }
+  const auto& blob_tree = blob_view.blob_tree;
+  const auto& info = blob_view.info;
+
+  // Axis (only meaningful if x is time)
+  color_3d(0.0, 0.0, 0.0);  // black lines
+  if (blob_x_axis == Blob_x_axis::time) {
+    draw_line(x_for(t_min_scale_bar), 0.03,
+              x_for(t_max_scale_bar), 0.03);
+  }
+
+  // Straight lines from each blob to its parent
+  for (const auto& blob : index_order_traversal(blob_tree)) {
+    if (blob == blob_tree.root) { continue; }
+
+    const auto& blob_info = info[blob];
+    const auto& parent_info = info[blob_tree.at(blob).parent];
+    draw_line(blob_x(parent_info), parent_info.y, blob_x(blob_info), blob_info.y);
+  }
+
+  // Blobs are filled circles of the same size (shrinking only if leaf blobs are so crowded that they'd overlap),
+  // with colors derived from their fingerprints
+  auto leaf_spacing_in_px = blob_leaf_spacing() * std::abs(dy);
+  auto radius_in_px = std::clamp(0.45 * leaf_spacing_in_px, 1.5, 4.0);
+  for (const auto& blob : index_order_traversal(blob_tree)) {
+    const auto& blob_info = info[blob];
+    color_3d(blob_info.color[0], blob_info.color[1], blob_info.color[2]);
+    fill_circle(blob_x(blob_info), blob_info.y, radius_in_px);
+  }
+}
+
 static auto render_all() -> void {
   color_3d(1.0, 1.0, 1.0); // white background
   SDL_RenderClear(sdl_renderer);
@@ -577,7 +785,10 @@ static auto render_all() -> void {
   color_3d(0.0, 0.0, 0.0);
   draw_text(absl::StrFormat("Step: %d", ui_run->step()).c_str(), 10, 10);
   draw_text(absl::StrFormat("Muts: %d", ui_run->num_muts()).c_str(), 10, 25);
-  
+  if (show_blob_tree) {
+    draw_text(absl::StrFormat("Blobs: %d", std::ssize(blob_view.blob_tree)).c_str(), 10, 40);
+  }
+
   // Define coordinates so (0,0) is bottom-left and (1,1) is top-right
   if (SDL_GetRendererOutputSize(sdl_renderer, &sdl_w, &sdl_h) != 0) {
     std::cerr << "Failed to get renderer output size\n";
@@ -590,10 +801,21 @@ static auto render_all() -> void {
   dx = sdl_w;
   dy = -sdl_h;
 
-  render_tree();
-  render_mcc();
-
-  render_pop_curve();
+  // Panels, left to right: live tree (with the population curve overlaid), MCC tree and (optionally) blob tree
+  auto num_panels = show_blob_tree ? 3 : 2;
+  {
+    auto panel = Panel_scope{0, num_panels};
+    render_tree();
+    render_pop_curve();
+  }
+  {
+    auto panel = Panel_scope{1, num_panels};
+    render_mcc();
+  }
+  if (show_blob_tree) {
+    auto panel = Panel_scope{2, num_panels};
+    render_blob_tree();
+  }
 
   SDL_RenderPresent(sdl_renderer);
 }
@@ -638,6 +860,7 @@ static auto print_stats_line() -> void {
   std::cerr << absl::StreamFormat("Step %12d, ", ui_run->step())
             << absl::StreamFormat("%.1f M steps/s, ", steps_per_s / 1e6)
             << absl::StreamFormat("%2d trees in MCC, ", tree_snapshots.size())
+            << absl::StreamFormat("%4d blobs, ", show_blob_tree ? std::ssize(blob_view.blob_tree) : 0)
       //<< absl::StreamFormat("%2d trees in iMCC, ",
       //                           incremental_mcc_tree == nullptr ? 0 : incremental_mcc_tree->num_trees())
             << absl::StreamFormat("%7d steps/refresh, ", steps_per_refresh)
@@ -785,6 +1008,10 @@ static auto idle_func() -> void {
     //mcc_tree = incremental_mcc_tree->derive_mcc_tree();
   }
 
+  refresh_blob_view();  // Before printing stats, which include the number of blobs
+
+  ui_dirty = true;  // The MCMC has moved on, so the picture is stale
+
   print_stats_line();
 }
 
@@ -836,12 +1063,17 @@ auto stop_trees_output() -> void {
 }
 
 auto keyboard_func(char key) -> void {
+  ui_dirty = true;  // Almost every key changes something on screen, and a spurious redraw is cheap
+
   switch (key) {
     case 's':
     case 'S': {
       t_min_x_axis = std::numeric_limits<double>::max();
       t_max_x_axis = -std::numeric_limits<double>::max();
       rescale_axes();
+      blob_depth_low_watermark = 0;
+      blob_depth_high_watermark = 0;
+      refresh_blob_view();  // Restarts the watermarks of blob depths from the current blob tree
       std::cerr << "*** AXES RESCALED ***" << std::endl;
       break;
     }
@@ -863,12 +1095,14 @@ auto keyboard_func(char key) -> void {
       tree_snapshots.clear();
       mcc_tree = {};
       //reset_imcc();
+      refresh_blob_view();
       break;
     }
     case 't': {
       randomize_tree_times(ui_run->tree());
       ui_run->tree_modified();
       std::cerr << "*** TREE TIMES RANDOMIZED ***" << std::endl;
+      refresh_blob_view();
       break;
     }
     case 'K':
@@ -1103,6 +1337,25 @@ auto keyboard_func(char key) -> void {
       std::cerr << "*** EXPORT COMPLETE ***" << std::endl;
       break;
     };
+    case 'f': {  // In honor of Frank Liu, who did most of the POPLAR work that preceded the blob tree panel
+      show_blob_tree = not show_blob_tree;
+      if (show_blob_tree) {
+        refresh_blob_view();
+        std::cerr << "*** BLOB TREE PANEL SHOWN ***" << std::endl;
+      } else {
+        std::cerr << "*** BLOB TREE PANEL HIDDEN ***" << std::endl;
+      }
+      break;
+    }
+    case 'F': {
+      blob_x_axis = (blob_x_axis == Blob_x_axis::time) ? Blob_x_axis::depth : Blob_x_axis::time;
+      if (blob_x_axis == Blob_x_axis::time) {
+        std::cerr << "*** BLOB TREE X AXIS IS NOW TIME ***" << std::endl;
+      } else {
+        std::cerr << "*** BLOB TREE X AXIS IS NOW DEPTH ***" << std::endl;
+      }
+      break;
+    }
     case 'x':
     case 'X': {
       ui_run->set_mpox_hack_enabled(not ui_run->mpox_hack_enabled());
@@ -1179,11 +1432,26 @@ auto ui_sdl_loop() -> void {
         case SDL_TEXTINPUT:
           keyboard_func(e.text.text[0]);
           break;
-          
+
+        case SDL_WINDOWEVENT:
+          // Without continuous rendering, the window needs to be redrawn whenever its contents are invalidated
+          switch (e.window.event) {
+            case SDL_WINDOWEVENT_SIZE_CHANGED:
+            case SDL_WINDOWEVENT_EXPOSED:
+            case SDL_WINDOWEVENT_RESTORED:
+            case SDL_WINDOWEVENT_SHOWN:
+              ui_dirty = true;
+              break;
+          }
+          break;
+
       }
     }
 
-    render_all();
+    if (ui_dirty) {
+      ui_dirty = false;
+      render_all();
+    }
     idle_func();
   }
 }
@@ -1211,6 +1479,8 @@ auto ui_main_loop(Processed_cmd_line& c) -> int {
       ++next_leaf_index;
     }
   }
+
+  refresh_blob_view();  // Populate the blob tree panel before the first frame
 
   print_stats_line();
 
