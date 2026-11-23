@@ -1785,6 +1785,148 @@ auto delphy_blob_sequence_get_nth_ambiguity_state2(
 }
 
 
+// Blob support aggregator and summary blob tree
+// =============================================
+//
+// A `Blob_support_aggregator` accumulates the posterior support of blob fingerprints over the `Blob_tree`s added to
+// it.  A `Summary_blob_tree` is derived from an aggregator and a `Blob_tree` that donates the topology.  It holds
+// pointers to both, so both must outlive it, and a summary blob tree should be re-derived whenever the aggregator is
+// updated.  All of this is cheap (linear in the size of one blob tree), so everything here is synchronous.
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_support_aggregator_new(Delphy_context& /*ctx*/) -> Blob_support_aggregator* {
+  return new Blob_support_aggregator{};
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_support_aggregator_delete(
+    Delphy_context& /*ctx*/,
+    Blob_support_aggregator* aggregator)
+    -> void {
+  delete aggregator;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_support_aggregator_add_blob_tree(
+    Delphy_context& /*ctx*/,
+    Blob_support_aggregator& aggregator,
+    const Blob_tree& blob_tree)
+    -> void {
+  aggregator.add_blob_tree(blob_tree);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_blob_support_aggregator_get_posterior_support_of(
+    Delphy_context& /*ctx*/,
+    const Blob_support_aggregator& aggregator,
+    uint64_t fingerprint)
+    -> double {
+  static_assert(std::is_same_v<Blob_fingerprint, uint64_t>, "If Blob_fingerprint is not uint64_t, delphy_blob_support_aggregator_get_posterior_support_of needs to change, as do probably the JS-side of the WASM interfaces");
+  return aggregator.posterior_support_of(fingerprint);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_derive_summary_blob_tree(
+    Delphy_context& /*ctx*/,
+    const Blob_support_aggregator& aggregator,
+    const Blob_tree& topology_blob_tree,
+    double posterior_support_threshold)
+    -> Summary_blob_tree* {
+  return new Summary_blob_tree{derive_summary_blob_tree(aggregator, topology_blob_tree, posterior_support_threshold)};
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_summary_blob_tree_delete(Delphy_context& /*ctx*/, Summary_blob_tree* summary_blob_tree) -> void {
+  delete summary_blob_tree;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_summary_blob_tree_get_size(
+    Delphy_context& /*ctx*/,
+    const Summary_blob_tree& summary_blob_tree)
+    -> Summary_blob_index {
+  return summary_blob_tree.size();
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_summary_blob_tree_get_root(
+    Delphy_context& /*ctx*/,
+    const Summary_blob_tree& summary_blob_tree)
+    -> Summary_blob_index {
+  return summary_blob_tree.root;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_summary_blob_tree_get_parent_of(
+    Delphy_context& /*ctx*/,
+    const Summary_blob_tree& summary_blob_tree,
+    Summary_blob_index summary_blob)
+    -> Summary_blob_index {
+  return summary_blob_tree.at(summary_blob).parent;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_summary_blob_tree_get_num_children_of(
+    Delphy_context& /*ctx*/,
+    const Summary_blob_tree& summary_blob_tree,
+    Summary_blob_index summary_blob)
+    -> int {
+  return std::ssize(summary_blob_tree.at(summary_blob).children);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_summary_blob_tree_get_nth_child_of(
+    Delphy_context& /*ctx*/,
+    const Summary_blob_tree& summary_blob_tree,
+    Summary_blob_index summary_blob,
+    int n)
+    -> Summary_blob_index {
+  return summary_blob_tree.at(summary_blob).children.at(n);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_summary_blob_tree_get_blob_of(
+    Delphy_context& /*ctx*/,
+    const Summary_blob_tree& summary_blob_tree,
+    Summary_blob_index summary_blob)
+    -> Blob_index {
+  return summary_blob_tree.at(summary_blob).blob;
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_summary_blob_tree_get_fingerprint_of(
+    Delphy_context& /*ctx*/,
+    const Summary_blob_tree& summary_blob_tree,
+    Summary_blob_index summary_blob)
+    -> uint64_t {
+  static_assert(std::is_same_v<Blob_fingerprint, uint64_t>, "If Blob_fingerprint is not uint64_t, delphy_summary_blob_tree_get_fingerprint_of needs to change, as do probably the JS-side of the WASM interfaces");
+  return summary_blob_tree.fingerprint_of(summary_blob);
+}
+
+EMSCRIPTEN_KEEPALIVE
+extern "C"
+auto delphy_summary_blob_tree_get_posterior_support_of(
+    Delphy_context& /*ctx*/,
+    const Summary_blob_tree& summary_blob_tree,
+    Summary_blob_index summary_blob)
+    -> double {
+  return summary_blob_tree.posterior_support_of(summary_blob);
+}
+
+
 
 
 // Population model

@@ -624,4 +624,94 @@ auto calc_blob_fingerprint(
   return result;
 }
 
+auto Blob_support_aggregator::add_blob_tree(const Blob_tree& blob_tree) -> void {
+  // Gather the fingerprints of all blobs and deduplicate them, so each blob tree counts at most once per fingerprint
+  auto fingerprints = std::vector<Blob_fingerprint>{};
+  fingerprints.reserve(std::ssize(blob_tree));
+  for (const auto& blob : index_order_traversal(blob_tree)) {
+    fingerprints.push_back(blob_tree.at(blob).fingerprint);
+  }
+  std::ranges::sort(fingerprints);
+  fingerprints.erase(std::ranges::unique(fingerprints).begin(), fingerprints.end());
+
+  ++num_blob_trees;
+  for (auto fingerprint : fingerprints) {
+    ++blob_tree_counts[fingerprint];
+  }
+}
+
+auto Blob_support_aggregator::posterior_support_of(Blob_fingerprint fingerprint) const -> double {
+  CHECK_GT(num_blob_trees, 0);
+  auto it = blob_tree_counts.find(fingerprint);
+  if (it == blob_tree_counts.end()) { return 0.0; }
+  return static_cast<double>(it->second) / num_blob_trees;
+}
+
+auto Summary_blob_tree::fingerprint_of(Summary_blob_index summary_blob) const -> Blob_fingerprint {
+  CHECK(topology_tree != nullptr);
+  return topology_tree->at(at(summary_blob).blob).fingerprint;
+}
+
+auto Summary_blob_tree::posterior_support_of(Summary_blob_index summary_blob) const -> double {
+  CHECK(support_aggregator != nullptr);
+  return support_aggregator->posterior_support_of(fingerprint_of(summary_blob));
+}
+
+auto derive_summary_blob_tree(
+    const Blob_support_aggregator& support_aggregator,
+    const Blob_tree& topology_tree,
+    double posterior_support_threshold)
+    -> Summary_blob_tree {
+
+  CHECK_GT(support_aggregator.num_blob_trees, 0);
+  CHECK_GE(posterior_support_threshold, 0.0);
+  CHECK_LE(posterior_support_threshold, 1.0);
+
+  auto summary_blob_tree = Summary_blob_tree{};
+  summary_blob_tree.topology_tree = &topology_tree;
+  summary_blob_tree.support_aggregator = &support_aggregator;
+  summary_blob_tree.posterior_support_threshold = posterior_support_threshold;
+  if (std::ssize(topology_tree) == 0) { return summary_blob_tree; }
+
+  // Fingerprints of the blobs kept so far
+  auto taken_fingerprints = absl::flat_hash_set<Blob_fingerprint>{};
+
+  // The root blob is always kept.  Any other blob is kept if its fingerprint has enough support and is not taken yet.
+  auto is_kept = [&](Blob_index blob) {
+    const auto fingerprint = topology_tree.at(blob).fingerprint;
+    if (blob == topology_tree.root) { return true; }
+    return support_aggregator.posterior_support_of(fingerprint) >= posterior_support_threshold
+        and not taken_fingerprints.contains(fingerprint);
+  };
+
+  // `cur_summary_blob` is the nearest kept ancestor-or-self of the blob being visited (`k_no_node` before the root)
+  auto cur_summary_blob = Summary_blob_index{k_no_node};
+  for (const auto& [blob, children_so_far] : traversal(topology_tree)) {
+    if (children_so_far == 0) {
+      // Entering `blob`
+      if (is_kept(blob)) {
+        auto summary_blob = summary_blob_tree.add_node();
+        summary_blob_tree.at(summary_blob).blob = blob;
+        summary_blob_tree.at(summary_blob).parent = cur_summary_blob;
+        if (cur_summary_blob == k_no_node) {
+          summary_blob_tree.root = summary_blob;
+        } else {
+          summary_blob_tree.at(cur_summary_blob).children.push_back(summary_blob);
+        }
+        taken_fingerprints.insert(topology_tree.at(blob).fingerprint);
+        cur_summary_blob = summary_blob;
+      }
+    }
+    if (children_so_far == std::ssize(topology_tree.at(blob).children)) {
+      // Leaving `blob`: if it was kept, `cur_summary_blob` is its summary node, so go back up to its parent.  (Every
+      // summary node records a distinct blob, so this test is unambiguous.)
+      if (cur_summary_blob != k_no_node and summary_blob_tree.at(cur_summary_blob).blob == blob) {
+        cur_summary_blob = summary_blob_tree.at(cur_summary_blob).parent;
+      }
+    }
+  }
+
+  return summary_blob_tree;
+}
+
 }  // namespace delphy

@@ -1,5 +1,10 @@
+#include <algorithm>
+#include <vector>
+
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
+
+#include "absl/container/flat_hash_set.h"
 
 #include "poplar.h"
 
@@ -15,6 +20,25 @@ inline constexpr auto rA = Real_seq_letter::A;
 inline constexpr auto rC = Real_seq_letter::C;
 inline constexpr auto rG = Real_seq_letter::G;
 inline constexpr auto rT = Real_seq_letter::T;
+
+// Expected fingerprint of a blob with the given state (possibly ambiguous, e.g., `sA | sC`) at each site, in order
+static auto seq_fingerprint(std::initializer_list<Seq_letter> states) -> Blob_fingerprint {
+  auto result = k_empty_blob_fingerprint;
+  auto l = Site_index{0};
+  for (auto state : states) {
+    result ^= site_state_fingerprint(l, state);
+    ++l;
+  }
+  return result;
+}
+
+// Fingerprint of the blob containing a node, or of the blob containing the branch above a node
+static auto fingerprint_of_node(const Blob_tree& blob_tree, Node_index n) -> Blob_fingerprint {
+  return blob_tree.at(blob_tree.node_2_blob[n]).fingerprint;
+}
+static auto fingerprint_of_branch(const Blob_tree& blob_tree, Branch_index b) -> Blob_fingerprint {
+  return blob_tree.at(blob_tree.branch_2_blob[b]).fingerprint;
+}
 
 class Poplar_test : public testing::Test {
  protected:
@@ -177,6 +201,41 @@ class Poplar_test2 : public testing::Test {
     tree.at(d).missations = {};
 
     assert_phylo_tree_integrity(tree);
+  }
+
+  // Variants of `tree` with the same tip sequences but different mutational histories, so different blobs.  Every
+  // one of these is a perfectly plausible alternative sample from the posterior.
+
+  // Site 2: A2T on the r-y branch and T2A on the y-d branch (instead of A2T on the y-c branch).  Only the root blob's
+  // sequence changes (it is now ambiguous at site 2); the other blobs are different, but have the same sequences as
+  // some blob in `tree`.
+  auto variant_with_site_2_history_via_y() const -> Phylo_tree {
+    auto variant = tree;
+    variant.at(y).mutations = {Mutation{rA, 2, rT, -0.5}};
+    variant.at(c).mutations = {};
+    variant.at(d).mutations = {Mutation{rT, 2, rA, 0.6}};
+    assert_phylo_tree_integrity(variant);
+    return variant;
+  }
+
+  // Site 0: A0C on the x-a and x-b branches (instead of the r-x branch)
+  auto variant_with_A0C_on_tips() const -> Phylo_tree {
+    auto variant = tree;
+    variant.at(x).mutations = {};
+    variant.at(a).mutations = {Mutation{rA, 0, rC, 0.3}, Mutation{rA, 1, rG, 0.5}};
+    variant.at(b).mutations = {Mutation{rA, 0, rC, 0.5}};
+    assert_phylo_tree_integrity(variant);
+    return variant;
+  }
+
+  // Site 2: A2G on the r-x branch, reversed by G2A on the x-a and x-b branches
+  auto variant_with_back_mutation_on_x() const -> Phylo_tree {
+    auto variant = tree;
+    variant.at(x).mutations = {Mutation{rA, 0, rC, -0.5}, Mutation{rA, 2, rG, -0.4}};
+    variant.at(a).mutations = {Mutation{rG, 2, rA, 0.2}, Mutation{rA, 1, rG, 0.5}};
+    variant.at(b).mutations = {Mutation{rG, 2, rA, 0.5}};
+    assert_phylo_tree_integrity(variant);
+    return variant;
   }
 };
 
@@ -453,17 +512,10 @@ TEST_F(Poplar_test, derive_blob_tree) {
   EXPECT_THAT(blob_tree.at(b3).active_mutation_extents, testing::ElementsAre());
 
   // Check fingerprints
-  auto fp = [](Seq_letter s0, Seq_letter s1, Seq_letter s2, Seq_letter s3) {
-    return
-        site_state_fingerprint(0, s0) ^
-        site_state_fingerprint(1, s1) ^
-        site_state_fingerprint(2, s2) ^
-        site_state_fingerprint(3, s3);
-  };
-  EXPECT_THAT(blob_tree.at(b0).fingerprint, testing::Eq(fp(sT | sG,   sT   , sA, sN)));
-  EXPECT_THAT(blob_tree.at(b1).fingerprint, testing::Eq(fp(sT | sG, sT | sG, sA, sN)));
-  EXPECT_THAT(blob_tree.at(b2).fingerprint, testing::Eq(fp(   sT  ,   sG   , sA, sN)));
-  EXPECT_THAT(blob_tree.at(b3).fingerprint, testing::Eq(fp(   sG  ,   sT   , sA, sN)));
+  EXPECT_THAT(blob_tree.at(b0).fingerprint, testing::Eq(seq_fingerprint({sT | sG,   sT   , sA, sN})));
+  EXPECT_THAT(blob_tree.at(b1).fingerprint, testing::Eq(seq_fingerprint({sT | sG, sT | sG, sA, sN})));
+  EXPECT_THAT(blob_tree.at(b2).fingerprint, testing::Eq(seq_fingerprint({   sT  ,   sG   , sA, sN})));
+  EXPECT_THAT(blob_tree.at(b3).fingerprint, testing::Eq(seq_fingerprint({   sG  ,   sT   , sA, sN})));
 
   // Check blob sequences & corresponding fingerprints (ref seq is ACAA)
   auto b0_sequence = query_blob_sequence(blob_tree, b0);
@@ -665,18 +717,12 @@ TEST_F(Poplar_test2, derive_blob_tree_2) {
       {{},  {}}}));   // y-d branch
   
   // Check fingerprints
-  auto fp = [](Seq_letter s0, Seq_letter s1, Seq_letter s2) {
-    return
-        site_state_fingerprint(0, s0) ^
-        site_state_fingerprint(1, s1) ^
-        site_state_fingerprint(2, s2);
-  };
-  EXPECT_THAT(blob_tree.at(b0).fingerprint, testing::Eq(fp(sA | sC, sA | sG,   sA   )));
-  EXPECT_THAT(blob_tree.at(b1).fingerprint, testing::Eq(fp(   sC  , sA | sG,   sA   )));
-  EXPECT_THAT(blob_tree.at(b2).fingerprint, testing::Eq(fp(   sC  ,   sG,      sA   )));
-  EXPECT_THAT(blob_tree.at(b3).fingerprint, testing::Eq(fp(   sA  ,   sA   ,   sA   )));
-  EXPECT_THAT(blob_tree.at(b4).fingerprint, testing::Eq(fp(   sA  ,   sA   , sA | sT)));
-  EXPECT_THAT(blob_tree.at(b5).fingerprint, testing::Eq(fp(   sA  ,   sA   ,   sT   )));
+  EXPECT_THAT(blob_tree.at(b0).fingerprint, testing::Eq(seq_fingerprint({sA | sC, sA | sG,   sA   })));
+  EXPECT_THAT(blob_tree.at(b1).fingerprint, testing::Eq(seq_fingerprint({   sC  , sA | sG,   sA   })));
+  EXPECT_THAT(blob_tree.at(b2).fingerprint, testing::Eq(seq_fingerprint({   sC  ,   sG   ,   sA   })));
+  EXPECT_THAT(blob_tree.at(b3).fingerprint, testing::Eq(seq_fingerprint({   sA  ,   sA   ,   sA   })));
+  EXPECT_THAT(blob_tree.at(b4).fingerprint, testing::Eq(seq_fingerprint({   sA  ,   sA   , sA | sT})));
+  EXPECT_THAT(blob_tree.at(b5).fingerprint, testing::Eq(seq_fingerprint({   sA  ,   sA   ,   sT   })));
 
   // Check blob sequences (ref seq is AAA)
   auto b0_sequence = query_blob_sequence(blob_tree, b0);
@@ -1120,6 +1166,599 @@ TEST_F(Poplar_test5, neutral_path_through_root) {
   EXPECT_THAT(sequence.mutations, testing::ElementsAre(Blob_sequence_mutation{0, rA, rC}));
   EXPECT_THAT(sequence.ambiguities, testing::ElementsAre());
   expect_blob_tree_matches_naive_reference(blob_tree, tree);
+}
+
+class Poplar_reversal_test : public testing::Test {
+ protected:
+  //
+  // A mutation and its reversal on consecutive branches, with all tips informative, so that blobs before the
+  // mutation and after the reversal have the same fingerprint:
+  //
+  //                          +---A0C---+ x ---C0A--- y --+-- t1 (A)
+  //                          |         |                |
+  //          +--- p ---------+         +-- d2 (C)       +-- t2 (A)
+  //          |      |
+  //   --- r -+      +-- d1 (A)
+  //          |
+  //          +-- q (A)
+  //
+  // Expected blob tree: B_root{r, p, q, d1} -> B1{branch p-x} -> B2{x, d2} -> B3{branch x-y} -> B4{y, t1, t2},
+  // with fingerprints {A}, {A,C}, {C}, {C,A}, {A}.
+  //
+  Real_sequence ref_sequence{rA};
+  Phylo_tree tree{9};
+
+  static constexpr Node_index r = 0;
+  static constexpr Node_index p = 1;
+  static constexpr Node_index q = 2;
+  static constexpr Node_index x = 3;
+  static constexpr Node_index d1 = 4;
+  static constexpr Node_index y = 5;
+  static constexpr Node_index d2 = 6;
+  static constexpr Node_index t1 = 7;
+  static constexpr Node_index t2 = 8;
+
+  auto set_inner(
+      Node_index n, Node_index parent, std::initializer_list<Node_index> child_list, const char* name, double t)
+      -> void {
+    CHECK_EQ(std::ssize(child_list), 2);
+    tree.at(n).parent = parent;
+    tree.at(n).children = {*child_list.begin(), *(child_list.begin() + 1)};
+    tree.at(n).name = name;
+    tree.at(n).t_min = -std::numeric_limits<float>::max();
+    tree.at(n).t_max = +std::numeric_limits<float>::max();
+    tree.at(n).t = t;
+  }
+
+  auto set_tip(Node_index n, Node_index parent, const char* name, double t) -> void {
+    tree.at(n).parent = parent;
+    tree.at(n).children = {};
+    tree.at(n).name = name;
+    tree.at(n).t = tree.at(n).t_min = tree.at(n).t_max = t;
+  }
+
+  Poplar_reversal_test() {
+    tree.root = r;
+    tree.ref_sequence = ref_sequence;
+
+    set_inner(r, k_no_node, {p, q}, "r", -1.0);
+    set_inner(p, r, {x, d1}, "p", 0.0);
+    set_tip(q, r, "q", 3.0);
+    set_inner(x, p, {y, d2}, "x", 1.0);
+    tree.at(x).mutations = {Mutation{rA, 0, rC, 0.5}};
+    set_tip(d1, p, "d1", 3.0);
+    set_inner(y, x, {t1, t2}, "y", 2.0);
+    tree.at(y).mutations = {Mutation{rC, 0, rA, 1.5}};
+    set_tip(d2, x, "d2", 3.0);
+    set_tip(t1, y, "t1", 3.0);
+    set_tip(t2, y, "t2", 3.0);
+
+    assert_phylo_tree_integrity(tree);
+  }
+};
+
+// Distinct fingerprints of a blob tree, sorted
+static auto fingerprints_of(const Blob_tree& blob_tree) -> std::vector<Blob_fingerprint> {
+  auto result = std::vector<Blob_fingerprint>{};
+  for (const auto& blob : index_order_traversal(blob_tree)) {
+    result.push_back(blob_tree.at(blob).fingerprint);
+  }
+  std::ranges::sort(result);
+  result.erase(std::ranges::unique(result).begin(), result.end());
+  return result;
+}
+
+TEST_F(Poplar_reversal_test, blob_tree_has_repeated_fingerprints) {
+  // Preconditions for the aggregator tests below: B_root{r, p, q, d1} -> B1{branch x} -> B2{x, d2} -> B3{branch y}
+  // -> B4{y, t1, t2}, where the root blob and B4 have the same fingerprint, and so do B1 and B3
+  auto blob_tree = derive_blob_tree(tree);
+  assert_tree_integrity(blob_tree);
+  ASSERT_THAT(std::ssize(blob_tree), testing::Eq(5));
+
+  EXPECT_THAT(fingerprint_of_node(blob_tree, r), testing::Eq(seq_fingerprint({sA})));
+  EXPECT_THAT(fingerprint_of_branch(blob_tree, x), testing::Eq(seq_fingerprint({sA | sC})));  // Branch p-x
+  EXPECT_THAT(fingerprint_of_node(blob_tree, x), testing::Eq(seq_fingerprint({sC})));
+  EXPECT_THAT(fingerprint_of_branch(blob_tree, y), testing::Eq(seq_fingerprint({sA | sC})));  // Branch x-y
+  EXPECT_THAT(fingerprint_of_node(blob_tree, y), testing::Eq(seq_fingerprint({sA})));
+
+  auto b_root = blob_tree.node_2_blob[r];
+  auto b1 = blob_tree.branch_2_blob[x];
+  auto b2 = blob_tree.node_2_blob[x];
+  auto b3 = blob_tree.branch_2_blob[y];
+  auto b4 = blob_tree.node_2_blob[y];
+  EXPECT_THAT(blob_tree.root, testing::Eq(b_root));
+  EXPECT_THAT(blob_tree.at(b1).parent, testing::Eq(b_root));
+  EXPECT_THAT(blob_tree.at(b2).parent, testing::Eq(b1));
+  EXPECT_THAT(blob_tree.at(b3).parent, testing::Eq(b2));
+  EXPECT_THAT(blob_tree.at(b4).parent, testing::Eq(b3));
+}
+
+TEST_F(Poplar_test2, aggregator_one_blob_tree) {
+  auto blob_tree = derive_blob_tree(tree);
+  auto aggregator = Blob_support_aggregator{};
+  aggregator.add_blob_tree(blob_tree);
+
+  EXPECT_THAT(aggregator.num_blob_trees, testing::Eq(1));
+  auto fingerprints = fingerprints_of(blob_tree);
+  EXPECT_THAT(std::ssize(aggregator.blob_tree_counts), testing::Eq(std::ssize(fingerprints)));
+  for (auto fingerprint : fingerprints) {
+    EXPECT_THAT(aggregator.blob_tree_counts.at(fingerprint), testing::Eq(1));
+    EXPECT_THAT(aggregator.posterior_support_of(fingerprint), testing::DoubleEq(1.0));
+  }
+
+  auto never_seen = Blob_fingerprint{0x1234567890abcdefULL};
+  ASSERT_THAT(std::ranges::binary_search(fingerprints, never_seen), testing::IsFalse());
+  EXPECT_THAT(aggregator.posterior_support_of(never_seen), testing::DoubleEq(0.0));
+}
+
+TEST_F(Poplar_test2, aggregator_identical_blob_trees) {
+  auto blob_tree = derive_blob_tree(tree);
+  auto aggregator = Blob_support_aggregator{};
+  for (auto i = 0; i != 3; ++i) {
+    aggregator.add_blob_tree(blob_tree);
+  }
+
+  EXPECT_THAT(aggregator.num_blob_trees, testing::Eq(3));
+  for (auto fingerprint : fingerprints_of(blob_tree)) {
+    EXPECT_THAT(aggregator.blob_tree_counts.at(fingerprint), testing::Eq(3));
+    EXPECT_THAT(aggregator.posterior_support_of(fingerprint), testing::DoubleEq(1.0));
+  }
+}
+
+TEST_F(Poplar_test2, aggregator_mix_of_variants) {
+  // Variant with the same tip sequences but a different mutational history at site 2.  Only the root blob's
+  // sequence changes (it is now ambiguous at site 2); the other blobs are different, but have the same sequences as
+  // some blob in the original tree.
+  auto variant = variant_with_site_2_history_via_y();
+
+  auto blob_tree = derive_blob_tree(tree);
+  auto variant_blob_tree = derive_blob_tree(variant);
+
+  // Preconditions: original blobs [0]-[5], see `derive_blob_tree_2`
+  ASSERT_THAT(std::ssize(blob_tree), testing::Eq(6));
+  EXPECT_THAT(fingerprint_of_node(blob_tree, r), testing::Eq(seq_fingerprint({sA | sC, sA | sG,   sA   })));
+  EXPECT_THAT(fingerprint_of_node(blob_tree, x), testing::Eq(seq_fingerprint({   sC  , sA | sG,   sA   })));
+  EXPECT_THAT(fingerprint_of_node(blob_tree, a), testing::Eq(seq_fingerprint({   sC  ,   sG   ,   sA   })));
+  EXPECT_THAT(fingerprint_of_node(blob_tree, y), testing::Eq(seq_fingerprint({   sA  ,   sA   ,   sA   })));
+  EXPECT_THAT(fingerprint_of_branch(blob_tree, c), testing::Eq(seq_fingerprint({   sA  ,   sA   , sA | sT})));
+  EXPECT_THAT(fingerprint_of_node(blob_tree, c), testing::Eq(seq_fingerprint({   sA  ,   sA   ,   sT   })));
+
+  // Preconditions: variant blobs {r, r-x, r-y}, {x, b, x-a}, {a}, {y, c}, {y-d}, {d}
+  ASSERT_THAT(std::ssize(variant_blob_tree), testing::Eq(6));
+  EXPECT_THAT(fingerprint_of_node(variant_blob_tree, r), testing::Eq(seq_fingerprint({sA | sC, sA | sG, sA | sT})));
+  EXPECT_THAT(fingerprint_of_node(variant_blob_tree, x), testing::Eq(seq_fingerprint({   sC  , sA | sG,   sA   })));
+  EXPECT_THAT(fingerprint_of_node(variant_blob_tree, a), testing::Eq(seq_fingerprint({   sC  ,   sG   ,   sA   })));
+  EXPECT_THAT(fingerprint_of_node(variant_blob_tree, y), testing::Eq(seq_fingerprint({   sA  ,   sA   ,   sT   })));
+  EXPECT_THAT(fingerprint_of_branch(variant_blob_tree, d), testing::Eq(seq_fingerprint({   sA  ,   sA   , sA | sT})));
+  EXPECT_THAT(fingerprint_of_node(variant_blob_tree, d), testing::Eq(seq_fingerprint({   sA  ,   sA   ,   sA   })));
+
+  // 2 original trees + 1 variant
+  auto aggregator = Blob_support_aggregator{};
+  aggregator.add_blob_tree(blob_tree);
+  aggregator.add_blob_tree(variant_blob_tree);
+  aggregator.add_blob_tree(blob_tree);
+
+  EXPECT_THAT(aggregator.num_blob_trees, testing::Eq(3));
+  EXPECT_THAT(std::ssize(aggregator.blob_tree_counts), testing::Eq(7));
+
+  auto support_of = [&](std::initializer_list<Seq_letter> states) {
+    return aggregator.posterior_support_of(seq_fingerprint(states));
+  };
+
+  // Sequences in all 3 trees
+  EXPECT_THAT(support_of({   sC  , sA | sG,   sA   }), testing::DoubleEq(1.0));
+  EXPECT_THAT(support_of({   sC  ,   sG   ,   sA   }), testing::DoubleEq(1.0));
+  EXPECT_THAT(support_of({   sA  ,   sA   ,   sA   }), testing::DoubleEq(1.0));
+  EXPECT_THAT(support_of({   sA  ,   sA   , sA | sT}), testing::DoubleEq(1.0));
+  EXPECT_THAT(support_of({   sA  ,   sA   ,   sT   }), testing::DoubleEq(1.0));
+
+  // Root blob sequences differ between original (2 trees) and variant (1 tree)
+  EXPECT_THAT(support_of({sA | sC, sA | sG,   sA   }), testing::DoubleEq(2.0 / 3.0));
+  EXPECT_THAT(support_of({sA | sC, sA | sG, sA | sT}), testing::DoubleEq(1.0 / 3.0));
+
+  // Never seen
+  EXPECT_THAT(support_of({   sG  ,   sG   ,   sG   }), testing::DoubleEq(0.0));
+}
+
+TEST_F(Poplar_reversal_test, aggregator_counts_repeated_fingerprints_once_per_blob_tree) {
+  auto blob_tree = derive_blob_tree(tree);
+  ASSERT_THAT(std::ssize(blob_tree), testing::Eq(5));  // 5 blobs, but only 3 distinct fingerprints
+
+  auto aggregator = Blob_support_aggregator{};
+  aggregator.add_blob_tree(blob_tree);
+
+  EXPECT_THAT(aggregator.num_blob_trees, testing::Eq(1));
+  EXPECT_THAT(std::ssize(aggregator.blob_tree_counts), testing::Eq(3));
+  for (const auto& [fingerprint, count] : aggregator.blob_tree_counts) {
+    EXPECT_THAT(count, testing::Eq(1));
+    EXPECT_THAT(aggregator.posterior_support_of(fingerprint), testing::DoubleEq(1.0));
+  }
+
+  aggregator.add_blob_tree(blob_tree);
+  for (const auto& [fingerprint, count] : aggregator.blob_tree_counts) {
+    EXPECT_THAT(count, testing::Eq(2));
+  }
+}
+
+TEST_F(Poplar_test2, aggregator_incremental_accumulation) {
+  // Three different blob trees from different mutational histories for the same tip sequences
+  //  - The original tree
+  //  - Variant 1: A2T on the r-y branch and T2A on the y-d branch (see `aggregator_mix_of_variants`)
+  //  - Variant 2: A0C on the x-a and x-b branches (instead of the r-x branch)
+  auto variant1 = variant_with_site_2_history_via_y();
+  auto variant2 = variant_with_A0C_on_tips();
+
+  auto blob_trees = std::vector<Blob_tree>{derive_blob_tree(tree), derive_blob_tree(variant1), derive_blob_tree(variant2)};
+
+  auto expect_fingerprints = [&](const Blob_tree& blob_tree, std::vector<Blob_fingerprint> expected) {
+    std::ranges::sort(expected);
+    EXPECT_THAT(fingerprints_of(blob_tree), testing::Eq(expected));
+  };
+  expect_fingerprints(blob_trees[0], {
+      seq_fingerprint({sA | sC, sA | sG,   sA   }),
+      seq_fingerprint({   sC  , sA | sG,   sA   }),
+      seq_fingerprint({   sC  ,   sG   ,   sA   }),
+      seq_fingerprint({   sA  ,   sA   ,   sA   }),
+      seq_fingerprint({   sA  ,   sA   , sA | sT}),
+      seq_fingerprint({   sA  ,   sA   ,   sT   })});
+  expect_fingerprints(blob_trees[1], {
+      seq_fingerprint({sA | sC, sA | sG, sA | sT}),
+      seq_fingerprint({   sC  , sA | sG,   sA   }),
+      seq_fingerprint({   sC  ,   sG   ,   sA   }),
+      seq_fingerprint({   sA  ,   sA   ,   sT   }),
+      seq_fingerprint({   sA  ,   sA   , sA | sT}),
+      seq_fingerprint({   sA  ,   sA   ,   sA   })});
+  // Variant 2 has 8 blobs, but only 7 distinct fingerprints: {x-a} and {x-b} have the same sequence (the site-1
+  // extent also covers b, which is missing at site 1, so {x-b} is ambiguous at site 1 too)
+  expect_fingerprints(blob_trees[2], {
+      seq_fingerprint({   sA  , sA | sG,   sA   }),  // {r, x, r-x, r-y}
+      seq_fingerprint({   sA  ,   sA   ,   sA   }),  // {y, d}
+      seq_fingerprint({   sA  ,   sA   , sA | sT}),  // {y-c}
+      seq_fingerprint({   sA  ,   sA   ,   sT   }),  // {c}
+      seq_fingerprint({sA | sC, sA | sG,   sA   }),  // {x-a} and {x-b}
+      seq_fingerprint({   sC  ,   sG   ,   sA   }),  // {a}
+      seq_fingerprint({   sC  , sA | sG,   sA   })});  // {b}
+
+  // Each addition changes only the counts of the added tree's fingerprints (and num_blob_trees)
+  auto aggregator = Blob_support_aggregator{};
+  for (const auto& blob_tree : blob_trees) {
+    auto before = aggregator;
+    aggregator.add_blob_tree(blob_tree);
+
+    EXPECT_THAT(aggregator.num_blob_trees, testing::Eq(before.num_blob_trees + 1));
+    auto fingerprints = fingerprints_of(blob_tree);
+    for (const auto& [fingerprint, count] : aggregator.blob_tree_counts) {
+      auto old_count = before.blob_tree_counts.contains(fingerprint) ? before.blob_tree_counts.at(fingerprint) : 0;
+      auto in_added_tree = std::ranges::binary_search(fingerprints, fingerprint);
+      EXPECT_THAT(count, testing::Eq(old_count + (in_added_tree ? 1 : 0)));
+    }
+    for (auto fingerprint : fingerprints) {
+      EXPECT_THAT(aggregator.blob_tree_counts.contains(fingerprint), testing::IsTrue());
+    }
+  }
+
+  // The result does not depend on the order of addition
+  auto reversed_aggregator = Blob_support_aggregator{};
+  for (auto it = blob_trees.rbegin(); it != blob_trees.rend(); ++it) {
+    reversed_aggregator.add_blob_tree(*it);
+  }
+  EXPECT_THAT(reversed_aggregator.num_blob_trees, testing::Eq(aggregator.num_blob_trees));
+  EXPECT_THAT(reversed_aggregator.blob_tree_counts, testing::Eq(aggregator.blob_tree_counts));
+}
+
+// The topology tree's blob behind each summary blob, and behind each summary blob's parent (`k_no_blob` for the root),
+// both listed in pre-order of the summary tree (so that they do not depend on how summary blobs are indexed)
+static auto summary_blobs(const Summary_blob_tree& summary) -> std::vector<Blob_index> {
+  auto result = std::vector<Blob_index>{};
+  for (const auto& s : pre_order_traversal(summary)) {
+    result.push_back(summary.at(s).blob);
+  }
+  return result;
+}
+static auto summary_parent_blobs(const Summary_blob_tree& summary) -> std::vector<Blob_index> {
+  auto result = std::vector<Blob_index>{};
+  for (const auto& s : pre_order_traversal(summary)) {
+    auto parent = summary.at(s).parent;
+    result.push_back(parent == k_no_node ? k_no_blob : summary.at(parent).blob);
+  }
+  return result;
+}
+
+// Invariants that every summary blob tree must satisfy
+static auto expect_summary_blob_tree_invariants(const Summary_blob_tree& summary) -> void {
+  assert_tree_integrity(summary);
+  ASSERT_THAT(summary.topology_tree, testing::NotNull());
+  ASSERT_THAT(summary.support_aggregator, testing::NotNull());
+  const auto& topology = *summary.topology_tree;
+  const auto& aggregator = *summary.support_aggregator;
+
+  // Note that the indices of the summary blobs are deliberately not tested (neither which index the root has, nor
+  // whether they follow a pre-order traversal): they are incidental to the implementation.
+
+  // Single root, which is the root of the topology tree
+  ASSERT_THAT(std::ssize(summary), testing::Gt(0));
+  EXPECT_THAT(summary.at(summary.root).blob, testing::Eq(topology.root));
+
+  // Every node records a distinct blob of the topology tree, and the fingerprints are distinct too
+  auto kept_blobs = absl::flat_hash_set<Blob_index>{};
+  auto fingerprints = absl::flat_hash_set<Blob_fingerprint>{};
+  for (const auto& s : index_order_traversal(summary)) {
+    auto blob = summary.at(s).blob;
+    ASSERT_THAT(blob, testing::AllOf(testing::Ge(0), testing::Lt(std::ssize(topology))));
+    EXPECT_THAT(kept_blobs.insert(blob).second, testing::IsTrue()) << "Repeated blob " << blob;
+    EXPECT_THAT(fingerprints.insert(summary.fingerprint_of(s)).second, testing::IsTrue()) << "Repeated fingerprint";
+
+    // Fingerprints and supports agree with the topology tree and the aggregator
+    EXPECT_THAT(summary.fingerprint_of(s), testing::Eq(topology.at(blob).fingerprint));
+    EXPECT_THAT(
+        summary.posterior_support_of(s),
+        testing::DoubleEq(aggregator.posterior_support_of(topology.at(blob).fingerprint)));
+
+    // Everything but the root has enough support
+    if (s != summary.root) {
+      EXPECT_THAT(summary.posterior_support_of(s), testing::Ge(summary.posterior_support_threshold));
+    }
+  }
+
+  // NOTE: This doesn't test that the "compacted" blobs have below-threshold support
+  // Every summary blob's parent is its nearest kept ancestor in the topology tree
+  for (const auto& s : index_order_traversal(summary)) {
+    if (s == summary.root) { continue; }
+    auto ancestor = topology.at(summary.at(s).blob).parent;
+    while (ancestor != k_no_blob and not kept_blobs.contains(ancestor)) {
+      ancestor = topology.at(ancestor).parent;
+    }
+    EXPECT_THAT(summary.at(summary.at(s).parent).blob, testing::Eq(ancestor));
+  }
+}
+
+// Summary tree in which every blob of the topology tree is kept
+static auto expect_summary_mirrors_topology(const Summary_blob_tree& summary) -> void {
+  expect_summary_blob_tree_invariants(summary);
+  const auto& topology = *summary.topology_tree;
+  ASSERT_THAT(std::ssize(summary), testing::Eq(std::ssize(topology)));
+  for (const auto& s : index_order_traversal(summary)) {
+    auto child_blobs = std::vector<Blob_index>{};
+    for (const auto& child : summary.at(s).children) {
+      child_blobs.push_back(summary.at(child).blob);
+    }
+    EXPECT_THAT(child_blobs, testing::ElementsAreArray(topology.at(summary.at(s).blob).children));
+  }
+}
+
+TEST_F(Poplar_test2, summary_of_one_blob_tree_is_the_blob_tree) {
+  auto blob_tree = derive_blob_tree(tree);
+  auto aggregator = Blob_support_aggregator{};
+  aggregator.add_blob_tree(blob_tree);
+
+  auto summary = derive_summary_blob_tree(aggregator, blob_tree);
+
+  EXPECT_THAT(summary.posterior_support_threshold, testing::DoubleEq(k_default_summary_blob_support_threshold));
+  expect_summary_mirrors_topology(summary);
+}
+
+TEST_F(Poplar_test2, summary_of_identical_blob_trees_is_the_blob_tree) {
+  auto blob_tree = derive_blob_tree(tree);
+  auto aggregator = Blob_support_aggregator{};
+  for (auto i = 0; i != 3; ++i) {
+    aggregator.add_blob_tree(blob_tree);
+  }
+
+  expect_summary_mirrors_topology(derive_summary_blob_tree(aggregator, blob_tree));
+}
+
+TEST_F(Poplar_test2, summary_compacts_low_support_blobs) {
+  // The variant's blob tree has 9 blobs: R{r}, x{x}, x-a{branch}, a{a}, x-b{branch}, b{b}, y{y, d}, y-c{branch}, c{c}.
+  // Only the blobs with sequences in the original tree have any support when only the original tree is aggregated.
+  auto blob_tree = derive_blob_tree(tree);
+  auto variant_blob_tree = derive_blob_tree(variant_with_back_mutation_on_x());
+
+  ASSERT_THAT(std::ssize(variant_blob_tree), testing::Eq(9));
+  auto b_r = variant_blob_tree.node_2_blob[r];
+  auto b_x = variant_blob_tree.node_2_blob[x];
+  auto b_xa = variant_blob_tree.branch_2_blob[a];
+  auto b_a = variant_blob_tree.node_2_blob[a];
+  auto b_xb = variant_blob_tree.branch_2_blob[b];
+  auto b_b = variant_blob_tree.node_2_blob[b];
+  auto b_y = variant_blob_tree.node_2_blob[y];
+  auto b_yc = variant_blob_tree.branch_2_blob[c];
+  auto b_c = variant_blob_tree.node_2_blob[c];
+  auto fp = [&](Blob_index blob) { return variant_blob_tree.at(blob).fingerprint; };
+  EXPECT_THAT(fp(b_r),  testing::Eq(seq_fingerprint({sA | sC, sA | sG, sA | sG})));  // Not in the original tree
+  EXPECT_THAT(fp(b_x),  testing::Eq(seq_fingerprint({   sC  , sA | sG,    sG   })));  // Not in the original tree
+  EXPECT_THAT(fp(b_xa), testing::Eq(seq_fingerprint({   sC  , sA | sG, sA | sG})));  // Not in the original tree
+  EXPECT_THAT(fp(b_a),  testing::Eq(seq_fingerprint({   sC  ,    sG   ,    sA  })));  // Original blob [2]
+  EXPECT_THAT(fp(b_xb), testing::Eq(seq_fingerprint({   sC  , sA | sG, sA | sG})));  // Same as x-a (not in the original)
+  EXPECT_THAT(fp(b_b),  testing::Eq(seq_fingerprint({   sC  , sA | sG,    sA  })));  // Original blob [1]
+  EXPECT_THAT(fp(b_y),  testing::Eq(seq_fingerprint({   sA  ,    sA   ,    sA  })));  // Original blob [3]
+  EXPECT_THAT(fp(b_yc), testing::Eq(seq_fingerprint({   sA  ,    sA   , sA | sT})));  // Original blob [4]
+  EXPECT_THAT(fp(b_c),  testing::Eq(seq_fingerprint({   sA  ,    sA   ,    sT  })));  // Original blob [5]
+
+  auto aggregator = Blob_support_aggregator{};
+  aggregator.add_blob_tree(blob_tree);
+  auto summary = derive_summary_blob_tree(aggregator, variant_blob_tree);
+  expect_summary_blob_tree_invariants(summary);
+
+  // The low-support interior blob x (and the low-support blob x-a below it, so a run of two consecutive low-support
+  // blobs above a) are compacted away.  Its high-support descendants a and b become siblings of y, in the same order
+  // as in the topology tree.
+  EXPECT_THAT(summary_blobs(summary), testing::ElementsAre(b_r, b_a, b_b, b_y, b_yc, b_c));
+  EXPECT_THAT(summary_parent_blobs(summary), testing::ElementsAre(k_no_blob, b_r, b_r, b_r, b_y, b_yc));
+  auto root_child_blobs = std::vector<Blob_index>{};
+  for (const auto& child : summary.at(summary.root).children) {
+    root_child_blobs.push_back(summary.at(child).blob);
+  }
+  EXPECT_THAT(root_child_blobs, testing::ElementsAre(b_a, b_b, b_y));
+}
+
+TEST_F(Poplar_test2, summary_root_is_kept_even_if_its_support_is_low) {
+  auto blob_tree = derive_blob_tree(tree);
+  auto variant_blob_tree = derive_blob_tree(variant_with_back_mutation_on_x());
+  auto aggregator = Blob_support_aggregator{};
+  aggregator.add_blob_tree(blob_tree);
+  aggregator.add_blob_tree(blob_tree);
+  aggregator.add_blob_tree(variant_blob_tree);
+
+  auto summary = derive_summary_blob_tree(aggregator, variant_blob_tree);
+  expect_summary_blob_tree_invariants(summary);
+
+  // The variant's root blob is only in 1 of 3 blob trees, but it is kept and its low support is reported faithfully
+  ASSERT_THAT(std::ssize(summary), testing::Gt(0));
+  EXPECT_THAT(summary.fingerprint_of(summary.root), testing::Eq(seq_fingerprint({sA | sC, sA | sG, sA | sG})));
+  EXPECT_THAT(summary.posterior_support_of(summary.root), testing::DoubleEq(1.0 / 3.0));
+  EXPECT_THAT(summary_blobs(summary), testing::SizeIs(6));  // R, a, b, y, y-c, c
+}
+
+TEST_F(Poplar_test2, summary_threshold) {
+  // Fingerprints shared by both trees have support 1, the variant's (9 blobs, 8 distinct fingerprints) have 2/3
+  auto blob_tree = derive_blob_tree(tree);
+  auto variant_blob_tree = derive_blob_tree(variant_with_back_mutation_on_x());
+  auto aggregator = Blob_support_aggregator{};
+  aggregator.add_blob_tree(blob_tree);
+  aggregator.add_blob_tree(variant_blob_tree);
+  aggregator.add_blob_tree(variant_blob_tree);
+
+  auto b_r = variant_blob_tree.node_2_blob[r];
+  auto b_x = variant_blob_tree.node_2_blob[x];
+  auto b_xa = variant_blob_tree.branch_2_blob[a];
+  auto b_a = variant_blob_tree.node_2_blob[a];
+  auto b_b = variant_blob_tree.node_2_blob[b];
+  auto b_y = variant_blob_tree.node_2_blob[y];
+  auto b_yc = variant_blob_tree.branch_2_blob[c];
+  auto b_c = variant_blob_tree.node_2_blob[c];
+
+  EXPECT_THAT(aggregator.posterior_support_of(seq_fingerprint({sC, sA | sG, sG})), testing::DoubleEq(2.0 / 3.0));
+  EXPECT_THAT(aggregator.posterior_support_of(seq_fingerprint({sC, sG, sA})), testing::DoubleEq(1.0));
+
+  // Threshold 0 keeps every distinct fingerprint of the topology tree.  Blob x-b has the same fingerprint as x-a,
+  // which comes first in pre-order, so it is compacted away, and its child b hangs off x.
+  auto summary0 = derive_summary_blob_tree(aggregator, variant_blob_tree, 0.0);
+  expect_summary_blob_tree_invariants(summary0);
+  EXPECT_THAT(summary_blobs(summary0), testing::ElementsAre(b_r, b_x, b_xa, b_a, b_b, b_y, b_yc, b_c));
+  EXPECT_THAT(summary_parent_blobs(summary0), testing::ElementsAre(k_no_blob, b_r, b_x, b_xa, b_x, b_r, b_y, b_yc));
+
+  // `>=` semantics: a threshold of exactly 2/3 still keeps the blobs with support 2/3
+  auto summary_two_thirds = derive_summary_blob_tree(aggregator, variant_blob_tree, 2.0 / 3.0);
+  expect_summary_blob_tree_invariants(summary_two_thirds);
+  EXPECT_THAT(summary_blobs(summary_two_thirds), testing::Eq(summary_blobs(summary0)));
+  EXPECT_THAT(summary_parent_blobs(summary_two_thirds), testing::Eq(summary_parent_blobs(summary0)));
+
+  // Just above 2/3 and at 1, only blobs in every tree are kept (plus the root)
+  for (auto threshold : {0.67, 1.0}) {
+    auto summary = derive_summary_blob_tree(aggregator, variant_blob_tree, threshold);
+    expect_summary_blob_tree_invariants(summary);
+    EXPECT_THAT(summary.posterior_support_threshold, testing::DoubleEq(threshold));
+    EXPECT_THAT(summary_blobs(summary), testing::ElementsAre(b_r, b_a, b_b, b_y, b_yc, b_c));
+    EXPECT_THAT(summary_parent_blobs(summary), testing::ElementsAre(k_no_blob, b_r, b_r, b_r, b_y, b_yc));
+  }
+}
+
+TEST_F(Poplar_test2, summary_topology_comes_from_the_donor_tree) {
+  auto blob_tree = derive_blob_tree(tree);
+  auto variant_blob_tree = derive_blob_tree(variant_with_back_mutation_on_x());
+  auto aggregator = Blob_support_aggregator{};
+  aggregator.add_blob_tree(blob_tree);
+  aggregator.add_blob_tree(variant_blob_tree);
+
+  // From the original tree: R{r} -> X{x, b} -> a{a}, and R -> y -> y-c -> c
+  auto summary = derive_summary_blob_tree(aggregator, blob_tree);
+  expect_summary_mirrors_topology(summary);
+  ASSERT_THAT(std::ssize(summary), testing::Eq(6));
+
+  // From the variant: R{r} -> {a{a}, b{b}, y -> y-c -> c}
+  auto variant_summary = derive_summary_blob_tree(aggregator, variant_blob_tree);
+  expect_summary_blob_tree_invariants(variant_summary);
+  ASSERT_THAT(std::ssize(variant_summary), testing::Eq(6));
+
+  // Same size, different shapes: the parent of the blob with sequence CGA is blob C{A|G}A in the first, but the root
+  // in the second
+  auto parent_fingerprint_of_a = [](const Summary_blob_tree& s) {
+    for (const auto& n : index_order_traversal(s)) {
+      if (s.fingerprint_of(n) == seq_fingerprint({sC, sG, sA})) { return s.fingerprint_of(s.at(n).parent); }
+    }
+    ADD_FAILURE() << "Blob not found";
+    return Blob_fingerprint{0};
+  };
+  EXPECT_THAT(parent_fingerprint_of_a(summary), testing::Eq(seq_fingerprint({sC, sA | sG, sA})));
+  EXPECT_THAT(parent_fingerprint_of_a(variant_summary), testing::Eq(seq_fingerprint({sA | sC, sA | sG, sA | sG})));
+  EXPECT_THAT(summary_parent_blobs(summary), testing::Ne(summary_parent_blobs(variant_summary)));
+
+  // Supports reported are the same, because they come from the aggregator
+  for (const auto& blob_fingerprint : {
+           seq_fingerprint({sC, sG, sA}),
+           seq_fingerprint({sA, sA, sA}),
+           seq_fingerprint({sA, sA, sT})}) {
+    EXPECT_THAT(aggregator.posterior_support_of(blob_fingerprint), testing::DoubleEq(1.0));
+  }
+  for (const auto& s : index_order_traversal(summary)) {
+    EXPECT_THAT(summary.posterior_support_of(s), testing::DoubleEq(aggregator.posterior_support_of(summary.fingerprint_of(s))));
+  }
+  for (const auto& s : index_order_traversal(variant_summary)) {
+    EXPECT_THAT(
+        variant_summary.posterior_support_of(s),
+        testing::DoubleEq(aggregator.posterior_support_of(variant_summary.fingerprint_of(s))));
+  }
+}
+
+TEST_F(Poplar_reversal_test, summary_keeps_earliest_blob_per_fingerprint) {
+  // Blob chain B_root{A} -> B1{A|C} -> B2{C} -> B3{C|A} -> B4{A}: B3 and B4 repeat the fingerprints of B1 and the root
+  auto blob_tree = derive_blob_tree(tree);
+  ASSERT_THAT(std::ssize(blob_tree), testing::Eq(5));
+  auto b_root = blob_tree.node_2_blob[r];
+  auto b1 = blob_tree.branch_2_blob[x];
+  auto b2 = blob_tree.node_2_blob[x];
+  auto b3 = blob_tree.branch_2_blob[y];
+  auto b4 = blob_tree.node_2_blob[y];
+  EXPECT_THAT(blob_tree.at(b_root).fingerprint, testing::Eq(seq_fingerprint({   sA  })));
+  EXPECT_THAT(blob_tree.at(b1).fingerprint,     testing::Eq(seq_fingerprint({sA | sC})));
+  EXPECT_THAT(blob_tree.at(b2).fingerprint,     testing::Eq(seq_fingerprint({   sC  })));
+  EXPECT_THAT(blob_tree.at(b3).fingerprint,     testing::Eq(seq_fingerprint({sA | sC})));
+  EXPECT_THAT(blob_tree.at(b4).fingerprint,     testing::Eq(seq_fingerprint({   sA  })));
+
+  auto aggregator = Blob_support_aggregator{};
+  aggregator.add_blob_tree(blob_tree);
+  auto summary = derive_summary_blob_tree(aggregator, blob_tree);
+  expect_summary_blob_tree_invariants(summary);
+
+  // B3 and B4 are compacted away, as later duplicates of B1 and B_root
+  EXPECT_THAT(summary_blobs(summary), testing::ElementsAre(b_root, b1, b2));
+  EXPECT_THAT(summary_parent_blobs(summary), testing::ElementsAre(k_no_blob, b_root, b1));
+}
+
+TEST_F(Poplar_reversal_test, summary_attaches_descendants_of_repeated_blobs_to_nearest_kept_ancestor) {
+  // Add a second site where only tip t2 differs from the reference sequence (A1G on the y-t2 branch), which adds a
+  // branch blob {y-t2} and a blob {t2} below B4 (and below B3, which repeats B1's fingerprint):
+  //   B_root{A,A} -> B1{A|C,A} -> B2{C,A} -> B3{C|A,A} -> B4{A,A} -> {y-t2}{A,A|G} -> {t2}{A,G}
+  auto variant = tree;
+  variant.ref_sequence = Real_sequence{rA, rA};
+  variant.at(t2).mutations = {Mutation{rA, 1, rG, 2.5}};
+  assert_phylo_tree_integrity(variant);
+
+  auto blob_tree = derive_blob_tree(variant);
+  ASSERT_THAT(std::ssize(blob_tree), testing::Eq(7));
+  auto b_root = blob_tree.node_2_blob[r];
+  auto b1 = blob_tree.branch_2_blob[x];
+  auto b2 = blob_tree.node_2_blob[x];
+  auto b3 = blob_tree.branch_2_blob[y];
+  auto b4 = blob_tree.node_2_blob[y];
+  auto b_yt2 = blob_tree.branch_2_blob[t2];
+  auto b_t2 = blob_tree.node_2_blob[t2];
+  EXPECT_THAT(blob_tree.at(b_root).fingerprint, testing::Eq(seq_fingerprint({   sA  ,   sA   })));
+  EXPECT_THAT(blob_tree.at(b1).fingerprint,     testing::Eq(seq_fingerprint({sA | sC,   sA   })));
+  EXPECT_THAT(blob_tree.at(b2).fingerprint,     testing::Eq(seq_fingerprint({   sC  ,   sA   })));
+  EXPECT_THAT(blob_tree.at(b3).fingerprint,     testing::Eq(seq_fingerprint({sA | sC,   sA   })));
+  EXPECT_THAT(blob_tree.at(b4).fingerprint,     testing::Eq(seq_fingerprint({   sA  ,   sA   })));
+  EXPECT_THAT(blob_tree.at(b_yt2).fingerprint,  testing::Eq(seq_fingerprint({   sA  , sA | sG})));
+  EXPECT_THAT(blob_tree.at(b_t2).fingerprint,   testing::Eq(seq_fingerprint({   sA  ,   sG   })));
+
+  auto aggregator = Blob_support_aggregator{};
+  aggregator.add_blob_tree(blob_tree);
+  auto summary = derive_summary_blob_tree(aggregator, blob_tree);
+  expect_summary_blob_tree_invariants(summary);
+
+  // B3 and B4 are compacted away, so {y-t2} hangs off B2
+  EXPECT_THAT(summary_blobs(summary), testing::ElementsAre(b_root, b1, b2, b_yt2, b_t2));
+  EXPECT_THAT(summary_parent_blobs(summary), testing::ElementsAre(k_no_blob, b_root, b1, b2, b_yt2));
 }
 
 TEST_F(Poplar_test, matches_naive_reference) {

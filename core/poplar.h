@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/log/check.h"
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
@@ -479,8 +480,72 @@ auto calc_blob_fingerprint(
     const Blob_sequence& blob_sequence)
     -> Blob_fingerprint;
 
-// TODO: Calculate all of this for all the Phylo_trees in a list.  Then pick out the stable blobs (> threshold).
-// Create collapsed blob tree for an arbitrary one of those Phylo_trees.
+// A single Blob_tree describes one posterior tree.  To say something about the posterior as a whole, we want to know
+// which blobs show up in (almost) every posterior tree.  The "posterior support" of a blob fingerprint is the fraction
+// of the blob trees seen so far that contain a blob with that fingerprint.  A `Blob_support_aggregator` accumulates
+// these supports, one blob tree at a time, as the MCMC produces new posterior samples.  It remembers the support of
+// *all* the fingerprints it has seen, so that low-support blobs in an individual blob tree can be identified too.
+//
+// All the blob trees added to an aggregator must be derived from samples of the posterior tree distribution of a
+// single dataset (in particular, all must have the same number of sites; this is not checked).
+struct Blob_support_aggregator {
+  int num_blob_trees = 0;
+  absl::flat_hash_map<Blob_fingerprint, int> blob_tree_counts;  // Number of blob trees with a blob with each fingerprint
+
+  // Add one more blob tree.  A fingerprint that occurs in several blobs of the same blob tree still only counts once
+  // for that blob tree.  Cost is linear in the size of `blob_tree`.
+  auto add_blob_tree(const Blob_tree& blob_tree) -> void;
+
+  // Fraction of the blob trees added so far that contain a blob with this fingerprint (0 for fingerprints never
+  // seen).  Requires at least 1 blob tree.
+  auto posterior_support_of(Blob_fingerprint fingerprint) const -> double;
+};
+
+// A "summary blob tree" keeps only the blobs of a single blob tree (the "topology tree") whose fingerprints have high
+// posterior support (at least a threshold, 99% by default), and "compacts away" all the others: a blob in the
+// summary tree has as children the earliest kept blobs below it in the topology tree.  At most one blob per
+// fingerprint is kept: the first one in a pre-order traversal of the topology tree (among blobs on the same path from
+// the root, the one closest to the root, i.e., the earliest in time); other blobs with that fingerprint are compacted
+// away like any low-support blob.  The root blob of the topology tree is always kept, regardless of its support, so
+// that the summary is a proper tree with a single root (but see the root-folding TODO below).
+//
+// A summary blob tree is not self-contained.  It holds pointers to the topology tree and to the support aggregator it
+// was derived from, which the caller must keep alive as long as the summary tree.  A summary blob is just an index
+// into the topology tree (everything else, like sequence, member nodes and seeds, is one lookup away there).
+// Supports are not copied: they are looked up in the aggregator, so a new summary tree should be derived whenever the
+// aggregator is updated.
+using Summary_blob_index = Node_index;  // Not to be confused with a Blob_index into a Blob_tree
+
+struct Summary_blob_node : public Nary_node {
+  Blob_index blob;  // Corresponding blob in the summary tree's topology tree (deliberately not default-initialized)
+
+  auto operator==(const Summary_blob_node& that) const -> bool = default;
+};
+
+struct Summary_blob_tree : public Tree<Summary_blob_node> {
+  using Tree::Tree;
+
+  const Blob_tree* topology_tree = nullptr;                     // Donates the topology
+  const Blob_support_aggregator* support_aggregator = nullptr;  // Holds the supports of all fingerprints
+  double posterior_support_threshold = 0.0;                     // Threshold used to decide which blobs to keep
+
+  // Fingerprint and posterior support of a summary blob (via the blob in the topology tree)
+  auto fingerprint_of(Summary_blob_index summary_blob) const -> Blob_fingerprint;
+  auto posterior_support_of(Summary_blob_index summary_blob) const -> double;
+};
+
+inline constexpr auto k_default_summary_blob_support_threshold = 0.99;
+
+// `topology_tree` donates the topology: a blob B in the summary tree has as children the earliest blobs below B in
+// `topology_tree` that are kept (see above).  Typically, `topology_tree` is the most recent blob tree added to
+// `support_aggregator`, but any blob tree can be used.  Cost is linear in the size of `topology_tree`, no matter how
+// many blob trees `support_aggregator` has seen.  The indices of the summary blobs are unspecified.
+// Requires `support_aggregator.num_blob_trees > 0` and a threshold in [0, 1].
+auto derive_summary_blob_tree(
+    const Blob_support_aggregator& support_aggregator,
+    const Blob_tree& topology_tree,
+    double posterior_support_threshold = k_default_summary_blob_support_threshold)
+    -> Summary_blob_tree;
 
 // TODO: Implement root-folding.  It'll be something like: find and mark the smallest set of blob nodes that cover
 // the blob tree roots ~99% of the time, then in each collapsed blob tree, find the MST of those root-candidate blobs
